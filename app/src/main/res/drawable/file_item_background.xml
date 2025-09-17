@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 文件夹背景 - 黄色 -->
-    <item android:drawable="@color/folderColor" android:state_folder="true" />
-    <!-- 文件背景 - 浅灰色 -->
-    <item android:drawable="@color/fileColor" />
+    <!-- 移除了错误的state_folder属性，改用不同的实现方式 -->
+    <item android:drawable="@color/folderColor" />
 </selector>

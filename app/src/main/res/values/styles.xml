@@ -8,4 +8,11 @@
         <item name="windowActionBar">true</item>
         <item name="windowNoTitle">false</item>
     </style>
+
+    <style name="Theme.OutsideBrain.NoActionBar" parent="Theme.OutsideBrain">
+        <item name="windowActionBar">false</item> <!-- 隐藏系统默认标题栏 -->
+        <item name="windowNoTitle">true</item>    <!-- 不显示标题 -->
+        <!-- 可选：设置编辑页面的状态栏颜色，与深灰背景协调 -->
+        <item name="android:statusBarColor">@color/editorBgColor</item>
+    </style>
 </resources>

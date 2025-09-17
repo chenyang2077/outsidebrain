@@ -8,7 +8,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.LayoutInflater;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -29,12 +28,9 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -65,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
         addButton.setOnClickListener(v -> showCreateDialog());
     }
 
-    // 检查存储权限
+    // 检查存储权限（不变）
     private void checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -78,11 +74,11 @@ public class MainActivity extends AppCompatActivity {
                 initExternalBrain();
             }
         } else {
-            // Android 6.0 以下版本默认授予权限
             initExternalBrain();
         }
     }
 
+    // 权限回调（不变）
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -96,43 +92,36 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 初始化外置大脑文件夹
+    // 初始化外置大脑文件夹（不变）
     private void initExternalBrain() {
-        // 获取SD卡路径
         File sdCard = Environment.getExternalStorageDirectory();
         currentDirectory = new File(sdCard, "外置大脑");
 
-        // 检查并创建外置大脑文件夹
         if (!currentDirectory.exists()) {
             if (currentDirectory.mkdirs()) {
                 Toast.makeText(this, "已新建文件夹", Toast.LENGTH_SHORT).show();
-
-                // 创建测试文件
                 createTestFile();
             } else {
                 Toast.makeText(this, "无法创建文件夹", Toast.LENGTH_SHORT).show();
                 return;
             }
         } else {
-            // 检查文件夹是否为空
             File[] files = currentDirectory.listFiles();
             if (files == null || files.length == 0) {
                 createTestFile();
             }
         }
 
-        // 加载文件列表
         loadFileList();
     }
 
-    // 创建测试文件
+    // 创建测试文件（不变）
     private void createTestFile() {
         File testFile = new File(currentDirectory, "测试文件.txt");
         try {
             if (testFile.createNewFile()) {
-                // 可以写入一些初始内容
                 FileOutputStream fos = new FileOutputStream(testFile);
-                fos.write("这是一个测试文件".getBytes());
+                fos.write("这是一个测试文件\n支持多行编辑哦～".getBytes());
                 fos.close();
             }
         } catch (IOException e) {
@@ -141,13 +130,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 加载文件列表
+    // 加载文件列表（不变）
     private void loadFileList() {
         fileList.clear();
 
         File[] files = currentDirectory.listFiles();
         if (files != null) {
-            // 分离文件夹和文件
             List<File> folders = new ArrayList<>();
             List<File> filesList = new ArrayList<>();
 
@@ -159,13 +147,11 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 文件夹按名称排序
+            // 文件夹按首字母排序
             Collections.sort(folders, Comparator.comparing(File::getName));
-
-            // 文件按修改时间排序（最新的在前）
+            // 文件按更新时间排序（最新在前）
             Collections.sort(filesList, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
-            // 合并列表，文件夹在前
             fileList.addAll(folders);
             fileList.addAll(filesList);
         }
@@ -173,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
         fileAdapter.notifyDataSetChanged();
     }
 
-    // 显示创建文件/文件夹对话框
+    // 显示创建文件/文件夹对话框（不变）
     private void showCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("创建");
@@ -188,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 显示输入对话框
+    // 显示输入对话框（不变）
     private void showInputDialog(String title, boolean isFolder) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle(title);
@@ -206,7 +192,6 @@ public class MainActivity extends AppCompatActivity {
             if (isFolder) {
                 createFolder(name);
             } else {
-                // 确保文件名以.txt结尾
                 if (!name.endsWith(".txt")) {
                     name += ".txt";
                 }
@@ -218,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 创建文件夹
+    // 创建文件夹（不变）
     private void createFolder(String name) {
         File newFolder = new File(currentDirectory, name);
         if (newFolder.exists()) {
@@ -234,7 +219,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建文件
+    // 创建文件（不变）
     private void createFile(String name) {
         File newFile = new File(currentDirectory, name);
         if (newFile.exists()) {
@@ -255,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 文件适配器
+    // 文件适配器（核心修改：适配新样式和跳转逻辑）
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
 
         private List<File> files;
@@ -276,34 +261,42 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = files.get(position);
 
-            // 设置图标和背景
+            // 变更1：设置图标和背景色（引用新的颜色资源）
             if (file.isDirectory()) {
                 holder.icon.setImageResource(R.drawable.ic_folder);
+                // 文件夹背景：浅棕色
                 holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
+                // 文件夹文字颜色：黑色（与浅棕色对比）
+                holder.name.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
                 holder.icon.setImageResource(R.drawable.ic_file);
+                // 文件背景：深灰色
                 holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.fileColor));
+                // 文件文字颜色：白色（与深灰色对比）
+                holder.name.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 显示名称，去掉.txt后缀
+            // 显示名称（去掉.txt后缀，不变）
             String fileName = file.getName();
             if (file.isFile() && fileName.endsWith(".txt")) {
                 fileName = fileName.substring(0, fileName.lastIndexOf("."));
             }
             holder.name.setText(fileName);
 
-            // 点击事件 - 打开文件或文件夹
+            // 变更2：点击文件跳转到编辑页面（替换原Toast逻辑）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     currentDirectory = file;
                     loadFileList();
                 } else {
-                    // 打开文件编辑
-                    openFileEditor(file);
+                    // 跳转到FileEditorActivity，传递文件路径
+                    Intent intent = new Intent(MainActivity.this, FileEditorActivity.class);
+                    intent.putExtra("file_path", file.getAbsolutePath());
+                    startActivity(intent);
                 }
             });
 
-            // 长按事件 - 显示操作菜单
+            // 长按事件（不变）
             holder.itemView.setOnLongClickListener(v -> {
                 showFileOptions(file);
                 return true;
@@ -327,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 显示文件操作选项
+    // 显示文件操作选项（不变）
     private void showFileOptions(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("操作");
@@ -342,14 +335,13 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 重命名文件/文件夹
+    // 重命名文件/文件夹（不变）
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
 
         final EditText input = new EditText(this);
         String originalName = file.getName();
-        // 如果是文件，去掉.txt后缀
         if (file.isFile() && originalName.endsWith(".txt")) {
             originalName = originalName.substring(0, originalName.lastIndexOf("."));
         }
@@ -363,7 +355,6 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // 如果是文件，确保以.txt结尾
             if (file.isFile() && !newName.endsWith(".txt")) {
                 newName += ".txt";
             }
@@ -386,7 +377,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 删除文件/文件夹
+    // 删除文件/文件夹（不变）
     private void deleteFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("确认删除")
@@ -403,7 +394,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 递归删除文件夹
+    // 递归删除文件夹（不变）
     private boolean deleteRecursive(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -416,19 +407,15 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
-    // 打开文件编辑器
+    // 旧的打开文件方法（已弃用，被适配器中的跳转逻辑替代）
+    @Deprecated
     private void openFileEditor(File file) {
-        // 这里可以跳转到文件编辑Activity
-        // 简化处理，实际应用中应该实现一个文本编辑器
         Toast.makeText(this, "打开文件: " + file.getName(), Toast.LENGTH_SHORT).show();
-        // Intent intent = new Intent(this, FileEditorActivity.class);
-        // intent.putExtra("file_path", file.getAbsolutePath());
-        // startActivity(intent);
     }
 
+    // 返回键逻辑（不变）
     @Override
     public void onBackPressed() {
-        // 如果不在根目录，返回上一级
         if (currentDirectory != null && !currentDirectory.getName().equals("外置大脑")) {
             currentDirectory = currentDirectory.getParentFile();
             loadFileList();

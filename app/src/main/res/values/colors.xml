@@ -2,9 +2,17 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+
     <color name="colorPrimary">#6200EE</color>
     <color name="colorPrimaryDark">#3700B3</color>
     <color name="colorAccent">#03DAC5</color>
-    <color name="folderColor">#FFFACD</color> <!-- 浅黄色 -->
-    <color name="fileColor">#F5F5F5</color> <!-- 浅灰色 -->
+    <!-- 变更：文件夹背景（浅棕色） -->
+    <color name="folderColor">#FFE4C4</color>
+    <!-- 变更：文件背景（深灰色） -->
+    <color name="fileColor">#4A4A4A</color>
+    <!-- 新增：文件编辑页面背景（深灰色） -->
+    <color name="editorBgColor">#333333</color>
+    <!-- 新增：编辑页面文字颜色（白色，与深灰背景对比） -->
+    <color name="editorTextColor">#FFFFFF</color>
 </resources>
