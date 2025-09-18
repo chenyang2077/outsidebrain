@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -49,6 +50,10 @@ public class MainActivity extends AppCompatActivity {
     private EditText etSearch;            // 搜索输入框
     private Button btnSearch;             // 搜索按钮
     private boolean isInSearchMode = false; // 是否处于搜索模式
+    // 新增：声明icon2_btn（新建文件夹按钮）
+    private ImageButton folderCreateBtn;
+    // 声明add_button（新建TXT文件按钮）
+    private FloatingActionButton txtCreateBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,7 +64,10 @@ public class MainActivity extends AppCompatActivity {
         etSearch = findViewById(R.id.et_search);
         btnSearch = findViewById(R.id.btn_search);
         fileRecyclerView = findViewById(R.id.file_list);
-        FloatingActionButton addButton = findViewById(R.id.add_button);
+        // 初始化：新建TXT文件按钮（原add_button）
+        txtCreateBtn = findViewById(R.id.add_button);
+        // 初始化：新建文件夹按钮（原icon2_btn）
+        folderCreateBtn = findViewById(R.id.icon2_btn);
 
         // 2. 初始化列表数据（避免空指针）
         fileList = new ArrayList<>();
@@ -76,8 +84,11 @@ public class MainActivity extends AppCompatActivity {
         // 5. 搜索按钮点击事件
         btnSearch.setOnClickListener(v -> performSearch());
 
-        // 6. 添加按钮点击事件
-        addButton.setOnClickListener(v -> showCreateDialog());
+        // 6. 按钮功能拆分：
+        // 6.1 新建TXT文件按钮（add_button）：仅触发新建TXT逻辑
+        txtCreateBtn.setOnClickListener(v -> showTxtCreateDialog());
+        // 6.2 新建文件夹按钮（icon2_btn）：仅触发新建文件夹逻辑
+        folderCreateBtn.setOnClickListener(v -> showFolderCreateDialog());
     }
 
     // ---------------------- 搜索核心逻辑 ----------------------
@@ -335,7 +346,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ---------------------- 辅助方法 ----------------------
+    // ---------------------- 辅助方法（按钮功能拆分核心） ----------------------
     // 检查存储权限
     private void checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -382,51 +393,55 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 显示创建文件/文件夹对话框
-    private void showCreateDialog() {
+    // 1. 新建TXT文件：独立对话框（原add_button功能）
+    private void showTxtCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("创建");
-        String[] options = {"创建文件夹", "创建文件"};
-        builder.setItems(options, (dialog, which) -> {
-            if (which == 0) {
-                showInputDialog("新建文件夹", true);
-            } else {
-                showInputDialog("新建文件", false);
-            }
-        });
-        builder.show();
-    }
-
-    // 显示输入名称对话框
-    private void showInputDialog(String title, boolean isFolder) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(title);
+        builder.setTitle("新建TXT文件");
 
         final EditText input = new EditText(this);
+        input.setHint("请输入文件名（无需添加.txt后缀）");
         builder.setView(input);
 
         builder.setPositiveButton("确认", (dialog, which) -> {
             String name = input.getText().toString().trim();
             if (name.isEmpty()) {
-                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "文件名不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-
-            if (isFolder) {
-                createFolder(name);
-            } else {
-                if (!name.endsWith(".txt")) {
-                    name += ".txt";
-                }
-                createFile(name);
+            // 自动添加.txt后缀
+            if (!name.endsWith(".txt")) {
+                name += ".txt";
             }
+            createFile(name);
         });
 
         builder.setNegativeButton("取消", null);
         builder.show();
     }
 
-    // 创建文件夹
+    // 2. 新建文件夹：独立对话框（新增，绑定icon2_btn）
+    private void showFolderCreateDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("新建文件夹");
+
+        final EditText input = new EditText(this);
+        input.setHint("请输入文件夹名称");
+        builder.setView(input);
+
+        builder.setPositiveButton("确认", (dialog, which) -> {
+            String name = input.getText().toString().trim();
+            if (name.isEmpty()) {
+                Toast.makeText(this, "文件夹名称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            createFolder(name);
+        });
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    // 创建文件夹（逻辑不变，供showFolderCreateDialog调用）
     private void createFolder(String name) {
         File newFolder = new File(currentDirectory, name);
         if (newFolder.exists()) {
@@ -442,7 +457,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建文件
+    // 创建文件（逻辑不变，供showTxtCreateDialog调用）
     private void createFile(String name) {
         File newFile = new File(currentDirectory, name);
         if (newFile.exists()) {
@@ -452,14 +467,14 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             if (newFile.createNewFile()) {
-                Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "TXT文件创建成功", Toast.LENGTH_SHORT).show();
                 loadFileList();
             } else {
-                Toast.makeText(this, "文件创建失败", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "TXT文件创建失败", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "文件创建失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "TXT文件创建失败", Toast.LENGTH_SHORT).show();
         }
     }
 

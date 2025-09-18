@@ -1,9 +1,8 @@
 package com.example.outsidebrain;
 
-import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -17,85 +16,66 @@ import java.io.InputStreamReader;
 
 public class FileEditorActivity extends AppCompatActivity {
 
-    private EditText etFileContent;  // 文本编辑框
-    private File currentFile;        // 当前编辑的文件
-    private String originalContent; // 存储文件打开时的原始内容
-
-    // 新增：标记是否已保存，避免重复保存（可选，增强安全性）
-    private boolean hasSaved = false;
+    private EditText etContent;
+    private File currentFile;
+    private boolean isSaved = false; // 标记是否已保存，避免重复提示
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_file_editor);
+        setContentView(R.layout.activity_file_editor); // 关联布局文件
 
-        // 初始化控件
-        etFileContent = findViewById(R.id.et_file_content);
-        TextView tvFileName = findViewById(R.id.tv_file_name);
+        // 初始化控件 (现在可以找到et_content了)
+        etContent = findViewById(R.id.et_content);
 
         // 获取从MainActivity传递的文件路径
-        Intent intent = getIntent();
-        String filePath = intent.getStringExtra("file_path");
+        String filePath = getIntent().getStringExtra("file_path");
         if (filePath != null) {
             currentFile = new File(filePath);
-            // 显示文件名（去掉.txt后缀）
-            readFileContent(currentFile);
-            // 新增：保存原始内容，用于判断是否修改
-            originalContent = etFileContent.getText().toString();
-            String fileName = currentFile.getName();
-            if (fileName.endsWith(".txt")) {
-                fileName = fileName.substring(0, fileName.lastIndexOf("."));
-            }
-            tvFileName.setText(fileName);
-            // 读取文件内容到编辑框
-            readFileContent(currentFile);
-        } else {
-            Toast.makeText(this, "文件路径无效", Toast.LENGTH_SHORT).show();
-            finish(); // 异常情况直接关闭页面
+            loadFileContent(); // 加载文件内容
         }
+
+        // 监听文本变化，重置保存状态
+        etContent.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                isSaved = false; // 内容修改时，重置保存标记
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
     }
 
-    // 读取文件内容
-    private void readFileContent(File file) {
-        try {
-            FileInputStream fis = new FileInputStream(file);
-            InputStreamReader isr = new InputStreamReader(fis, "UTF-8");
-            BufferedReader br = new BufferedReader(isr);
+    // 加载文件内容
+    private void loadFileContent() {
+        if (currentFile == null || !currentFile.exists()) return;
 
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(currentFile), "UTF-8"))) {
             StringBuilder content = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null) {
-                content.append(line).append("\n"); // 保留换行符
+                content.append(line).append("\n");
             }
-
-            // 显示内容（去掉最后一个多余的换行符）
-            if (content.length() > 0) {
-                content.deleteCharAt(content.length() - 1);
-            }
-            etFileContent.setText(content.toString());
-
-            // 关闭流
-            br.close();
-            isr.close();
-            fis.close();
+            etContent.setText(content.toString().trim()); // 去除末尾空行
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "读取文件失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "加载文件失败", Toast.LENGTH_SHORT).show();
         }
     }
 
-    // 保存文件内容
-    private void saveFileContent() {
-        if (currentFile == null || hasSaved) return; // 避免重复保存
+    // 保存文件（统一入口，避免重复调用）
+    private void saveFile() {
+        if (currentFile == null || isSaved) return; // 已保存则跳过
 
-        try {
-            FileOutputStream fos = new FileOutputStream(currentFile);
-            // 获取编辑框内容，转成字节数组（UTF-8编码避免乱码）
-            String content = etFileContent.getText().toString();
+        String content = etContent.getText().toString().trim();
+        try (FileOutputStream fos = new FileOutputStream(currentFile)) {
             fos.write(content.getBytes("UTF-8"));
-            fos.flush();
-            fos.close();
-
+            isSaved = true; // 标记为已保存
             Toast.makeText(this, "文件已保存", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
             e.printStackTrace();
@@ -103,21 +83,25 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 监听「返回键」：返回前自动保存
+    // 修复：重写返回键方法时调用super.onBackPressed()
     @Override
     public void onBackPressed() {
-        saveFileContent(); // 返回前保存
-        super.onBackPressed(); // 继续执行返回操作
+        saveFile(); // 保存文件
+        super.onBackPressed(); // 调用父类方法，修复警告
     }
 
-    // 监听「页面销毁」：退出应用时自动保存
+    // 后台清理时自动保存
     @Override
-    protected void onDestroy() {
-        String currentContent = etFileContent.getText().toString();
-        // 判断：内容有变化 + 未保存过
-        if (!currentContent.equals(originalContent) && !hasSaved) {
-            saveFileContent();
+    protected void onPause() {
+        super.onPause();
+        // 当应用进入后台（如被清理），自动保存文件
+        if (!isFinishing() && !isSaved) { // 未销毁且未保存时才保存
+            saveFile();
         }
-        super.onDestroy();
+    }
+
+    // 手动保存按钮点击事件
+    public void onSaveClick(View view) {
+        saveFile();
     }
 }

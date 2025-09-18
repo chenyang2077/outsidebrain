@@ -8,30 +8,31 @@
     android:padding="16dp"
     android:background="@drawable/item_rounded_bg">
 
-
+    <!-- 图标：增加左侧负外边距使其更靠左，同时固定尺寸避免拉伸 -->
     <ImageView
         android:id="@+id/icon"
         android:layout_width="28dp"
         android:layout_height="40dp"
         android:scaleType="fitCenter"
-        android:src="@drawable/ic_folder" />
+        android:src="@drawable/ic_folder"
+        android:layout_marginStart="-4dp" /> <!-- 负外边距向左偏移，数值可按需调整 -->
 
-
+    <!-- 文字：减小外边距，确保自动换行且最多两行 -->
     <TextView
         android:id="@+id/name"
         android:layout_width="0dp"
-    android:layout_height="wrap_content"
-    android:maxHeight="60dp"
-    android:layout_marginStart="8dp"
-    android:layout_marginEnd="8dp"
+        android:layout_height="wrap_content"
+        android:maxHeight="52dp"
+    android:layout_marginStart="2dp"
+    android:layout_marginEnd="2dp"
     android:layout_weight="1"
     android:ellipsize="end"
     android:maxLines="2"
+    android:singleLine="false"
     android:textColor="#000000"
     android:textSize="16sp"
     android:textStyle="bold"
     android:gravity="start|center_vertical"
     android:paddingVertical="4dp"/>
-
 
 </LinearLayout>

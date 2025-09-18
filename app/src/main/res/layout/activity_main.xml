@@ -18,19 +18,20 @@
         <!-- 图标按钮：保留原图标样式，增加按钮交互特性 -->
         <ImageButton
             android:id="@+id/icon2_btn"
-        android:layout_width="50dp"
-        android:layout_height="48dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_folder2"
-        android:background="@null"
+            android:layout_width="50dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginTop="2dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_folder2"
+        android:background="@drawable/btn_round_background"
         android:padding="0dp"
         android:contentDescription="返回/文件夹入口"
         android:clickable="true"
-        android:focusable="true"
-        android:backgroundTint="@android:color/transparent"
-        app:backgroundTintMode="src_in"/>
+        android:focusable="true"/>
 
-    <!-- 搜索栏（包裹在top_container内） -->
+
+        <!-- 搜索栏（包裹在top_container内） -->
     <LinearLayout
         android:id="@+id/search_bar"
         android:layout_width="0dp"
@@ -47,11 +48,11 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
-            android:hint="搜索文件夹/文件（名称或内容）"
             android:paddingHorizontal="16dp"
             android:background="@null"
             android:singleLine="true"
-            android:textSize="16sp"/>
+            android:textSize="16sp"
+            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
 
         <Button
             android:id="@+id/btn_search"
