@@ -6,29 +6,26 @@
     android:background="@color/editorBgColor"
     android:orientation="vertical">
 
-    <!-- 标题栏：改为EditText，支持编辑文件名 -->
+    <!-- 标题编辑区（用户可手动输入，也可自动生成） -->
     <EditText
         android:id="@+id/et_file_name"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:minHeight="56dp"
-    android:gravity="center_vertical"
-    android:paddingHorizontal="16dp"
-    android:textColor="@color/editorTextColor"
-    android:textSize="20sp"
-    android:textStyle="bold"
-    android:background="@null"
-    android:hint="文件名"
-    app:hintTextColor="#AAAAAA"
-    android:maxLines="1"
-    android:singleLine="true"
-    android:ellipsize="end"
-    android:inputType="textCapWords|textNoSuggestions"
-    android:imeOptions="actionNext"
-    android:importantForAutofill="no"
-    android:autofillHints="@null" />
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="56dp"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:background="@null"
+        android:hint="自动生成标题（内容前15字）"
+        app:hintTextColor="#AAAAAA"
+        android:textColor="@color/editorTextColor"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:inputType="textCapWords|textNoSuggestions"
+        android:imeOptions="actionNext"/>
 
-    <!-- 内容编辑区域（保持原有配置） -->
+    <!-- 内容编辑区（ID必须为et_content，与代码绑定） -->
     <EditText
         android:id="@+id/et_content"
         android:layout_width="match_parent"
@@ -43,6 +40,6 @@
         android:gravity="top|left"
         android:inputType="textMultiLine|textNoSuggestions"
         android:scrollbars="vertical"
-        android:lineSpacingExtra="3dp" />
+        android:lineSpacingExtra="3dp"/>
 
 </LinearLayout>

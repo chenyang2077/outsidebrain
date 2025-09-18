@@ -15,4 +15,8 @@
     <color name="editorBgColor">#333333</color>
     <!-- 新增：编辑页面文字颜色（白色，与深灰背景对比） -->
     <color name="editorTextColor">#FFFFFF</color>
+
+    <color name="titleBarBg">#FFFFFF</color>
+
+
 </resources>

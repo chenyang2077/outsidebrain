@@ -1,7 +1,7 @@
 package com.example.outsidebrain;
 
+import android.content.Intent;
 import android.os.Bundle;
-import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -15,178 +15,251 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class FileEditorActivity extends AppCompatActivity {
 
+    public static final int RESULT_REFRESH = 100; // 用于通知刷新的结果码
+    private EditText etFileName;      // 标题编辑区（文件名）
     private EditText etContent;       // 内容编辑区
-    private EditText etFileName;      // 文件名编辑区（原tv_file_name）
-    private File currentFile;         // 当前操作的文件
-    private boolean isSaved;          // 标记是否已保存（避免重复保存）
-    private String originalFileName;  // 原始文件名（用于对比是否修改）
+    private boolean isPreEdit;        // 是否为“预编辑”状态
+    private File currentDir;         // 预编辑文件保存目录
+    private File targetFile;          // 已有文件（非预编辑时使用）
+    private boolean isSaved = true;   // 是否已保存
+    private static final int MAX_TITLE_LEN = 15; // 内容截取最大长度
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_editor);
 
-        // 1. 初始化控件（绑定文件名编辑区和内容编辑区）
+        // 1. 初始化控件
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
-        // 2. 获取从MainActivity传递的文件路径
+        // 2. 获取传递参数
         String filePath = getIntent().getStringExtra("file_path");
-        if (filePath != null) {
-            currentFile = new File(filePath);
-            originalFileName = currentFile.getName();  // 保存原始文件名
-            loadFileInfo();  // 加载文件名和文件内容
+        String currentDirPath = getIntent().getStringExtra("current_dir_path");
+        isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
+
+        // 3. 初始化状态
+        if (isPreEdit) {
+            // 预编辑：初始化保存目录，聚焦内容区
+            currentDir = new File(currentDirPath);
+            etFileName.setHint("自动生成标题（内容前15字）");
+            focusAndShowSoftInput(etContent);
+        } else {
+            // 已有文件：加载标题和内容
+            targetFile = new File(filePath);
+            loadExistingFileData();
         }
 
-        // 3. 监听文本变化（内容或文件名修改时，标记为未保存）
+        // 4. 监听文本变化，标记未保存
         setupTextChangeListeners();
-
-        // 4. 初始状态：让文件名编辑区获取焦点（方便直接修改文件名）
-        etFileName.requestFocus();
-        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(etFileName, InputMethodManager.SHOW_IMPLICIT);
-        }
     }
 
-    // 加载文件名和文件内容
-    private void loadFileInfo() {
-        if (currentFile == null || !currentFile.exists()) {
+    // 加载已有文件的标题和内容
+    private void loadExistingFileData() {
+        if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        // 加载文件名（去除.txt后缀，让编辑更直观）
-        String fileName = currentFile.getName();
+        // 加载标题（去除.txt后缀和旧时间戳）
+        String fileName = targetFile.getName();
         if (fileName.endsWith(".txt")) {
             fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
-        etFileName.setText(fileName);
+        etFileName.setText(removeOldTimestamp(fileName));
 
         // 加载文件内容
         try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(currentFile), StandardCharsets.UTF_8))) {
+                new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null) {
                 content.append(line).append("\n");
             }
-            etContent.setText(content.toString().trim());  // 去除末尾空行
+            etContent.setText(content.toString().trim());
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "加载文件内容失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "加载内容失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
-
-        isSaved = true;  // 初始加载完成后标记为“已保存”
     }
 
-    // 监听文件名和内容的变化，标记未保存状态
+    // 监听文本变化
     private void setupTextChangeListeners() {
-        // 监听文件名变化
         etFileName.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                isSaved = false;  // 文件名修改，标记为未保存
+                isSaved = false;
             }
             @Override
             public void afterTextChanged(android.text.Editable s) {}
         });
 
-        // 监听内容变化（原有逻辑）
         etContent.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                isSaved = false;  // 内容修改，标记为未保存
+                isSaved = false;
             }
             @Override
             public void afterTextChanged(android.text.Editable s) {}
         });
     }
 
-    // 核心：保存文件（同时处理文件名修改和内容保存）
-    private void saveFile() {
-        if (currentFile == null || isSaved) return;  // 已保存或文件为空，直接返回
+    // 自动保存逻辑
+    private void autoSave() {
+        if (isSaved) return;
 
-        // 1. 处理文件名（确保合法性）
-        String newFileName = etFileName.getText().toString().trim();
-        if (newFileName.isEmpty()) {
-            Toast.makeText(this, "文件名不能为空", Toast.LENGTH_SHORT).show();
-            etFileName.requestFocus();  // 让焦点回到文件名编辑区
-            return;
-        }
-
-        // 自动添加.txt后缀（避免用户忘记）
-        if (!newFileName.endsWith(".txt")) {
-            newFileName += ".txt";
-        }
-
-        // 2. 处理文件重命名（如果文件名有修改）
-        File parentDir = currentFile.getParentFile();  // 获取当前文件的父目录
-        File newFile = new File(parentDir, newFileName);  // 新文件名对应的文件对象
-
-        // 检查新文件名是否已存在（避免覆盖其他文件）
-        if (!newFileName.equals(originalFileName)) {
-            if (newFile.exists()) {
-                Toast.makeText(this, "文件名已存在，请修改", Toast.LENGTH_SHORT).show();
-                etFileName.requestFocus();
-                return;
-            }
-
-            // 执行重命名（将原文件改名为新文件名）
-            if (!currentFile.renameTo(newFile)) {
-                Toast.makeText(this, "修改文件名失败", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            // 更新当前文件引用和原始文件名（后续操作基于新文件）
-            currentFile = newFile;
-            originalFileName = newFileName;
-        }
-
-        // 3. 保存文件内容
+        String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString().trim();
-        try (FileOutputStream fos = new FileOutputStream(currentFile)) {
-            fos.write(content.getBytes(StandardCharsets.UTF_8));  // 用UTF-8编码保存，避免中文乱码
-            isSaved = true;  // 标记为已保存
-            Toast.makeText(this, "文件保存成功", Toast.LENGTH_SHORT).show();
 
-            // 保存后隐藏输入法（提升体验）
-            InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (imm != null) {
-                imm.hideSoftInputFromWindow(etContent.getWindowToken(), 0);
+        // 预编辑状态
+        if (isPreEdit) {
+            // 标题+内容都空 → 放弃创建
+            if (inputTitle.isEmpty() && content.isEmpty()) {
+                Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
+                finish();
+                return;
             }
+
+            // 生成最终标题
+            String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
+            finalTitle = removeOldTimestamp(finalTitle);
+
+            // 添加时间戳（格式：-yy-MM-dd）
+            String timestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
+
+            // 处理重名（在日期前添加"+"）
+            String baseFileName = finalTitle + timestamp + ".txt";
+            targetFile = getUniqueFile(currentDir, finalTitle, timestamp);
+
+            // 创建文件并写入内容
+            try {
+                if (targetFile.createNewFile()) {
+                    writeFileContent(targetFile, content);
+                    isSaved = true;
+                    Toast.makeText(this, "文件创建成功：" + targetFile.getName(), Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_REFRESH); // 设置结果码，通知需要刷新
+                    finish();
+                } else {
+                    Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
+        // 已有文件
+        else {
+            if (targetFile == null) return;
+
+            // 标题修改：处理重命名
+            String inputTitleTrimmed = inputTitle.trim();
+            String originalTitle = targetFile.getName().replace(".txt", "");
+            originalTitle = removeOldTimestamp(originalTitle);
+
+            if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
+                String timestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
+                File newFile = getUniqueFile(targetFile.getParentFile(), inputTitleTrimmed, timestamp);
+
+                // 执行重命名
+                if (targetFile.renameTo(newFile)) {
+                    targetFile = newFile;
+                } else {
+                    Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            // 更新内容
+            writeFileContent(targetFile, content);
+            isSaved = true;
+            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
+            setResult(RESULT_REFRESH); // 设置结果码，通知需要刷新
+            finish();
+        }
+
+        hideSoftInput();
+    }
+
+    // 核心修改：处理重名，在日期前添加"+"
+    private File getUniqueFile(File parentDir, String baseTitle, String timestamp) {
+        // 基础文件名：标题+时间戳
+        String baseFileName = baseTitle + timestamp + ".txt";
+        File file = new File(parentDir, baseFileName);
+        int suffixCount = 0;
+
+        // 如果文件已存在，在标题和时间戳之间添加"+"
+        while (file.exists()) {
+            suffixCount++;
+            String suffix = "+".repeat(suffixCount);
+            // 重名格式：标题+"+"+时间戳.txt
+            String uniqueFileName = baseTitle + suffix + timestamp + ".txt";
+            file = new File(parentDir, uniqueFileName);
+        }
+        return file;
+    }
+
+    // 从内容截取前15字生成标题
+    private String getContentSubtitle(String content) {
+        if (content.isEmpty()) return "无内容文件";
+        return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
+    }
+
+    // 移除旧时间戳
+    private String removeOldTimestamp(String fileName) {
+        // 正则表达式：匹配末尾的-数字-数字-数字格式
+        return fileName.replaceAll("\\+*-[0-9]{2}-[0-9]{2}-[0-9]{2}$", "");
+    }
+
+    // 写入文件内容
+    private void writeFileContent(File file, String content) {
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "保存文件失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "写入内容失败", Toast.LENGTH_SHORT).show();
         }
     }
 
-    // 手动保存按钮点击事件（布局中按钮需绑定此方法）
-    public void onSaveClick(View view) {
-        saveFile();
+    // 聚焦并显示输入法
+    private void focusAndShowSoftInput(EditText editText) {
+        editText.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            editText.postDelayed(() -> imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT), 200);
+        }
     }
 
-    // 返回键逻辑：先保存再退出
+    // 隐藏输入法
+    private void hideSoftInput() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(etContent.getWindowToken(), 0);
+        }
+    }
+
+    // 返回键触发保存
     @Override
     public void onBackPressed() {
-        saveFile();  // 退出前自动保存
-        super.onBackPressed();
+        autoSave();
+        super.onBackPressed(); // 添加调用父类方法
     }
 
-    // 应用进入后台时自动保存（防止用户忘记手动保存）
+    // 应用后台触发保存
     @Override
     protected void onPause() {
         super.onPause();
-        if (!isFinishing() && !isSaved) {  // 未销毁且未保存时，自动保存
-            saveFile();
+        if (!isFinishing() && !isSaved) {
+            autoSave();
         }
     }
 }
