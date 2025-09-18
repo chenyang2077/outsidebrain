@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="60dp"
+    android:layout_height="53dp"
     android:layout_margin="4dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingHorizontal="6dp"
-    android:background="@drawable/item_rounded_bg">
 
-    <!-- 图标 -->
+    android:background="@drawable/item_rounded_corner">
+
+
 <ImageView
 android:id="@+id/icon"
 android:layout_width="28dp"
@@ -16,23 +17,22 @@ android:layout_height="30dp"
 android:scaleType="fitCenter"
 android:src="@drawable/ic_folder" />
 
-    <!-- 文件名文本（核心调整） -->
 <TextView
 android:id="@+id/name"
 android:layout_width="0dp"
 android:layout_height="wrap_content"
-    android:layout_weight="1"
-    android:layout_marginStart="8dp"
-    android:layout_marginEnd="4dp"
-    android:maxLines="2"
-    android:ellipsize="end"
-    android:textColor="#000000"
-    android:textSize="16sp"
-    android:textStyle="bold"
-    android:gravity="center_vertical|start"
-    android:lineSpacingExtra="2dp"
-    android:paddingTop="1dp"
-    android:paddingBottom="1dp"
-    android:includeFontPadding="false" />
+android:layout_weight="1"
+android:layout_marginStart="8dp"
+android:layout_marginEnd="4dp"
+android:maxLines="2"
+android:ellipsize="end"
+android:textColor="#000000"
+android:textSize="16sp"
+android:textStyle="bold"
+android:gravity="center_vertical|start"
+android:lineSpacingExtra="2dp"
+android:paddingTop="1dp"
+android:paddingBottom="1dp"
+android:includeFontPadding="false" />
 
     </LinearLayout>

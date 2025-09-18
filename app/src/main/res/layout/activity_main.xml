@@ -9,66 +9,70 @@
 
     <LinearLayout
         android:id="@+id/top_container"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:layout_alignParentTop="true">
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:layout_alignParentTop="true"
+        android:gravity="center_vertical"
+        android:paddingVertical="4dp">
 
     <!-- 左侧图标 -->
         <!-- 图标按钮：保留原图标样式，增加按钮交互特性 -->
         <ImageButton
             android:id="@+id/icon2_btn"
-            android:layout_width="50dp"
+            android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="2dp"
-            android:layout_marginTop="2dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_folder2"
+        android:layout_marginStart="4dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_folder2"
         android:background="@drawable/btn_round_background"
-        android:padding="0dp"
-        android:contentDescription="返回/文件夹入口"
+        android:contentDescription="新建文件夹"
         android:clickable="true"
         android:focusable="true"/>
 
-
-        <!-- 搜索栏（包裹在top_container内） -->
-    <LinearLayout
-        android:id="@+id/search_bar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        <!-- 搜索栏：高度匹配容器，横向填充剩余空间 -->
+        <LinearLayout
+            android:id="@+id/search_bar"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
         android:layout_weight="1"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:background="@drawable/item_rounded_bg"
-        android:padding="4dp"
-        android:layout_marginHorizontal="8dp">
+        android:paddingHorizontal="8dp"
+        android:layout_marginHorizontal="4dp">
 
+        <!-- 搜索输入框：填充剩余空间 -->
         <EditText
             android:id="@+id/et_search"
             android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:paddingHorizontal="16dp"
-            android:background="@null"
-            android:singleLine="true"
-            android:textSize="16sp"
-            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
+            android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:paddingHorizontal="12dp"
+        android:background="@null"
+        android:singleLine="true"
+        android:textSize="16sp"
+        android:hint="Lv-1"
+        android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
 
-        <Button
-            android:id="@+id/btn_search"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:minWidth="48dp"
-            android:layout_marginHorizontal="8dp"
+        <!-- 搜索按钮：紧凑设计，宽度适应文字 -->
+            <!-- 搜索按钮：更紧凑设计，匹配整体比例 -->
+            <Button
+                android:id="@+id/btn_search"
+                android:layout_width="wrap_content"
+                android:layout_height="50dp"
+            android:layout_marginStart="2dp"
             android:text="搜索"
             android:backgroundTint="@color/colorPrimary"
             android:textColor="@android:color/white"
-            android:textSize="16sp"
-            android:paddingVertical="4dp"
-            android:paddingHorizontal="16dp"/>
+            android:textSize="19sp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"/>
 
-    </LinearLayout>
+
+        </LinearLayout>
 </LinearLayout>
 
     <!-- 2. 文件列表：位于top_container下方（修复核心） -->

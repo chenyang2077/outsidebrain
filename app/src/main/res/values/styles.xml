@@ -3,7 +3,7 @@
     <!-- 基础应用主题 -->
     <style name="Theme.OutsideBrain" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorPrimaryDark">@color/black</item>
         <item name="colorAccent">@color/colorAccent</item>
         <item name="windowActionBar">false</item> <!-- 隐藏系统默认标题栏 -->
         <item name="windowNoTitle">true</item>    <!-- 不显示标题 -->

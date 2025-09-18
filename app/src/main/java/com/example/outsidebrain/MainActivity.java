@@ -1,20 +1,20 @@
 package com.example.outsidebrain;
 
 import android.Manifest;
-import android.view.MotionEvent;
-import android.graphics.Rect;
-import android.view.inputmethod.InputMethodManager;
-import android.text.InputType;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -46,17 +46,18 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_PERMISSION = 1001;
-    private static final int REQUEST_EDIT_FILE = 101; // 编辑文件的请求码
+    private static final int REQUEST_EDIT_FILE = 101;
     private RecyclerView fileRecyclerView;
     private FileAdapter fileAdapter;
-    private List<File> fileList;          // 原始文件列表
-    private List<File> searchResultList;  // 搜索结果列表
-    private File currentDirectory;        // 当前目录
-    private EditText etSearch;            // 搜索输入框
-    private Button btnSearch;             // 搜索按钮
-    private boolean isInSearchMode = false; // 是否处于搜索模式
-    private ImageButton folderCreateBtn;  // 新建文件夹按钮
-    private FloatingActionButton preEditFileBtn; // 预编辑文件按钮
+    private List<File> fileList;
+    private List<File> searchResultList;
+    private File currentDirectory;
+    private EditText etSearch;
+    private Button btnSearch;
+    private boolean isInSearchMode = false;
+    private ImageButton folderCreateBtn;
+    private FloatingActionButton preEditFileBtn;
+    private static final String ROOT_FOLDER_NAME = "外置大脑"; // 根文件夹名称
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,9 +86,95 @@ public class MainActivity extends AppCompatActivity {
         // 搜索按钮点击事件
         btnSearch.setOnClickListener(v -> performSearch());
 
+        // 搜索框文本变化监听（输入内容时隐藏hint，清空时显示层级）
+        etSearch.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                // 输入内容时不做操作（hint会自动隐藏），清空时更新层级hint
+                if (TextUtils.isEmpty(s)) {
+                    updateLevelHint();
+                }
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
         // 按钮功能配置
         preEditFileBtn.setOnClickListener(v -> startFilePreEdit());
         folderCreateBtn.setOnClickListener(v -> showFolderCreateDialog());
+    }
+
+    // 核心修改1：更新层级作为搜索框的hint（提示文字，不可编辑）
+    private void updateLevelHint() {
+        if (currentDirectory == null) return;
+
+        // 获取层级路径列表
+        List<Integer> levelPath = getLevelPath(currentDirectory);
+
+        // 生成层级字符串（如：Lv-1、Lv-1-3、Lv-1-3-3）
+        StringBuilder levelStr = new StringBuilder("Lv-");
+        for (int i = 0; i < levelPath.size(); i++) {
+            levelStr.append(levelPath.get(i));
+            if (i < levelPath.size() - 1) {
+                levelStr.append("-");
+            }
+        }
+
+        // 设置为hint（提示文字），用户输入时会自动消失
+        etSearch.setHint(levelStr.toString());
+    }
+
+    // 核心修改2：修正层级计算逻辑
+    private List<Integer> getLevelPath(File file) {
+        List<Integer> levelPath = new ArrayList<>();
+        File current = file;
+
+        // 1. 根目录直接返回 [1]
+        if (current.getName().equals(ROOT_FOLDER_NAME)) {
+            levelPath.add(1);
+            return levelPath;
+        }
+
+        // 2. 从当前文件夹向上追溯到根文件夹
+        while (current != null) {
+            String fileName = current.getName();
+            // 找到根文件夹时停止追溯
+            if (fileName.equals(ROOT_FOLDER_NAME)) {
+                levelPath.add(1); // 根文件夹固定为1级
+                break;
+            }
+
+            // 获取父文件夹
+            File parent = current.getParentFile();
+            if (parent == null) break;
+
+            // 3. 获取当前文件夹在父文件夹中的排序（仅计算文件夹，按名称排序）
+            File[] siblings = parent.listFiles(File::isDirectory); // 只处理文件夹
+            if (siblings != null) {
+                // 排序同级文件夹（按名称升序）
+                List<File> sortedSiblings = new ArrayList<>();
+                Collections.addAll(sortedSiblings, siblings);
+                Collections.sort(sortedSiblings, Comparator.comparing(File::getName));
+
+                // 查找当前文件夹在排序后的位置（索引+1，因为层级从1开始）
+                for (int i = 0; i < sortedSiblings.size(); i++) {
+                    if (sortedSiblings.get(i).getName().equals(fileName)) {
+                        levelPath.add(i + 1);
+                        break;
+                    }
+                }
+            }
+
+            current = parent;
+        }
+
+        // 4. 反转列表，从根到当前（例如：[3,1] → [1,3] 对应 Lv-1-3）
+        Collections.reverse(levelPath);
+        return levelPath;
     }
 
     // 跳转至文件预编辑页面
@@ -100,26 +187,22 @@ public class MainActivity extends AppCompatActivity {
         Intent preEditIntent = new Intent(MainActivity.this, FileEditorActivity.class);
         preEditIntent.putExtra("current_dir_path", currentDirectory.getAbsolutePath());
         preEditIntent.putExtra("is_pre_edit", true);
-        startActivityForResult(preEditIntent, REQUEST_EDIT_FILE); // 使用带返回结果的启动方式
+        startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
     // 接收编辑页面返回的结果
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        // 如果是从编辑页面返回且需要刷新
         if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
-            loadFileList(); // 刷新文件列表
+            loadFileList();
         }
     }
 
     // 搜索逻辑
-    // 搜索核心逻辑（添加光标控制）
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
-
-        // 搜索结束后，清除输入框焦点（光标消失）
-        etSearch.clearFocus();
+        etSearch.clearFocus(); // 搜索时清除焦点，光标消失
 
         if (TextUtils.isEmpty(keyword)) {
             isInSearchMode = false;
@@ -141,30 +224,6 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_SHORT).show();
             });
         }).start();
-    }
-
-
-
-
-    // 额外：点击搜索框外部时，清除焦点（可选优化）
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-            View v = getCurrentFocus();
-            // 如果当前焦点是搜索框，点击外部则清除焦点
-            if (v instanceof EditText && v.getId() == R.id.et_search) {
-                Rect outRect = new Rect();
-                v.getGlobalVisibleRect(outRect);
-                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
-                    v.clearFocus();
-                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                    if (imm != null) {
-                        imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
-                    }
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev);
     }
 
     // 递归搜索
@@ -231,11 +290,11 @@ public class MainActivity extends AppCompatActivity {
     // 初始化外置大脑文件夹
     private void initExternalBrain() {
         File sdCard = Environment.getExternalStorageDirectory();
-        currentDirectory = new File(sdCard, "外置大脑");
+        currentDirectory = new File(sdCard, ROOT_FOLDER_NAME);
 
         if (!currentDirectory.exists()) {
             if (currentDirectory.mkdirs()) {
-                Toast.makeText(this, "已新建根文件夹「外置大脑」", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "已新建根文件夹「" + ROOT_FOLDER_NAME + "」", Toast.LENGTH_SHORT).show();
                 createTestFile();
             } else {
                 Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
@@ -249,6 +308,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         loadFileList();
+        updateLevelHint(); // 初始化时显示根目录层级（Lv-1）
     }
 
     // 加载文件列表
@@ -268,7 +328,9 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
+            // 文件夹按名称排序（用于层级计算）
             Collections.sort(folders, Comparator.comparing(File::getName));
+            // 文件按修改时间排序
             Collections.sort(filesList, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);
@@ -278,30 +340,82 @@ public class MainActivity extends AppCompatActivity {
         if (!isInSearchMode) {
             fileAdapter.setData(fileList);
         }
+
+        // 加载列表后更新层级hint（如果搜索框为空）
+        if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
+            updateLevelHint();
+        }
     }
 
-    // 返回键逻辑
+    // 返回键逻辑（返回时刷新层级）
     @Override
     public void onBackPressed() {
         if (isInSearchMode) {
-            // 退出搜索模式
             isInSearchMode = false;
-            etSearch.setText("");
+            etSearch.setText(""); // 清空输入，触发层级hint显示
+            etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
-        } else if (currentDirectory != null && !currentDirectory.getName().equals("外置大脑")) {
-            // 返回上一级文件夹
+        } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
             currentDirectory = currentDirectory.getParentFile();
-            loadFileList();
+            etSearch.clearFocus();
+            loadFileList(); // 加载上级目录后更新层级
         } else {
-            // 退出应用时调用父类方法
             super.onBackPressed();
         }
     }
 
-    // 文件列表适配器
-    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
+    // 新建文件夹对话框（自动弹出输入法）
+    private void showFolderCreateDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("新建文件夹");
 
+        final EditText input = new EditText(this);
+        input.setHint("请输入文件夹名称");
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        builder.setView(input);
+
+        AlertDialog dialog = builder.setPositiveButton("确认", (dialogInterface, which) -> {
+            String name = input.getText().toString().trim();
+            if (name.isEmpty()) {
+                Toast.makeText(this, "文件夹名称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            createFolder(name);
+        }).setNegativeButton("取消", null).create();
+
+        dialog.setOnShowListener(dialogInterface -> {
+            input.requestFocus();
+            input.postDelayed(() -> {
+                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+                }
+            }, 200);
+        });
+
+        dialog.show();
+    }
+
+    // 创建文件夹
+    private void createFolder(String name) {
+        File newFolder = new File(currentDirectory, name);
+        if (newFolder.exists()) {
+            Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (newFolder.mkdirs()) {
+            Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
+            loadFileList(); // 创建后刷新列表，更新层级
+        } else {
+            Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 文件列表适配器（保持不变）
+    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
+        // 适配器实现与之前一致...
         private List<File> mData = new ArrayList<>();
 
         public void setData(List<File> newData) {
@@ -324,7 +438,6 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 设置图标和背景色
             if (file.isDirectory()) {
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
@@ -335,22 +448,19 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 设置名称（去掉.txt后缀）
             String fileName = file.getName();
             if (file.isFile() && fileName.endsWith(".txt")) {
                 fileName = fileName.substring(0, fileName.lastIndexOf("."));
             }
             holder.tvName.setText(fileName);
 
-            // 点击事件
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = file;
-                    loadFileList();
+                    loadFileList(); // 进入子文件夹后刷新层级
                 } else {
-                    // 打开已有文件，使用带返回结果的启动方式
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
                     editIntent.putExtra("file_path", file.getAbsolutePath());
                     editIntent.putExtra("is_pre_edit", false);
@@ -358,7 +468,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // 长按事件
             holder.itemView.setOnLongClickListener(v -> {
                 showFileOptions(file);
                 return true;
@@ -382,7 +491,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 权限检查
+    // 其他辅助方法（权限、文件操作等）保持不变...
     private void checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -399,7 +508,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 权限请求回调
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -413,7 +521,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建测试文件
     private void createTestFile() {
         File testFile = new File(currentDirectory, "测试文件.txt");
         try {
@@ -428,60 +535,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 新建文件夹对话框
-    // 新建文件夹：独立对话框（添加自动弹出输入法）
-    private void showFolderCreateDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("新建文件夹");
-
-        final EditText input = new EditText(this);
-        input.setHint("请输入文件夹名称");
-        // 设置输入类型为文本，确保输入法正确弹出
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        builder.setView(input);
-
-        // 构建对话框并保存引用
-        AlertDialog dialog = builder.setPositiveButton("确认", (dialogInterface, which) -> {
-            String name = input.getText().toString().trim();
-            if (name.isEmpty()) {
-                Toast.makeText(this, "文件夹名称不能为空", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            createFolder(name);
-        }).setNegativeButton("取消", null).create();
-
-        // 显示对话框后，自动聚焦输入框并弹出输入法
-        dialog.setOnShowListener(dialogInterface -> {
-            input.requestFocus(); // 聚焦输入框
-            // 延迟弹出输入法，确保对话框已完全显示
-            input.postDelayed(() -> {
-                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                if (imm != null) {
-                    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
-                }
-            }, 200);
-        });
-
-        dialog.show();
-    }
-
-    // 创建文件夹
-    private void createFolder(String name) {
-        File newFolder = new File(currentDirectory, name);
-        if (newFolder.exists()) {
-            Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (newFolder.mkdirs()) {
-            Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
-            loadFileList();
-        } else {
-            Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // 显示文件操作选项
     private void showFileOptions(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         String[] options = {"重命名", "删除"};
@@ -495,7 +548,6 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 重命名文件/文件夹
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
@@ -537,7 +589,6 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 删除文件/文件夹
     private void deleteFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("确认删除")
@@ -554,7 +605,6 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 递归删除文件夹
     private boolean deleteRecursive(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -570,5 +620,25 @@ public class MainActivity extends AppCompatActivity {
     @Deprecated
     private void openFileEditor(File file) {
         Toast.makeText(this, "打开文件: " + file.getName(), Toast.LENGTH_SHORT).show();
+    }
+
+    // 点击外部清除搜索框焦点
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            View v = getCurrentFocus();
+            if (v instanceof EditText && v.getId() == R.id.et_search) {
+                Rect outRect = new Rect();
+                v.getGlobalVisibleRect(outRect);
+                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+                    v.clearFocus();
+                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev);
     }
 }
