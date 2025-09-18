@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0">
+    <!-- 原有文件夹路径（颜色：#FFB85C） -->
+    <path
+        android:fillColor="#FFB85C"
+        android:pathData="M10,4H4C3.45,4 3,4.45 3,5v15c0,0.55 0.45,1 1,1h16c0.55,0 1,-0.45 1,-1V8L14,4h-4zM19,19H5V5h4v3h6V5h4v14z" />
+
+    <!-- 横向线（保持原长度：x=8 到 x=16，长度8dp） -->
+    <path
+        android:fillColor="#FFB85C"
+        android:pathData="M8,12h8v2h-8z" />
+
+    <!-- 纵线：向左偏移（x=11）、向下偏移（y=10），长度调整为8dp -->
+    <path
+        android:fillColor="#FFB85C"
+        android:pathData="M11,9.3v8h2v-8z" />
+</vector>
