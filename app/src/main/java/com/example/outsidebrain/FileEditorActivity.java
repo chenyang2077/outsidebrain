@@ -19,6 +19,10 @@ public class FileEditorActivity extends AppCompatActivity {
 
     private EditText etFileContent;  // 文本编辑框
     private File currentFile;        // 当前编辑的文件
+    private String originalContent; // 存储文件打开时的原始内容
+
+    // 新增：标记是否已保存，避免重复保存（可选，增强安全性）
+    private boolean hasSaved = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +39,9 @@ public class FileEditorActivity extends AppCompatActivity {
         if (filePath != null) {
             currentFile = new File(filePath);
             // 显示文件名（去掉.txt后缀）
+            readFileContent(currentFile);
+            // 新增：保存原始内容，用于判断是否修改
+            originalContent = etFileContent.getText().toString();
             String fileName = currentFile.getName();
             if (fileName.endsWith(".txt")) {
                 fileName = fileName.substring(0, fileName.lastIndexOf("."));
@@ -79,7 +86,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
     // 保存文件内容
     private void saveFileContent() {
-        if (currentFile == null) return;
+        if (currentFile == null || hasSaved) return; // 避免重复保存
 
         try {
             FileOutputStream fos = new FileOutputStream(currentFile);
@@ -106,7 +113,11 @@ public class FileEditorActivity extends AppCompatActivity {
     // 监听「页面销毁」：退出应用时自动保存
     @Override
     protected void onDestroy() {
-        saveFileContent(); // 销毁前保存
+        String currentContent = etFileContent.getText().toString();
+        // 判断：内容有变化 + 未保存过
+        if (!currentContent.equals(originalContent) && !hasSaved) {
+            saveFileContent();
+        }
         super.onDestroy();
     }
 }
