@@ -17,6 +17,7 @@ import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -33,6 +34,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,6 +42,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -66,6 +69,12 @@ public class MainActivity extends AppCompatActivity {
     // 正则：匹配文件名中的时间戳（格式：-yy-MM-dd）
     public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{2}-\\d{2}-\\d{2}");
 
+    // ---------------------- 新增：复制粘贴核心变量（保持原有逻辑） ----------------------
+    private File copiedFile;          // 存储被复制/剪切的文件/文件夹
+    private boolean isCutOperation;   // 标记是剪切（true）还是复制（false）
+    private View pasteButton;        // 粘贴按钮实例
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -90,8 +99,11 @@ public class MainActivity extends AppCompatActivity {
         // 权限检查与初始化
         checkPermission();
 
-        // 搜索按钮点击事件
-        btnSearch.setOnClickListener(v -> performSearch());
+        // 搜索按钮点击事件（添加：点击搜索时隐藏粘贴按钮）
+        btnSearch.setOnClickListener(v -> {
+            hidePasteButton();
+            performSearch();
+        });
 
         // 搜索框文本变化监听
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
@@ -109,12 +121,26 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(android.text.Editable s) {}
         });
 
-        // 按钮功能配置
-        preEditFileBtn.setOnClickListener(v -> startFilePreEdit());
-        folderCreateBtn.setOnClickListener(v -> showFolderCreateDialog());
+        // 搜索框点击事件（添加：点击输入框时隐藏粘贴按钮）
+        etSearch.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                hidePasteButton();
+            }
+            return false;
+        });
+
+        // 按钮功能配置（添加：点击时隐藏粘贴按钮）
+        preEditFileBtn.setOnClickListener(v -> {
+            hidePasteButton();
+            startFilePreEdit();
+        });
+        folderCreateBtn.setOnClickListener(v -> {
+            hidePasteButton();
+            showFolderCreateDialog();
+        });
     }
 
-    // 更新层级作为搜索框hint
+    // 更新层级作为搜索框hint（保持不变）
     private void updateLevelHint() {
         if (currentDirectory == null) return;
 
@@ -129,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
         etSearch.setHint(levelStr.toString());
     }
 
-    // 计算文件夹层级路径
+    // 计算文件夹层级路径（保持不变）
     private List<Integer> getLevelPath(File file) {
         List<Integer> levelPath = new ArrayList<>();
         File current = file;
@@ -170,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
         return levelPath;
     }
 
-    // 跳转至文件预编辑页面（传递根文件夹名称，用于计算相对路径）
+    // 跳转至文件预编辑页面（保持不变）
     private void startFilePreEdit() {
         if (currentDirectory == null) {
             Toast.makeText(this, "目录未初始化，请稍后重试", Toast.LENGTH_SHORT).show();
@@ -184,16 +210,17 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
-    // 接收编辑页面返回结果
+    // 接收编辑页面返回结果（添加：返回时隐藏粘贴按钮）
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
             loadFileList(); // 压缩/分享/创建/解压后刷新列表
+            hidePasteButton();
         }
     }
 
-    // 搜索逻辑（支持TXT和ZIP文件）
+    // 搜索逻辑（保持不变）
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
         etSearch.clearFocus();
@@ -220,7 +247,7 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    // 递归搜索（包含ZIP文件）
+    // 递归搜索（保持不变）
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
 
@@ -243,13 +270,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 检查是否为支持的文件类型（TXT或ZIP）
+    // 检查是否为支持的文件类型（保持不变）
     private boolean isSupportedFile(File file) {
         String fileName = file.getName().toLowerCase();
         return fileName.endsWith(".txt") || fileName.endsWith(".zip");
     }
 
-    // 检查文件内容是否包含关键词（仅TXT文件，ZIP不检查）
+    // 检查文件内容是否包含关键词（保持不变）
     private boolean isContentContainKeyword(File file, String keyword) {
         if (file.getName().toLowerCase().endsWith(".zip")) return false;
 
@@ -267,35 +294,36 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    // 排序搜索结果（文件夹→TXT→ZIP）
+    // ---------------------- 修改：搜索结果排序（ZIP 在 TXT 前面） ----------------------
     private void sortSearchResult() {
         if (searchResultList.isEmpty()) return;
 
         List<File> folders = new ArrayList<>();
-        List<File> txtFiles = new ArrayList<>();
-        List<File> zipFiles = new ArrayList<>();
+        List<File> zipFiles = new ArrayList<>();  // 先定义ZIP集合
+        List<File> txtFiles = new ArrayList<>();  // 后定义TXT集合
 
         for (File f : searchResultList) {
             if (f.isDirectory()) {
                 folders.add(f);
-            } else if (f.getName().toLowerCase().endsWith(".txt")) {
-                txtFiles.add(f);
             } else if (f.getName().toLowerCase().endsWith(".zip")) {
-                zipFiles.add(f);
+                zipFiles.add(f);  // ZIP文件加入ZIP集合
+            } else if (f.getName().toLowerCase().endsWith(".txt")) {
+                txtFiles.add(f);  // TXT文件加入TXT集合
             }
         }
 
+        // 排序逻辑不变，调整添加顺序：文件夹 → ZIP → TXT
         Collections.sort(folders, Comparator.comparing(File::getName));
         Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
         searchResultList.clear();
         searchResultList.addAll(folders);
+        searchResultList.addAll(zipFiles);  // ZIP排在TXT前面
         searchResultList.addAll(txtFiles);
-        searchResultList.addAll(zipFiles);
     }
 
-    // 初始化根文件夹
+    // 初始化根文件夹（保持不变）
     private void initExternalBrain() {
         File sdCard = Environment.getExternalStorageDirectory();
         currentDirectory = new File(sdCard, ROOT_FOLDER_NAME);
@@ -319,33 +347,34 @@ public class MainActivity extends AppCompatActivity {
         updateLevelHint();
     }
 
-    // 加载文件列表（显示TXT和ZIP文件）
+    // ---------------------- 修改：加载文件列表（ZIP 在 TXT 前面） ----------------------
     private void loadFileList() {
         fileList.clear();
 
         File[] files = currentDirectory.listFiles();
         if (files != null) {
             List<File> folders = new ArrayList<>();
-            List<File> txtFiles = new ArrayList<>();
-            List<File> zipFiles = new ArrayList<>();
+            List<File> zipFiles = new ArrayList<>();  // 先定义ZIP集合
+            List<File> txtFiles = new ArrayList<>();  // 后定义TXT集合
 
             for (File file : files) {
                 if (file.isDirectory()) {
                     folders.add(file);
-                } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    txtFiles.add(file);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    zipFiles.add(file);
+                    zipFiles.add(file);  // ZIP文件加入ZIP集合
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    txtFiles.add(file);  // TXT文件加入TXT集合
                 }
             }
 
+            // 排序逻辑不变，调整添加顺序：文件夹 → ZIP → TXT
             Collections.sort(folders, Comparator.comparing(File::getName));
             Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);
+            fileList.addAll(zipFiles);  // ZIP排在TXT前面
             fileList.addAll(txtFiles);
-            fileList.addAll(zipFiles);
         }
 
         if (!isInSearchMode) {
@@ -357,7 +386,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 返回键逻辑
+    // 返回键逻辑（添加：退出搜索时隐藏粘贴按钮，切换文件夹不隐藏）
     @Override
     public void onBackPressed() {
         if (isInSearchMode) {
@@ -366,16 +395,18 @@ public class MainActivity extends AppCompatActivity {
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
+            hidePasteButton(); // 退出搜索时隐藏
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
             loadFileList();
+            // 切换文件夹不隐藏粘贴按钮
         } else {
             super.onBackPressed();
         }
     }
 
-    // 新建文件夹对话框
+    // 新建文件夹对话框（保持不变）
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("新建文件夹");
@@ -407,7 +438,7 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    // 创建文件夹
+    // 创建文件夹（保持不变）
     private void createFolder(String name) {
         File newFolder = new File(currentDirectory, name);
         if (newFolder.exists()) {
@@ -423,7 +454,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建测试TXT文件（带目录标识）
+    // 创建测试TXT文件（保持不变）
     private void createTestFile() {
         File testFile = new File(currentDirectory, "使用说明-25-09-20.txt"); // 带时间戳
         try {
@@ -449,7 +480,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 核心1：获取文件显示名称（TXT隐藏时间戳和后缀，ZIP显示完整名称含.zip）
+    // 获取文件显示名称（保持不变）
     private String getDisplayName(File file) {
         if (file.isDirectory()) return file.getName();
 
@@ -465,7 +496,7 @@ public class MainActivity extends AppCompatActivity {
         return fileName;
     }
 
-    // 核心2：计算当前目录相对于根目录的路径（静态方法，供FileEditorActivity调用）
+    // 计算当前目录相对于根目录的路径（保持不变）
     public static String getRelativeDirPath(File dir, String rootName) {
         List<String> pathSegments = new ArrayList<>();
         File current = dir;
@@ -479,8 +510,9 @@ public class MainActivity extends AppCompatActivity {
         return String.join("/", pathSegments);
     }
 
-    // 核心3：ZIP文件单击事件 - 显示解压对话框
+    // ZIP文件单击事件 - 显示解压对话框（添加：解压时隐藏粘贴按钮）
     private void showZipExtractDialog(File zipFile) {
+        hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("解压文件")
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
@@ -501,7 +533,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 核心4：ZIP解压逻辑（支持重名加序列号，保留层级结构）
+    // ZIP解压逻辑（保持不变）
     private boolean extractZip(File zipFile, File targetDir) {
         try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))) {
             ZipEntry entry;
@@ -541,7 +573,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 辅助：处理解压重名（文件/文件夹通用，添加序列号）
+    // 处理解压重名（保持不变）
     private File getUniqueExtractFile(File targetFile) {
         if (!targetFile.exists()) return targetFile;
 
@@ -568,10 +600,12 @@ public class MainActivity extends AppCompatActivity {
         return uniqueFile;
     }
 
-    // 文件夹长按选项（重命名/删除/压缩为ZIP）
+    // ---------------------- 修改：文件夹长按选项（新增复制/剪切） ----------------------
     private void showFolderOptions(File folder) {
+        hidePasteButton(); // 长按弹出选项时隐藏粘贴按钮
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = {"重命名", "删除", "压缩为ZIP文件"};
+        // 新增“复制”“剪切”选项，保持原有款式
+        String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
                 case 0:
@@ -583,15 +617,23 @@ public class MainActivity extends AppCompatActivity {
                 case 2:
                     zipFolder(folder); // 调用压缩逻辑
                     break;
+                case 3: // 复制文件夹
+                    copyFileOrFolder(folder, false);
+                    break;
+                case 4: // 剪切文件夹
+                    copyFileOrFolder(folder, true);
+                    break;
             }
         });
         builder.show();
     }
 
-    // 文件/ZIP长按选项（重命名/删除/分享）
+    // ---------------------- 修改：文件长按选项（新增复制/剪切） ----------------------
     private void showFileOptions(File file) {
+        hidePasteButton(); // 长按弹出选项时隐藏粘贴按钮
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = {"重命名", "删除", "分享"};
+        // 新增“复制”“剪切”选项，保持原有款式
+        String[] options = {"重命名", "删除", "分享", "复制", "剪切"};
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
                 case 0:
@@ -603,12 +645,18 @@ public class MainActivity extends AppCompatActivity {
                 case 2:
                     shareFile(file); // 调用分享逻辑
                     break;
+                case 3: // 复制文件
+                    copyFileOrFolder(file, false);
+                    break;
+                case 4: // 剪切文件
+                    copyFileOrFolder(file, true);
+                    break;
             }
         });
         builder.show();
     }
 
-    // 压缩文件夹（跳转至FileEditorActivity处理）
+    // 压缩文件夹（保持不变）
     private void zipFolder(File folder) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_ZIP_FOLDER", true);
@@ -616,7 +664,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 分享文件（跳转至FileEditorActivity处理）
+    // 分享文件（保持不变）
     private void shareFile(File file) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_SHARE_FILE", true);
@@ -624,7 +672,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 重命名文件/文件夹
+    // 重命名文件/文件夹（保持不变）
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
@@ -667,7 +715,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 删除文件/文件夹
+    // 删除文件/文件夹（保持不变）
     private void deleteFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("确认删除")
@@ -684,7 +732,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 递归删除文件夹（包含子文件）
+    // 递归删除文件夹（保持不变）
     private boolean deleteRecursive(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -697,7 +745,7 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
-    // 权限检查
+    // 权限检查（保持不变）
     private void checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -714,7 +762,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 权限申请结果
+    // 权限申请结果（保持不变）
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -728,7 +776,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 点击外部清除搜索框焦点
+    // 点击外部清除搜索框焦点（保持不变）
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
@@ -748,7 +796,151 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
-    // 文件列表适配器（ZIP单击解压、TXT单击编辑、圆角背景）
+    // ---------------------- 新增：复制/剪切核心方法（保持原有逻辑） ----------------------
+    /**
+     * 复制或剪切文件/文件夹
+     * @param target 目标文件/文件夹
+     * @param isCut 是否为剪切操作（true=剪切，false=复制）
+     */
+    private void copyFileOrFolder(File target, boolean isCut) {
+        if (target == null || !target.exists()) {
+            Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        copiedFile = target;
+        isCutOperation = isCut;
+        showPasteButton(); // 显示搜索按钮旁的粘贴按钮
+        String tip = isCut ? "已剪切：" : "已复制：";
+        Toast.makeText(this, tip + getDisplayName(target), Toast.LENGTH_SHORT).show();
+    }
+
+    // ---------------------- 新增：显示搜索按钮旁的粘贴按钮（核心修改） ----------------------
+    private void showPasteButton() {
+        // 先移除已存在的粘贴按钮，避免重复
+        if (pasteButton != null && pasteButton.getParent() != null) {
+            ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
+        }
+
+        // 加载粘贴按钮布局（与搜索按钮样式统一）
+        pasteButton = LayoutInflater.from(this).inflate(R.layout.paste_button, null);
+        Button btnPaste = pasteButton.findViewById(R.id.btn_paste);
+        btnPaste.setOnClickListener(v -> performPaste());
+
+        // 添加到搜索按钮旁的容器（R.id.paste_container）
+        FrameLayout pasteContainer = findViewById(R.id.paste_container);
+        pasteContainer.removeAllViews(); // 清除旧视图
+        pasteContainer.addView(pasteButton);
+    }
+
+    // ---------------------- 新增：隐藏粘贴按钮（保持原有消失逻辑） ----------------------
+    private void hidePasteButton() {
+        if (pasteButton != null && pasteButton.getParent() != null) {
+            ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
+        }
+        // 清除复制/剪切状态
+        copiedFile = null;
+        isCutOperation = false;
+        pasteButton = null;
+    }
+
+    // ---------------------- 新增：执行粘贴操作（保持原有逻辑） ----------------------
+    // 修正后的执行粘贴操作方法
+    private void performPaste() {
+        // 校验状态
+        if (copiedFile == null || !copiedFile.exists()) {
+            Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            return;
+        }
+        if (currentDirectory == null) {
+            Toast.makeText(this, "当前目录不可用", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            return;
+        }
+
+        // 1. 解决targetFile作用域问题：在子线程外定义基础路径
+        final File baseTargetFile = new File(currentDirectory, copiedFile.getName());
+        // 处理重名：生成不重复路径
+        final File finalTargetFile = getUniqueExtractFile(baseTargetFile);
+
+        // 2. 子线程执行文件操作（避免UI阻塞）
+        new Thread(() -> {
+            // 解决isSuccess作用域问题：在子线程内声明变量
+            boolean threadSuccess = false;
+            try {
+                if (copiedFile.isDirectory()) {
+                    // 复制文件夹（含子文件/子文件夹）
+                    threadSuccess = copyDirectory(copiedFile, finalTargetFile);
+                } else {
+                    // 复制单个文件
+                    threadSuccess = copySingleFile(copiedFile, finalTargetFile);
+                }
+
+                // 剪切操作：成功后删除原文件
+                if (threadSuccess && isCutOperation) {
+                    deleteRecursive(copiedFile);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // 3. 主线程更新UI（使用最终的成功状态）
+            final boolean successResult = threadSuccess;
+            runOnUiThread(() -> {
+                if (successResult) {
+                    Toast.makeText(MainActivity.this, "粘贴成功", Toast.LENGTH_SHORT).show();
+                    loadFileList(); // 刷新文件列表
+                } else {
+                    Toast.makeText(MainActivity.this, "粘贴失败，请重试", Toast.LENGTH_SHORT).show();
+                }
+                hidePasteButton(); // 粘贴完成后隐藏按钮
+            });
+        }).start();
+    }
+
+
+    // ---------------------- 新增：复制单个文件（保持原有逻辑） ----------------------
+    private boolean copySingleFile(File source, File target) throws IOException {
+        if (!source.exists()) return false;
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            return false;
+        }
+        try (InputStream in = new BufferedInputStream(new FileInputStream(source));
+             OutputStream out = new BufferedOutputStream(new FileOutputStream(target))) {
+            byte[] buffer = new byte[1024 * 4];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+            return true;
+        }
+    }
+
+    // ---------------------- 新增：递归复制文件夹（保持原有逻辑） ----------------------
+    private boolean copyDirectory(File sourceDir, File targetDir) throws IOException {
+        if (!sourceDir.isDirectory()) return false;
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            return false;
+        }
+        File[] files = sourceDir.listFiles();
+        if (files == null) return false;
+        for (File file : files) {
+            File targetFile = new File(targetDir, file.getName());
+            if (file.isDirectory()) {
+                if (!copyDirectory(file, targetFile)) {
+                    return false;
+                }
+            } else {
+                if (!copySingleFile(file, targetFile)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // 文件列表适配器（保持不变，仅排序逻辑已在loadFileList中调整）
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
@@ -793,14 +985,16 @@ public class MainActivity extends AppCompatActivity {
             // 显示文件名（TXT隐藏时间戳和后缀，ZIP显示完整名称）
             holder.tvName.setText(getDisplayName(file));
 
-            // 点击事件
+            // 点击事件（添加：打开文件时隐藏粘贴按钮）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = file;
                     loadFileList();
+                    // 切换文件夹不隐藏粘贴按钮
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    hidePasteButton(); // 打开TXT时隐藏
                     // 跳转TXT编辑页
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
                     editIntent.putExtra("file_path", file.getAbsolutePath());
@@ -808,7 +1002,7 @@ public class MainActivity extends AppCompatActivity {
                     editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    // 显示ZIP解压对话框
+                    // 显示ZIP解压对话框（已在showZipExtractDialog中隐藏按钮）
                     showZipExtractDialog(file);
                 }
             });

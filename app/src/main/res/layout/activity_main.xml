@@ -7,13 +7,13 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- 新增：全屏黑色背景层（在最底层） -->
+    <!-- 全屏黑色背景层（保持不变） -->
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#000000"/>
 
-    <!-- 原有顶部容器（保持不变） -->
+    <!-- 顶部容器（修改：添加粘贴按钮容器） -->
     <LinearLayout
         android:id="@+id/top_container"
         android:layout_width="match_parent"
@@ -57,7 +57,7 @@
                 android:textSize="16sp"
                 android:hint="Lv-1"
                 android:textColor="#FFFFFF"
-            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
+                android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
 
             <Button
                 android:id="@+id/btn_search"
@@ -72,6 +72,14 @@
                 android:paddingVertical="0dp"
                 android:minWidth="0dp"
                 android:minHeight="0dp"/>
+
+            <!-- 新增：粘贴按钮容器（搜索按钮右侧） -->
+            <FrameLayout
+                android:id="@+id/paste_container"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginStart="4dp"
+                android:gravity="center_vertical"/>
 
         </LinearLayout>
     </LinearLayout>
