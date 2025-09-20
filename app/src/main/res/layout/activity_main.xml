@@ -80,8 +80,10 @@
         android:id="@+id/file_list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="8dp"
-        android:paddingBottom="80dp"
+        android:paddingLeft="8dp"
+    android:paddingRight="8dp"
+    android:paddingTop="1dp"
+    android:paddingBottom="2dp"
     android:contentDescription="文件列表，显示当前文件夹下的文件夹和TXT文件"
     android:layout_below="@id/top_container"/>
 

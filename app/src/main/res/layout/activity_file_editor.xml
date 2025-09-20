@@ -4,9 +4,10 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/editorBgColor"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:padding="12dp">
 
-    <!-- 标题编辑区（用户可手动输入，也可自动生成） -->
+    <!-- 标题编辑区（带边框） -->
     <EditText
         android:id="@+id/et_file_name"
         android:layout_width="match_parent"
@@ -14,8 +15,8 @@
         android:minHeight="56dp"
         android:gravity="center_vertical"
         android:paddingHorizontal="16dp"
-        android:background="@null"
-        android:hint="自动生成标题（内容前15字）"
+        android:background="@drawable/editor_border"
+        android:hint=":"
         app:hintTextColor="#AAAAAA"
         android:textColor="@color/editorTextColor"
         android:textSize="20sp"
@@ -23,15 +24,16 @@
         android:singleLine="true"
         android:ellipsize="end"
         android:inputType="textCapWords|textNoSuggestions"
-        android:imeOptions="actionNext"/>
+        android:imeOptions="actionNext"
+        android:layout_marginBottom="8dp"/>
 
-    <!-- 内容编辑区（ID必须为et_content，与代码绑定） -->
+    <!-- 内容编辑区（带边框） -->
     <EditText
         android:id="@+id/et_content"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@null"
+        android:background="@drawable/editor_border"
         android:padding="16dp"
         android:hint="请输入文件内容..."
         app:hintTextColor="#888888"

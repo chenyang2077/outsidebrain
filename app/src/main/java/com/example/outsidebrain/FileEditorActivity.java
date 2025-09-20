@@ -33,7 +33,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private File currentDir;         // 预编辑文件保存目录
     private File targetFile;          // 已有文件（非预编辑时使用）
     private boolean isSaved = true;   // 是否已保存
-    private static final int MAX_TITLE_LEN = 15; // 内容截取最大长度
+    private static final int MAX_TITLE_LEN = 20; // 内容截取最大长度
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,11 +55,11 @@ public class FileEditorActivity extends AppCompatActivity {
         // 4. 初始化编辑状态（仅当不是压缩/分享意图时执行）
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
-            etFileName.setHint("自动生成标题（内容前15字）");
+            etFileName.setHint(":标题");
             focusAndShowSoftInput(etContent);
         } else if (filePath != null) {
             targetFile = new File(filePath);
-            loadExistingFileData();
+            loadExistingFileData(); // 加载TXT时显示全名
         }
 
         // 5. 监听文本变化，标记未保存
@@ -83,7 +83,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 核心功能1：压缩文件夹为ZIP（保存到原文件夹同级目录）
+    // 压缩文件夹为ZIP
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
@@ -91,11 +91,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
 
         try {
-            // 生成ZIP文件名（与文件夹同名，避免重名）
             String zipFileName = folder.getName() + ".zip";
             File zipFile = new File(folder.getParentFile(), zipFileName);
 
-            // 处理重名：自动添加序号（如“文件夹(1).zip”）
             int counter = 1;
             while (zipFile.exists()) {
                 zipFileName = folder.getName() + "(" + counter + ").zip";
@@ -103,11 +101,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 counter++;
             }
 
-            // 开始压缩
             try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile))) {
-                addFolderToZip(folder, folder.getName(), zos); // 递归添加文件夹内容
+                addFolderToZip(folder, folder.getName(), zos);
                 Toast.makeText(this, "压缩成功：" + zipFile.getName(), Toast.LENGTH_SHORT).show();
-                setResult(RESULT_REFRESH); // 通知MainActivity刷新列表
+                setResult(RESULT_REFRESH);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -122,15 +119,12 @@ public class FileEditorActivity extends AppCompatActivity {
 
         for (File file : files) {
             if (file.isDirectory()) {
-                // 子文件夹：递归处理
                 String newEntryName = parentEntryName + "/" + file.getName();
                 addFolderToZip(file, newEntryName, zos);
             } else {
-                // 文件：写入ZIP
                 ZipEntry zipEntry = new ZipEntry(parentEntryName + "/" + file.getName());
                 zos.putNextEntry(zipEntry);
 
-                // 读取文件内容并写入ZIP
                 try (FileInputStream fis = new FileInputStream(file)) {
                     byte[] buffer = new byte[1024];
                     int length;
@@ -143,7 +137,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 核心功能2：分享文件（支持QQ、微信等，适配Android 7.0+）
+    // 分享文件
     private void shareFile(File file) {
         if (!file.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -151,24 +145,21 @@ public class FileEditorActivity extends AppCompatActivity {
         }
 
         try {
-            // 生成FileProvider安全Uri（避免文件路径暴露）
             Uri fileUri = FileProvider.getUriForFile(
                     this,
-                    getPackageName() + ".fileprovider", // 与Manifest中authorities一致
+                    getPackageName() + ".fileprovider",
                     file
             );
 
-            // 构建分享Intent
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType(getMimeType(file.getName())); // 设置正确的MIME类型
-            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri); // 传递文件Uri
-            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // 授予临时读取权限
+            shareIntent.setType(getMimeType(file.getName()));
+            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            // 创建分享选择器（过滤无效应用）
             Intent chooser = Intent.createChooser(shareIntent, "分享文件");
             if (shareIntent.resolveActivity(getPackageManager()) != null) {
                 startActivity(chooser);
-                setResult(RESULT_REFRESH); // 分享后刷新列表（可选）
+                setResult(RESULT_REFRESH);
             } else {
                 Toast.makeText(this, "未找到可分享的应用", Toast.LENGTH_SHORT).show();
             }
@@ -178,22 +169,22 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 根据文件名获取MIME类型（确保应用能正确识别文件）
+    // 根据文件名获取MIME类型
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
 
         String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase(Locale.getDefault());
         switch (extension) {
             case "txt":
-                return "text/plain"; // TXT文本类型
+                return "text/plain";
             case "zip":
-                return "application/zip"; // ZIP压缩文件类型
+                return "application/zip";
             default:
-                return "application/octet-stream"; // 默认二进制类型
+                return "application/octet-stream";
         }
     }
 
-    // 加载已有TXT文件的标题和内容（ZIP文件不支持编辑）
+    // 核心修改：加载TXT时显示全名（保留时间戳，仅去除后缀）
     private void loadExistingFileData() {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -208,15 +199,14 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // 加载标题（去除时间戳和.txt后缀）
+        // 加载标题：仅去除.txt后缀，保留时间戳（显示全名）
         String fileName = targetFile.getName();
-        fileName = MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
         if (fileName.endsWith(".txt")) {
-            fileName = fileName.substring(0, fileName.lastIndexOf("."));
+            fileName = fileName.substring(0, fileName.lastIndexOf(".")); // 只删后缀，保留时间戳
         }
-        etFileName.setText(fileName);
+        etFileName.setText(fileName); // 显示含时间戳的全名（如“测试文件-25-09-20”）
 
-        // 加载文件内容（保留原有标识，不做处理）
+        // 加载文件内容（保留原有标识）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
@@ -256,7 +246,7 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
-    // 自动保存TXT文件逻辑（核心修改：创建时添加目录标识）
+    // 自动保存TXT文件逻辑（保留目录标识功能）
     private void autoSave() {
         if (isSaved) return;
 
@@ -277,7 +267,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 return;
             }
 
-            // 生成最终标题（去除旧时间戳）
+            // 生成最终标题（去除旧时间戳，避免重复）
             String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
 
@@ -286,9 +276,8 @@ public class FileEditorActivity extends AppCompatActivity {
 
             try {
                 if (targetFile.createNewFile()) {
-                    // 核心：生成目录标识（相对根目录的路径）
+                    // 生成目录标识（相对根目录的路径）
                     String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
-                    // 根目录下路径为空，显示为“根目录”
                     dirPath = TextUtils.isEmpty(dirPath) ? "根目录" : dirPath;
                     // 拼接标识（{路径} + 换行 + 用户内容）
                     String finalContent = "{" + dirPath + "}\n" + content;
@@ -307,16 +296,17 @@ public class FileEditorActivity extends AppCompatActivity {
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         } else {
-            // 已有文件（编辑文件，保留原有标识，只更新内容）
+            // 已有文件（编辑文件，保留原有标识）
             if (targetFile == null) return;
 
-            // 处理标题重命名
+            // 处理标题重命名（保留时间戳逻辑）
             String inputTitleTrimmed = inputTitle.trim();
-            String originalTitle = targetFile.getName().replace(".txt", "");
-            originalTitle = removeOldTimestamp(originalTitle);
+            String originalTitle = targetFile.getName().replace(".txt", ""); // 原标题（含时间戳）
 
             if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
-                File newFile = getUniqueFile(targetFile.getParentFile(), inputTitleTrimmed, fileTimestamp);
+                // 新标题不含时间戳：自动添加当前时间戳
+                String newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp;
+                File newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
                 if (targetFile.renameTo(newFile)) {
                     targetFile = newFile;
                 } else {
@@ -356,7 +346,7 @@ public class FileEditorActivity extends AppCompatActivity {
         return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
     }
 
-    // 移除旧时间戳（用于标题重命名）
+    // 移除旧时间戳（用于新建/重命名时避免重复）
     private String removeOldTimestamp(String fileName) {
         return MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }

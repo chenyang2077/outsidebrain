@@ -32,17 +32,21 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -185,7 +189,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
-            loadFileList(); // 压缩/分享/创建后刷新列表
+            loadFileList(); // 压缩/分享/创建/解压后刷新列表
         }
     }
 
@@ -421,7 +425,7 @@ public class MainActivity extends AppCompatActivity {
 
     // 创建测试TXT文件（带目录标识）
     private void createTestFile() {
-        File testFile = new File(currentDirectory, "测试文件.txt");
+        File testFile = new File(currentDirectory, "测试文件-25-09-20.txt"); // 带时间戳
         try {
             if (testFile.createNewFile()) {
                 // 生成相对根目录的路径（根目录下为“根目录”）
@@ -445,11 +449,11 @@ public class MainActivity extends AppCompatActivity {
 
         String fileName = file.getName();
         if (fileName.endsWith(".txt")) {
-            // TXT文件：先去除时间戳，再去除后缀
+            // TXT列表显示：去除时间戳和后缀
             fileName = FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
             return fileName.substring(0, fileName.lastIndexOf("."));
         } else if (fileName.endsWith(".zip")) {
-            // ZIP文件：显示完整名称（含后缀，保留时间戳）
+            // ZIP列表显示：完整名称（含后缀）
             return fileName;
         }
         return fileName;
@@ -467,6 +471,95 @@ public class MainActivity extends AppCompatActivity {
         // 反转列表，生成从根到当前的路径（如：文件夹2 → 文件夹2.2 → 路径为“文件夹2/文件夹2.2”）
         Collections.reverse(pathSegments);
         return String.join("/", pathSegments);
+    }
+
+    // 核心3：ZIP文件单击事件 - 显示解压对话框
+    private void showZipExtractDialog(File zipFile) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("解压文件")
+                .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
+                .setPositiveButton("确定", (dialog, which) -> {
+                    new Thread(() -> {
+                        boolean result = extractZip(zipFile, currentDirectory);
+                        runOnUiThread(() -> {
+                            if (result) {
+                                Toast.makeText(MainActivity.this, "解压成功", Toast.LENGTH_SHORT).show();
+                                loadFileList(); // 解压后刷新列表
+                            } else {
+                                Toast.makeText(MainActivity.this, "解压失败", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // 核心4：ZIP解压逻辑（支持重名加序列号，保留层级结构）
+    private boolean extractZip(File zipFile, File targetDir) {
+        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))) {
+            ZipEntry entry;
+            byte[] buffer = new byte[1024 * 4]; // 4KB缓冲
+
+            while ((entry = zis.getNextEntry()) != null) {
+                // 生成解压后的目标文件/文件夹路径
+                File entryFile = new File(targetDir, entry.getName());
+                // 处理重名：生成不重复的路径
+                entryFile = getUniqueExtractFile(entryFile);
+
+                if (entry.isDirectory()) {
+                    // 是文件夹：创建（含父目录）
+                    if (!entryFile.mkdirs()) {
+                        return false;
+                    }
+                } else {
+                    // 是文件：创建父目录并写入内容
+                    File parentDir = entryFile.getParentFile();
+                    if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+                        return false;
+                    }
+
+                    try (FileOutputStream fos = new FileOutputStream(entryFile)) {
+                        int len;
+                        while ((len = zis.read(buffer)) > 0) {
+                            fos.write(buffer, 0, len);
+                        }
+                    }
+                }
+                zis.closeEntry(); // 关闭当前条目
+            }
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // 辅助：处理解压重名（文件/文件夹通用，添加序列号）
+    private File getUniqueExtractFile(File targetFile) {
+        if (!targetFile.exists()) return targetFile;
+
+        File parentDir = targetFile.getParentFile();
+        String name = targetFile.getName();
+        String extension = "";
+        int dotIndex = name.lastIndexOf(".");
+
+        // 分离文件名和后缀（如“文档.txt” → 名称“文档”，后缀“.txt”）
+        if (dotIndex != -1) {
+            extension = name.substring(dotIndex);
+            name = name.substring(0, dotIndex);
+        }
+
+        // 循环生成不重复名称（如“文档(1).txt”“文档(2).txt”）
+        int counter = 1;
+        File uniqueFile;
+        do {
+            String uniqueName = name + "(" + counter + ")" + extension;
+            uniqueFile = new File(parentDir, uniqueName);
+            counter++;
+        } while (uniqueFile.exists());
+
+        return uniqueFile;
     }
 
     // 文件夹长按选项（重命名/删除/压缩为ZIP）
@@ -649,7 +742,7 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
-    // 文件列表适配器（显示TXT和ZIP，区分长按逻辑）
+    // 文件列表适配器（核心修改：ZIP单击解压，TXT单击传递完整路径）
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
@@ -688,10 +781,10 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 显示文件名（TXT隐藏时间戳和后缀，ZIP显示完整名称含.zip）
+            // 显示文件名（TXT列表隐藏时间戳和后缀，ZIP显示完整名称）
             holder.tvName.setText(getDisplayName(file));
 
-            // 点击事件
+            // 点击事件：区分文件类型
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
@@ -699,19 +792,19 @@ public class MainActivity extends AppCompatActivity {
                     currentDirectory = file;
                     loadFileList();
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // 打开TXT编辑（传递根文件夹名称）
+                    // TXT单击：跳转编辑页（传递完整路径，用于显示全名）
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                    editIntent.putExtra("file_path", file.getAbsolutePath());
+                    editIntent.putExtra("file_path", file.getAbsolutePath()); // 传递完整路径
                     editIntent.putExtra("is_pre_edit", false);
                     editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    // ZIP文件点击：显示操作选项
-                    showFileOptions(file);
+                    // ZIP单击：显示解压对话框（单独逻辑，替代长按）
+                    showZipExtractDialog(file);
                 }
             });
 
-            // 长按事件：区分文件夹和文件
+            // 长按事件：区分文件夹和文件（保持原有逻辑）
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
