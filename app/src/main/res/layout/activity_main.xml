@@ -7,6 +7,13 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
+    <!-- 新增：全屏黑色背景层（在最底层） -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"/>
+
+    <!-- 原有顶部容器（保持不变） -->
     <LinearLayout
         android:id="@+id/top_container"
         android:layout_width="match_parent"
@@ -16,77 +23,72 @@
         android:gravity="center_vertical"
         android:paddingVertical="4dp">
 
-    <!-- 左侧图标 -->
-        <!-- 图标按钮：保留原图标样式，增加按钮交互特性 -->
         <ImageButton
             android:id="@+id/icon2_btn"
             android:layout_width="48dp"
             android:layout_height="48dp"
-        android:layout_marginStart="4dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_folder2"
-        android:background="@drawable/btn_round_background"
-        android:contentDescription="新建文件夹"
-        android:clickable="true"
-        android:focusable="true"/>
+            android:layout_marginStart="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_folder2"
+            android:background="@drawable/btn_round_background"
+            android:contentDescription="新建文件夹"
+            android:clickable="true"
+            android:focusable="true"/>
 
-        <!-- 搜索栏：高度匹配容器，横向填充剩余空间 -->
         <LinearLayout
             android:id="@+id/search_bar"
             android:layout_width="0dp"
             android:layout_height="48dp"
-        android:layout_weight="1"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:background="@drawable/item_rounded_bg"
-        android:paddingHorizontal="8dp"
-        android:layout_marginHorizontal="4dp">
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:background="@drawable/item_rounded_bg"
+            android:paddingHorizontal="8dp"
+            android:layout_marginHorizontal="4dp">
 
-        <!-- 搜索输入框：填充剩余空间 -->
-        <EditText
-            android:id="@+id/et_search"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:paddingHorizontal="12dp"
-        android:background="@null"
-        android:singleLine="true"
-        android:textSize="16sp"
-        android:hint="Lv-1"
-        android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
+            <EditText
+                android:id="@+id/et_search"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:paddingHorizontal="12dp"
+                android:background="@null"
+                android:singleLine="true"
+                android:textSize="16sp"
+                android:hint="Lv-1"
+                android:textColor="#FFFFFF"
+            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
 
-        <!-- 搜索按钮：紧凑设计，宽度适应文字 -->
-            <!-- 搜索按钮：更紧凑设计，匹配整体比例 -->
             <Button
                 android:id="@+id/btn_search"
                 android:layout_width="wrap_content"
                 android:layout_height="50dp"
-            android:layout_marginStart="2dp"
-            android:text="搜索"
-            android:backgroundTint="@color/colorPrimary"
-            android:textColor="@android:color/white"
-            android:textSize="19sp"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="0dp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"/>
-
+                android:layout_marginStart="2dp"
+                android:text="搜索"
+                android:backgroundTint="@color/colorPrimary"
+                android:textColor="@android:color/white"
+                android:textSize="19sp"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"/>
 
         </LinearLayout>
-</LinearLayout>
+    </LinearLayout>
 
-    <!-- 2. 文件列表：位于top_container下方（修复核心） -->
+    <!-- 原有文件列表（保持不变） -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/file_list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:paddingLeft="8dp"
-    android:paddingRight="8dp"
-    android:paddingTop="1dp"
-    android:paddingBottom="2dp"
-    android:contentDescription="文件列表，显示当前文件夹下的文件夹和TXT文件"
-    android:layout_below="@id/top_container"/>
+        android:paddingRight="8dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="2dp"
+        android:contentDescription="文件列表，显示当前文件夹下的文件夹和TXT文件"
+        android:layout_below="@id/top_container"/>
 
+    <!-- 原有悬浮按钮（保持不变） -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/add_button"
         android:layout_width="wrap_content"
@@ -97,8 +99,7 @@
         app:backgroundTint="@color/colorPrimary"
         app:elevation="8dp"
         android:layout_alignBottom="@id/file_list"
-    android:layout_alignEnd="@id/file_list"
-    android:layout_alignParentEnd="false"/>
+        android:layout_alignEnd="@id/file_list"
+        android:layout_alignParentEnd="false"/>
 
-
-    </RelativeLayout>
+</RelativeLayout>

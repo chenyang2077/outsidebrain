@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@color/editorBgColor"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="3dp">
 
     <!-- 标题编辑区（带边框） -->
     <EditText
@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:minHeight="56dp"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="10dp"
         android:background="@drawable/editor_border"
         android:hint=":"
         app:hintTextColor="#AAAAAA"
@@ -25,7 +25,7 @@
         android:ellipsize="end"
         android:inputType="textCapWords|textNoSuggestions"
         android:imeOptions="actionNext"
-        android:layout_marginBottom="8dp"/>
+        android:layout_marginBottom="4dp"/>
 
     <!-- 内容编辑区（带边框） -->
     <EditText
@@ -34,7 +34,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:background="@drawable/editor_border"
-        android:padding="16dp"
+        android:padding="5dp"
         android:hint="请输入文件内容..."
         app:hintTextColor="#888888"
         android:textColor="@color/editorTextColor"
