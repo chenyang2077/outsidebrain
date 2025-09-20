@@ -58,7 +58,12 @@
                 android:hint="Lv-1"
                 android:textColor="#FFFFFF"
                 android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
-
+            <FrameLayout
+                android:id="@+id/paste_container"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginStart="4dp"
+                android:gravity="center_vertical"/>
             <Button
                 android:id="@+id/btn_search"
                 android:layout_width="wrap_content"
@@ -74,12 +79,7 @@
                 android:minHeight="0dp"/>
 
             <!-- 新增：粘贴按钮容器（搜索按钮右侧） -->
-            <FrameLayout
-                android:id="@+id/paste_container"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_marginStart="4dp"
-                android:gravity="center_vertical"/>
+
 
         </LinearLayout>
     </LinearLayout>

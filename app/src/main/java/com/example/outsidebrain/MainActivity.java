@@ -973,9 +973,9 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_file);
+                holder.ivIcon.setImageResource(R.drawable.ic_folder2);
                 if (file.getName().toLowerCase().endsWith(".zip")) {
-                    holder.itemView.setBackgroundResource(R.drawable.item_zip_rounded_bg);
+                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 } else {
                     holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 }
