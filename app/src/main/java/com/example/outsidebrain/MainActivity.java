@@ -944,7 +944,7 @@ public class MainActivity extends AppCompatActivity {
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
-        // 设置列表数据
+        // 设置列表数据（保持不变）
         public void setData(List<File> newData) {
             if (newData != null) {
                 mData.clear();
@@ -953,7 +953,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 创建ViewHolder
+        // 创建ViewHolder（保持不变）
         @NonNull
         @Override
         public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -962,52 +962,55 @@ public class MainActivity extends AppCompatActivity {
             return new FileViewHolder(itemView);
         }
 
-        // 绑定数据到ViewHolder
+        // 绑定数据到ViewHolder（核心修改：ZIP文件适配）
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 按文件类型设置圆角背景和图标
+            // 按文件类型设置样式（核心修改：新增ZIP文件单独适配）
             if (file.isDirectory()) {
+                // 文件夹：原有逻辑（ic_folder图标 + 黑色字体）
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_folder2);
+                // 文件类型：区分TXT和ZIP
                 if (file.getName().toLowerCase().endsWith(".zip")) {
-                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                    // ---------------------- ZIP文件：使用ic_folder图标 + zipColor字体 ----------------------
+                    holder.ivIcon.setImageResource(R.drawable.ic_folder2); // ZIP用文件夹图标
+                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg); // 保留原有ZIP背景
+                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor)); // ZIP字体用zipColor
                 } else {
+                    // TXT文件：原有逻辑（ic_file图标 + 白色字体）
+                    holder.ivIcon.setImageResource(R.drawable.ic_file);
                     holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
                 }
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 显示文件名（TXT隐藏时间戳和后缀，ZIP显示完整名称）
+            // 显示文件名（保持不变：TXT隐藏时间戳和后缀，ZIP显示完整名称）
             holder.tvName.setText(getDisplayName(file));
 
-            // 点击事件（添加：打开文件时隐藏粘贴按钮）
+            // 点击事件（保持不变）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = file;
                     loadFileList();
-                    // 切换文件夹不隐藏粘贴按钮
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    hidePasteButton(); // 打开TXT时隐藏
-                    // 跳转TXT编辑页
+                    hidePasteButton();
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
                     editIntent.putExtra("file_path", file.getAbsolutePath());
                     editIntent.putExtra("is_pre_edit", false);
                     editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    // 显示ZIP解压对话框（已在showZipExtractDialog中隐藏按钮）
                     showZipExtractDialog(file);
                 }
             });
 
-            // 长按事件
+            // 长按事件（保持不变）
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
@@ -1018,13 +1021,13 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        // 获取列表项数量
+        // 获取列表项数量（保持不变）
         @Override
         public int getItemCount() {
             return mData.size();
         }
 
-        // ViewHolder：持有列表项控件
+        // ViewHolder（保持不变）
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;

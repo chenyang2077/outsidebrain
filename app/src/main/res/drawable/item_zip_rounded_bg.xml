@@ -1,5 +1,5 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <corners android:radius="6dp" />
     <stroke android:width="0dp" android:color="#EEEEEE" />
-    <solid android:color="@color/zipColor" /> <!-- ZIP文件颜色 -->
+    <solid android:color="@color/zipColor2" /> <!-- ZIP文件颜色 -->
 </shape>
