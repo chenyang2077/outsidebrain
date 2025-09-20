@@ -86,14 +86,13 @@ public class MainActivity extends AppCompatActivity {
         // 搜索按钮点击事件
         btnSearch.setOnClickListener(v -> performSearch());
 
-        // 搜索框文本变化监听（输入内容时隐藏hint，清空时显示层级）
+        // 搜索框文本变化监听
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                // 输入内容时不做操作（hint会自动隐藏），清空时更新层级hint
                 if (TextUtils.isEmpty(s)) {
                     updateLevelHint();
                 }
@@ -108,14 +107,11 @@ public class MainActivity extends AppCompatActivity {
         folderCreateBtn.setOnClickListener(v -> showFolderCreateDialog());
     }
 
-    // 核心修改1：更新层级作为搜索框的hint（提示文字，不可编辑）
+    // 更新层级作为搜索框hint
     private void updateLevelHint() {
         if (currentDirectory == null) return;
 
-        // 获取层级路径列表
         List<Integer> levelPath = getLevelPath(currentDirectory);
-
-        // 生成层级字符串（如：Lv-1、Lv-1-3、Lv-1-3-3）
         StringBuilder levelStr = new StringBuilder("Lv-");
         for (int i = 0; i < levelPath.size(); i++) {
             levelStr.append(levelPath.get(i));
@@ -123,44 +119,35 @@ public class MainActivity extends AppCompatActivity {
                 levelStr.append("-");
             }
         }
-
-        // 设置为hint（提示文字），用户输入时会自动消失
         etSearch.setHint(levelStr.toString());
     }
 
-    // 核心修改2：修正层级计算逻辑
+    // 计算文件夹层级路径
     private List<Integer> getLevelPath(File file) {
         List<Integer> levelPath = new ArrayList<>();
         File current = file;
 
-        // 1. 根目录直接返回 [1]
         if (current.getName().equals(ROOT_FOLDER_NAME)) {
             levelPath.add(1);
             return levelPath;
         }
 
-        // 2. 从当前文件夹向上追溯到根文件夹
         while (current != null) {
             String fileName = current.getName();
-            // 找到根文件夹时停止追溯
             if (fileName.equals(ROOT_FOLDER_NAME)) {
-                levelPath.add(1); // 根文件夹固定为1级
+                levelPath.add(1);
                 break;
             }
 
-            // 获取父文件夹
             File parent = current.getParentFile();
             if (parent == null) break;
 
-            // 3. 获取当前文件夹在父文件夹中的排序（仅计算文件夹，按名称排序）
-            File[] siblings = parent.listFiles(File::isDirectory); // 只处理文件夹
+            File[] siblings = parent.listFiles(File::isDirectory);
             if (siblings != null) {
-                // 排序同级文件夹（按名称升序）
                 List<File> sortedSiblings = new ArrayList<>();
                 Collections.addAll(sortedSiblings, siblings);
                 Collections.sort(sortedSiblings, Comparator.comparing(File::getName));
 
-                // 查找当前文件夹在排序后的位置（索引+1，因为层级从1开始）
                 for (int i = 0; i < sortedSiblings.size(); i++) {
                     if (sortedSiblings.get(i).getName().equals(fileName)) {
                         levelPath.add(i + 1);
@@ -172,7 +159,6 @@ public class MainActivity extends AppCompatActivity {
             current = parent;
         }
 
-        // 4. 反转列表，从根到当前（例如：[3,1] → [1,3] 对应 Lv-1-3）
         Collections.reverse(levelPath);
         return levelPath;
     }
@@ -190,19 +176,19 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
-    // 接收编辑页面返回的结果
+    // 接收编辑页面返回结果
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
-            loadFileList();
+            loadFileList(); // 压缩/分享后刷新列表
         }
     }
 
-    // 搜索逻辑
+    // 搜索逻辑（支持TXT和ZIP文件）
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
-        etSearch.clearFocus(); // 搜索时清除焦点，光标消失
+        etSearch.clearFocus();
 
         if (TextUtils.isEmpty(keyword)) {
             isInSearchMode = false;
@@ -226,7 +212,7 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    // 递归搜索
+    // 递归搜索（包含ZIP文件）
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
 
@@ -239,8 +225,8 @@ public class MainActivity extends AppCompatActivity {
                     searchResultList.add(file);
                 }
                 recursiveSearch(file, keyword);
-            } else if (file.isFile() && file.getName().endsWith(".txt")) {
-                boolean nameMatch = file.getName().toLowerCase().contains(keyword.toLowerCase());
+            } else if (isSupportedFile(file)) { // 支持TXT和ZIP
+                boolean nameMatch = getDisplayName(file).toLowerCase().contains(keyword.toLowerCase());
                 boolean contentMatch = isContentContainKeyword(file, keyword);
                 if (nameMatch || contentMatch) {
                     searchResultList.add(file);
@@ -249,8 +235,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 检查文件内容是否包含关键词
+    // 检查是否为支持的文件类型（TXT或ZIP）
+    private boolean isSupportedFile(File file) {
+        String fileName = file.getName().toLowerCase();
+        return fileName.endsWith(".txt") || fileName.endsWith(".zip");
+    }
+
+    // 检查文件内容是否包含关键词（仅TXT文件，ZIP不检查）
     private boolean isContentContainKeyword(File file, String keyword) {
+        if (file.getName().toLowerCase().endsWith(".zip")) return false;
+
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
             String line;
@@ -265,29 +259,35 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    // 排序搜索结果
+    // 排序搜索结果（文件夹→TXT→ZIP）
     private void sortSearchResult() {
         if (searchResultList.isEmpty()) return;
 
         List<File> folders = new ArrayList<>();
-        List<File> files = new ArrayList<>();
+        List<File> txtFiles = new ArrayList<>();
+        List<File> zipFiles = new ArrayList<>();
+
         for (File f : searchResultList) {
             if (f.isDirectory()) {
                 folders.add(f);
-            } else {
-                files.add(f);
+            } else if (f.getName().toLowerCase().endsWith(".txt")) {
+                txtFiles.add(f);
+            } else if (f.getName().toLowerCase().endsWith(".zip")) {
+                zipFiles.add(f);
             }
         }
 
         Collections.sort(folders, Comparator.comparing(File::getName));
-        Collections.sort(files, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
         searchResultList.clear();
         searchResultList.addAll(folders);
-        searchResultList.addAll(files);
+        searchResultList.addAll(txtFiles);
+        searchResultList.addAll(zipFiles);
     }
 
-    // 初始化外置大脑文件夹
+    // 初始化根文件夹
     private void initExternalBrain() {
         File sdCard = Environment.getExternalStorageDirectory();
         currentDirectory = new File(sdCard, ROOT_FOLDER_NAME);
@@ -308,64 +308,66 @@ public class MainActivity extends AppCompatActivity {
         }
 
         loadFileList();
-        updateLevelHint(); // 初始化时显示根目录层级（Lv-1）
+        updateLevelHint();
     }
 
-    // 加载文件列表
+    // 加载文件列表（显示TXT和ZIP文件）
     private void loadFileList() {
         fileList.clear();
 
         File[] files = currentDirectory.listFiles();
         if (files != null) {
             List<File> folders = new ArrayList<>();
-            List<File> filesList = new ArrayList<>();
+            List<File> txtFiles = new ArrayList<>();
+            List<File> zipFiles = new ArrayList<>();
 
             for (File file : files) {
                 if (file.isDirectory()) {
                     folders.add(file);
-                } else if (file.isFile() && file.getName().endsWith(".txt")) {
-                    filesList.add(file);
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    txtFiles.add(file);
+                } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                    zipFiles.add(file);
                 }
             }
 
-            // 文件夹按名称排序（用于层级计算）
             Collections.sort(folders, Comparator.comparing(File::getName));
-            // 文件按修改时间排序
-            Collections.sort(filesList, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);
-            fileList.addAll(filesList);
+            fileList.addAll(txtFiles);
+            fileList.addAll(zipFiles);
         }
 
         if (!isInSearchMode) {
             fileAdapter.setData(fileList);
         }
 
-        // 加载列表后更新层级hint（如果搜索框为空）
         if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
             updateLevelHint();
         }
     }
 
-    // 返回键逻辑（返回时刷新层级）
+    // 返回键逻辑
     @Override
     public void onBackPressed() {
         if (isInSearchMode) {
             isInSearchMode = false;
-            etSearch.setText(""); // 清空输入，触发层级hint显示
+            etSearch.setText("");
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
-            loadFileList(); // 加载上级目录后更新层级
+            loadFileList();
         } else {
             super.onBackPressed();
         }
     }
 
-    // 新建文件夹对话框（自动弹出输入法）
+    // 新建文件夹对话框
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("新建文件夹");
@@ -407,15 +409,222 @@ public class MainActivity extends AppCompatActivity {
 
         if (newFolder.mkdirs()) {
             Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
-            loadFileList(); // 创建后刷新列表，更新层级
+            loadFileList();
         } else {
             Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show();
         }
     }
 
-    // 文件列表适配器（保持不变）
+    // 创建测试TXT文件
+    private void createTestFile() {
+        File testFile = new File(currentDirectory, "测试文件.txt");
+        try {
+            if (testFile.createNewFile()) {
+                FileOutputStream fos = new FileOutputStream(testFile);
+                fos.write("这是一个测试文件\n支持多行编辑哦～".getBytes());
+                fos.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this, "创建测试文件失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 获取文件显示名称（TXT隐藏后缀，ZIP保留后缀）
+    private String getDisplayName(File file) {
+        if (file.isDirectory()) return file.getName();
+
+        String fileName = file.getName();
+        if (fileName.endsWith(".txt")) {
+            return fileName.substring(0, fileName.lastIndexOf("."));
+        } else if (fileName.endsWith(".zip")) {
+            return fileName; // ZIP保留完整名称（含后缀）
+        }
+        return fileName;
+    }
+
+    // 文件夹长按选项（重命名/删除/压缩为ZIP）
+    private void showFolderOptions(File folder) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        String[] options = {"重命名", "删除", "压缩为ZIP文件"};
+        builder.setItems(options, (dialog, which) -> {
+            switch (which) {
+                case 0:
+                    renameFile(folder);
+                    break;
+                case 1:
+                    deleteFile(folder);
+                    break;
+                case 2:
+                    zipFolder(folder); // 调用压缩逻辑
+                    break;
+            }
+        });
+        builder.show();
+    }
+
+    // 文件/ZIP长按选项（重命名/删除/分享）
+    private void showFileOptions(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        String[] options = {"重命名", "删除", "分享"};
+        builder.setItems(options, (dialog, which) -> {
+            switch (which) {
+                case 0:
+                    renameFile(file);
+                    break;
+                case 1:
+                    deleteFile(file);
+                    break;
+                case 2:
+                    shareFile(file); // 调用分享逻辑
+                    break;
+            }
+        });
+        builder.show();
+    }
+
+    // 压缩文件夹（跳转至FileEditorActivity处理）
+    private void zipFolder(File folder) {
+        Intent intent = new Intent(this, FileEditorActivity.class);
+        intent.putExtra("ACTION_ZIP_FOLDER", true);
+        intent.putExtra("FOLDER_PATH", folder.getAbsolutePath());
+        startActivityForResult(intent, REQUEST_EDIT_FILE);
+    }
+
+    // 分享文件（跳转至FileEditorActivity处理）
+    private void shareFile(File file) {
+        Intent intent = new Intent(this, FileEditorActivity.class);
+        intent.putExtra("ACTION_SHARE_FILE", true);
+        intent.putExtra("FILE_PATH", file.getAbsolutePath());
+        startActivityForResult(intent, REQUEST_EDIT_FILE);
+    }
+
+    // 重命名文件/文件夹
+    private void renameFile(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("重命名");
+
+        final EditText input = new EditText(this);
+        input.setText(getDisplayName(file));
+        builder.setView(input);
+
+        builder.setPositiveButton("确认", (dialog, which) -> {
+            String newName = input.getText().toString().trim();
+            if (newName.isEmpty()) {
+                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 保留文件后缀
+            if (file.isFile()) {
+                if (file.getName().endsWith(".txt") && !newName.endsWith(".txt")) {
+                    newName += ".txt";
+                } else if (file.getName().endsWith(".zip") && !newName.endsWith(".zip")) {
+                    newName += ".zip";
+                }
+            }
+
+            File newFile = new File(file.getParentFile(), newName);
+            if (newFile.exists()) {
+                Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (file.renameTo(newFile)) {
+                Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
+                loadFileList();
+            } else {
+                Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    // 删除文件/文件夹
+    private void deleteFile(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("确认删除")
+                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
+                .setPositiveButton("删除", (dialog, which) -> {
+                    if (deleteRecursive(file)) {
+                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+                        loadFileList();
+                    } else {
+                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // 递归删除文件夹（包含子文件）
+    private boolean deleteRecursive(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        return file.delete();
+    }
+
+    // 权限检查
+    private void checkPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        REQUEST_PERMISSION);
+            } else {
+                initExternalBrain();
+            }
+        } else {
+            initExternalBrain();
+        }
+    }
+
+    // 权限申请结果
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initExternalBrain();
+            } else {
+                Toast.makeText(this, "需要存储权限才能使用应用", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }
+    }
+
+    // 点击外部清除搜索框焦点
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            View v = getCurrentFocus();
+            if (v instanceof EditText && v.getId() == R.id.et_search) {
+                Rect outRect = new Rect();
+                v.getGlobalVisibleRect(outRect);
+                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+                    v.clearFocus();
+                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    // 文件列表适配器（显示TXT和ZIP，区分长按逻辑）
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
-        // 适配器实现与之前一致...
         private List<File> mData = new ArrayList<>();
 
         public void setData(List<File> newData) {
@@ -438,38 +647,50 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
+            // 设置图标和背景色（ZIP复用文件图标，区分颜色）
             if (file.isDirectory()) {
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_file);
-                holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.fileColor));
+                holder.ivIcon.setImageResource(R.drawable.ic_file); // ZIP复用TXT图标
+                if (file.getName().toLowerCase().endsWith(".zip")) {
+                    holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor));
+                } else {
+                    holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.fileColor));
+                }
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            String fileName = file.getName();
-            if (file.isFile() && fileName.endsWith(".txt")) {
-                fileName = fileName.substring(0, fileName.lastIndexOf("."));
-            }
-            holder.tvName.setText(fileName);
+            // 显示文件名（TXT隐藏后缀，ZIP保留后缀）
+            holder.tvName.setText(getDisplayName(file));
 
+            // 点击事件
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = file;
-                    loadFileList(); // 进入子文件夹后刷新层级
-                } else {
+                    loadFileList();
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    // 打开TXT编辑
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
                     editIntent.putExtra("file_path", file.getAbsolutePath());
                     editIntent.putExtra("is_pre_edit", false);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+                } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                    // ZIP文件点击：显示操作选项
+                    showFileOptions(file);
                 }
             });
 
+            // 长按事件：区分文件夹和文件
             holder.itemView.setOnLongClickListener(v -> {
-                showFileOptions(file);
+                if (file.isDirectory()) {
+                    showFolderOptions(file);
+                } else {
+                    showFileOptions(file);
+                }
                 return true;
             });
         }
@@ -489,156 +710,5 @@ public class MainActivity extends AppCompatActivity {
                 tvName = itemView.findViewById(R.id.name);
             }
         }
-    }
-
-    // 其他辅助方法（权限、文件操作等）保持不变...
-    private void checkPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                        REQUEST_PERMISSION);
-            } else {
-                initExternalBrain();
-            }
-        } else {
-            initExternalBrain();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                initExternalBrain();
-            } else {
-                Toast.makeText(this, "需要存储权限才能使用应用", Toast.LENGTH_SHORT).show();
-                finish();
-            }
-        }
-    }
-
-    private void createTestFile() {
-        File testFile = new File(currentDirectory, "测试文件.txt");
-        try {
-            if (testFile.createNewFile()) {
-                FileOutputStream fos = new FileOutputStream(testFile);
-                fos.write("这是一个测试文件\n支持多行编辑哦～".getBytes());
-                fos.close();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "创建测试文件失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void showFileOptions(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = {"重命名", "删除"};
-        builder.setItems(options, (dialog, which) -> {
-            if (which == 0) {
-                renameFile(file);
-            } else {
-                deleteFile(file);
-            }
-        });
-        builder.show();
-    }
-
-    private void renameFile(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("重命名");
-
-        final EditText input = new EditText(this);
-        String originalName = file.getName();
-        if (file.isFile() && originalName.endsWith(".txt")) {
-            originalName = originalName.substring(0, originalName.lastIndexOf("."));
-        }
-        input.setText(originalName);
-        builder.setView(input);
-
-        builder.setPositiveButton("确认", (dialog, which) -> {
-            String newName = input.getText().toString().trim();
-            if (newName.isEmpty()) {
-                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            if (file.isFile() && !newName.endsWith(".txt")) {
-                newName += ".txt";
-            }
-
-            File newFile = new File(file.getParentFile(), newName);
-            if (newFile.exists()) {
-                Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            if (file.renameTo(newFile)) {
-                Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
-                loadFileList();
-            } else {
-                Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        builder.setNegativeButton("取消", null);
-        builder.show();
-    }
-
-    private void deleteFile(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("确认删除")
-                .setMessage("确定要删除 " + file.getName() + " 吗？")
-                .setPositiveButton("删除", (dialog, which) -> {
-                    if (deleteRecursive(file)) {
-                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
-                        loadFileList();
-                    } else {
-                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private boolean deleteRecursive(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    deleteRecursive(child);
-                }
-            }
-        }
-        return file.delete();
-    }
-
-    @Deprecated
-    private void openFileEditor(File file) {
-        Toast.makeText(this, "打开文件: " + file.getName(), Toast.LENGTH_SHORT).show();
-    }
-
-    // 点击外部清除搜索框焦点
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-            View v = getCurrentFocus();
-            if (v instanceof EditText && v.getId() == R.id.et_search) {
-                Rect outRect = new Rect();
-                v.getGlobalVisibleRect(outRect);
-                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
-                    v.clearFocus();
-                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                    if (imm != null) {
-                        imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
-                    }
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev);
     }
 }

@@ -19,4 +19,8 @@
     <color name="titleBarBg">#FFFFFF</color>
 
 
+    <color name="zipColor">#EBA887EB</color>    <!-- ZIP文件背景色（浅橙） -->
+
+
+
 </resources>
