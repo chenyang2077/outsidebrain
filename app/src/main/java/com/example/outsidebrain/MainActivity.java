@@ -425,14 +425,20 @@ public class MainActivity extends AppCompatActivity {
 
     // 创建测试TXT文件（带目录标识）
     private void createTestFile() {
-        File testFile = new File(currentDirectory, "测试文件-25-09-20.txt"); // 带时间戳
+        File testFile = new File(currentDirectory, "使用说明-25-09-20.txt"); // 带时间戳
         try {
             if (testFile.createNewFile()) {
-                // 生成相对根目录的路径（根目录下为“根目录”）
+                // 生成相对根目录的路径
                 String dirPath = getRelativeDirPath(currentDirectory, ROOT_FOLDER_NAME);
-                dirPath = TextUtils.isEmpty(dirPath) ? "根目录" : dirPath;
-                // 拼接内容（标识+测试内容）
-                String content = "{" + dirPath + "}\n这是一个测试文件\n支持多行编辑哦～";
+                // 拼接内容（仅非根目录添加路径标识）
+                String content;
+                if (TextUtils.isEmpty(dirPath)) {
+                    // 根目录：不添加路径标识
+                    content = "从屏幕左边缘向右划返回或退出。\n左上角添加新文件夹，可无限套娃。\n右下角加号可以新增文件夹。\n长按文件或者文件夹可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n单击压缩文件解压文件\n";
+                } else {
+                    // 子目录：添加路径标识
+                    content = "{" + dirPath + "}\n从屏幕左边缘向右划返回或退出。\n左上角添加新文件夹，可无限套娃。\n右下角加号可以新增文件夹。\n长按文件或者文件夹可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n单击压缩文件解压文件\n";
+                }
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes());
                 fos.close();
@@ -742,10 +748,11 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
-    // 文件列表适配器（核心修改：ZIP单击解压，TXT单击传递完整路径）
+    // 文件列表适配器（ZIP单击解压、TXT单击编辑、圆角背景）
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
+        // 设置列表数据
         public void setData(List<File> newData) {
             if (newData != null) {
                 mData.clear();
@@ -754,6 +761,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        // 创建ViewHolder
         @NonNull
         @Override
         public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -762,29 +770,30 @@ public class MainActivity extends AppCompatActivity {
             return new FileViewHolder(itemView);
         }
 
+        // 绑定数据到ViewHolder
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 设置图标和背景色（ZIP复用文件图标，区分颜色）
+            // 按文件类型设置圆角背景和图标
             if (file.isDirectory()) {
+                holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
-                holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_file); // ZIP复用TXT图标
+                holder.ivIcon.setImageResource(R.drawable.ic_file);
                 if (file.getName().toLowerCase().endsWith(".zip")) {
-                    holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor));
+                    holder.itemView.setBackgroundResource(R.drawable.item_zip_rounded_bg);
                 } else {
-                    holder.itemView.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.fileColor));
+                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 }
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 显示文件名（TXT列表隐藏时间戳和后缀，ZIP显示完整名称）
+            // 显示文件名（TXT隐藏时间戳和后缀，ZIP显示完整名称）
             holder.tvName.setText(getDisplayName(file));
 
-            // 点击事件：区分文件类型
+            // 点击事件
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
@@ -792,19 +801,19 @@ public class MainActivity extends AppCompatActivity {
                     currentDirectory = file;
                     loadFileList();
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // TXT单击：跳转编辑页（传递完整路径，用于显示全名）
+                    // 跳转TXT编辑页
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                    editIntent.putExtra("file_path", file.getAbsolutePath()); // 传递完整路径
+                    editIntent.putExtra("file_path", file.getAbsolutePath());
                     editIntent.putExtra("is_pre_edit", false);
                     editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    // ZIP单击：显示解压对话框（单独逻辑，替代长按）
+                    // 显示ZIP解压对话框
                     showZipExtractDialog(file);
                 }
             });
 
-            // 长按事件：区分文件夹和文件（保持原有逻辑）
+            // 长按事件
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
@@ -815,11 +824,13 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+        // 获取列表项数量
         @Override
         public int getItemCount() {
             return mData.size();
         }
 
+        // ViewHolder：持有列表项控件
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;

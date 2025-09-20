@@ -278,9 +278,17 @@ public class FileEditorActivity extends AppCompatActivity {
                 if (targetFile.createNewFile()) {
                     // 生成目录标识（相对根目录的路径）
                     String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
-                    dirPath = TextUtils.isEmpty(dirPath) ? "根目录" : dirPath;
-                    // 拼接标识（{路径} + 换行 + 用户内容）
-                    String finalContent = "{" + dirPath + "}\n" + content;
+
+                    // 拼接标识拼接逻辑：根目录不添加标识，子目录添加
+                    String finalContent;
+                    if (TextUtils.isEmpty(dirPath)) {
+                        // 根目录：直接使用用户内容，不添加路径标识
+                        finalContent = content;
+                    } else {
+                        // 子目录：添加路径标识
+                        finalContent = "{" + dirPath + "}\n" + content;
+                    }
+
                     // 写入文件
                     writeFileContent(targetFile, finalContent);
 
