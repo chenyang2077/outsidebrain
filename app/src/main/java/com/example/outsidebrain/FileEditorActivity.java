@@ -208,14 +208,15 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // 加载标题（去除.txt后缀）
+        // 加载标题（去除时间戳和.txt后缀）
         String fileName = targetFile.getName();
+        fileName = MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
         if (fileName.endsWith(".txt")) {
             fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
         etFileName.setText(fileName);
 
-        // 加载文件内容
+        // 加载文件内容（保留原有标识，不做处理）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
@@ -255,30 +256,45 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
-    // 自动保存TXT文件逻辑（原有功能保留）
+    // 自动保存TXT文件逻辑（核心修改：创建时添加目录标识）
     private void autoSave() {
         if (isSaved) return;
 
         String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString().trim();
+        // 获取根文件夹名称（从MainActivity传递）
+        String rootFolderName = getIntent().getStringExtra("root_folder_name");
+        if (rootFolderName == null) rootFolderName = "外置大脑";
 
-        // 预编辑状态（新建文件）
+        // 生成文件名时间戳（格式：-yy-MM-dd）
+        String fileTimestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
+
         if (isPreEdit) {
+            // 预编辑状态（新建文件）
             if (inputTitle.isEmpty() && content.isEmpty()) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
 
-            // 生成最终标题
+            // 生成最终标题（去除旧时间戳）
             String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
-            String timestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
-            targetFile = getUniqueFile(currentDir, finalTitle, timestamp);
+            finalTitle = removeOldTimestamp(finalTitle);
 
-            // 创建文件并写入内容
+            // 生成文件保存路径
+            targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp);
+
             try {
                 if (targetFile.createNewFile()) {
-                    writeFileContent(targetFile, content);
+                    // 核心：生成目录标识（相对根目录的路径）
+                    String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
+                    // 根目录下路径为空，显示为“根目录”
+                    dirPath = TextUtils.isEmpty(dirPath) ? "根目录" : dirPath;
+                    // 拼接标识（{路径} + 换行 + 用户内容）
+                    String finalContent = "{" + dirPath + "}\n" + content;
+                    // 写入文件
+                    writeFileContent(targetFile, finalContent);
+
                     isSaved = true;
                     Toast.makeText(this, "文件创建成功：" + targetFile.getName(), Toast.LENGTH_SHORT).show();
                     setResult(RESULT_REFRESH);
@@ -290,17 +306,17 @@ public class FileEditorActivity extends AppCompatActivity {
                 e.printStackTrace();
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
-        }
-        // 已有文件（编辑文件）
-        else {
+        } else {
+            // 已有文件（编辑文件，保留原有标识，只更新内容）
             if (targetFile == null) return;
 
-            // 处理重命名
+            // 处理标题重命名
             String inputTitleTrimmed = inputTitle.trim();
             String originalTitle = targetFile.getName().replace(".txt", "");
+            originalTitle = removeOldTimestamp(originalTitle);
+
             if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
-                String timestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
-                File newFile = getUniqueFile(targetFile.getParentFile(), inputTitleTrimmed, timestamp);
+                File newFile = getUniqueFile(targetFile.getParentFile(), inputTitleTrimmed, fileTimestamp);
                 if (targetFile.renameTo(newFile)) {
                     targetFile = newFile;
                 } else {
@@ -308,7 +324,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 更新内容
+            // 直接写入用户编辑的内容（保留原有标识）
             writeFileContent(targetFile, content);
             isSaved = true;
             Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
@@ -338,6 +354,11 @@ public class FileEditorActivity extends AppCompatActivity {
     private String getContentSubtitle(String content) {
         if (content.isEmpty()) return "无内容文件";
         return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
+    }
+
+    // 移除旧时间戳（用于标题重命名）
+    private String removeOldTimestamp(String fileName) {
+        return MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }
 
     // 写入TXT文件内容

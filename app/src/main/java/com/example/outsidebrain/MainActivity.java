@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -58,6 +59,8 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
     private static final String ROOT_FOLDER_NAME = "外置大脑"; // 根文件夹名称
+    // 正则：匹配文件名中的时间戳（格式：-yy-MM-dd）
+    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{2}-\\d{2}-\\d{2}");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,7 +166,7 @@ public class MainActivity extends AppCompatActivity {
         return levelPath;
     }
 
-    // 跳转至文件预编辑页面
+    // 跳转至文件预编辑页面（传递根文件夹名称，用于计算相对路径）
     private void startFilePreEdit() {
         if (currentDirectory == null) {
             Toast.makeText(this, "目录未初始化，请稍后重试", Toast.LENGTH_SHORT).show();
@@ -173,6 +176,7 @@ public class MainActivity extends AppCompatActivity {
         Intent preEditIntent = new Intent(MainActivity.this, FileEditorActivity.class);
         preEditIntent.putExtra("current_dir_path", currentDirectory.getAbsolutePath());
         preEditIntent.putExtra("is_pre_edit", true);
+        preEditIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME); // 传递根文件夹名称
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
@@ -181,7 +185,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
-            loadFileList(); // 压缩/分享后刷新列表
+            loadFileList(); // 压缩/分享/创建后刷新列表
         }
     }
 
@@ -415,13 +419,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建测试TXT文件
+    // 创建测试TXT文件（带目录标识）
     private void createTestFile() {
         File testFile = new File(currentDirectory, "测试文件.txt");
         try {
             if (testFile.createNewFile()) {
+                // 生成相对根目录的路径（根目录下为“根目录”）
+                String dirPath = getRelativeDirPath(currentDirectory, ROOT_FOLDER_NAME);
+                dirPath = TextUtils.isEmpty(dirPath) ? "根目录" : dirPath;
+                // 拼接内容（标识+测试内容）
+                String content = "{" + dirPath + "}\n这是一个测试文件\n支持多行编辑哦～";
                 FileOutputStream fos = new FileOutputStream(testFile);
-                fos.write("这是一个测试文件\n支持多行编辑哦～".getBytes());
+                fos.write(content.getBytes());
                 fos.close();
             }
         } catch (IOException e) {
@@ -430,17 +439,34 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 获取文件显示名称（TXT隐藏后缀，ZIP保留后缀）
+    // 核心1：获取文件显示名称（TXT隐藏时间戳和后缀，ZIP显示完整名称含.zip）
     private String getDisplayName(File file) {
         if (file.isDirectory()) return file.getName();
 
         String fileName = file.getName();
         if (fileName.endsWith(".txt")) {
+            // TXT文件：先去除时间戳，再去除后缀
+            fileName = FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
             return fileName.substring(0, fileName.lastIndexOf("."));
         } else if (fileName.endsWith(".zip")) {
-            return fileName; // ZIP保留完整名称（含后缀）
+            // ZIP文件：显示完整名称（含后缀，保留时间戳）
+            return fileName;
         }
         return fileName;
+    }
+
+    // 核心2：计算当前目录相对于根目录的路径（静态方法，供FileEditorActivity调用）
+    public static String getRelativeDirPath(File dir, String rootName) {
+        List<String> pathSegments = new ArrayList<>();
+        File current = dir;
+        // 从当前目录向上追溯，直到根目录“外置大脑”
+        while (current != null && !current.getName().equals(rootName)) {
+            pathSegments.add(current.getName());
+            current = current.getParentFile();
+        }
+        // 反转列表，生成从根到当前的路径（如：文件夹2 → 文件夹2.2 → 路径为“文件夹2/文件夹2.2”）
+        Collections.reverse(pathSegments);
+        return String.join("/", pathSegments);
     }
 
     // 文件夹长按选项（重命名/删除/压缩为ZIP）
@@ -662,7 +688,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 显示文件名（TXT隐藏后缀，ZIP保留后缀）
+            // 显示文件名（TXT隐藏时间戳和后缀，ZIP显示完整名称含.zip）
             holder.tvName.setText(getDisplayName(file));
 
             // 点击事件
@@ -673,10 +699,11 @@ public class MainActivity extends AppCompatActivity {
                     currentDirectory = file;
                     loadFileList();
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // 打开TXT编辑
+                    // 打开TXT编辑（传递根文件夹名称）
                     Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
                     editIntent.putExtra("file_path", file.getAbsolutePath());
                     editIntent.putExtra("is_pre_edit", false);
+                    editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
                     startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     // ZIP文件点击：显示操作选项
