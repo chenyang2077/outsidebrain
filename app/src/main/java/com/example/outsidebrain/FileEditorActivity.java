@@ -256,20 +256,24 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     // 自动保存TXT文件逻辑
+    // 在FileEditorActivity的autoSave方法中修改以下部分：
+
     private void autoSave() {
         if (isSaved) return;
 
         String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString().trim();
-        // 获取根文件夹名称
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
+        // 新增：获取是否为根目录的标记
+        boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
+
         if (rootFolderName == null) rootFolderName = "外置大脑";
 
         // 生成文件名时间戳
         String fileTimestamp = FILE_NAME_TIMESTAMP.format(new Date());
 
         if (isPreEdit) {
-            // 首次创建文件：无时间戳
+            // 首次创建文件
             if (inputTitle.isEmpty() && content.isEmpty()) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
@@ -279,6 +283,7 @@ public class FileEditorActivity extends AppCompatActivity {
             String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
 
+            // 生成唯一文件路径
             targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp);
 
             try {
@@ -286,54 +291,73 @@ public class FileEditorActivity extends AppCompatActivity {
                     String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
                     String finalContent;
 
-                    if (TextUtils.isEmpty(dirPath)) {
+                    // 根目录文件不添加路径标识
+                    if (isRootDirectory) {
                         finalContent = content;
                     } else {
-                        finalContent = "【" + dirPath + "】\n" + content;
+                        finalContent = TextUtils.isEmpty(dirPath) ? content : "【" + dirPath + "】\n" + content;
                     }
 
+                    // 写入内容
                     writeFileContent(targetFile, finalContent);
                     isSaved = true;
-                    Toast.makeText(this, "文件创建成功：" + targetFile.getName(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "文件创建成功（路径：" + targetFile.getAbsolutePath() + "）", Toast.LENGTH_SHORT).show();
                     setResult(RESULT_REFRESH);
                     finish();
                 } else {
-                    Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "创建文件失败（路径：" + targetFile.getAbsolutePath() + "）", Toast.LENGTH_SHORT).show();
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "创建异常（路径：" + targetFile.getAbsolutePath() + "）：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         } else {
-            // 已有文件：追加时间戳（不修改原有）
+            // 已有文件修改
             if (targetFile == null) return;
 
-            // 处理标题重命名
             String inputTitleTrimmed = inputTitle.trim();
             String originalTitle = targetFile.getName().replace(".txt", "");
 
+            // 标题变更时，执行重命名并更新路径
             if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
                 String newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp;
                 File newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
+
+                // 处理新路径重名
+                int counter = 1;
+                while (newFile.exists()) {
+                    newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp + "(" + counter + ")";
+                    newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
+                    counter++;
+                }
+
+                // 执行重命名，同步更新targetFile路径
                 if (targetFile.renameTo(newFile)) {
-                    targetFile = newFile;
+                    targetFile = newFile; // 更新为新路径
+                    Toast.makeText(this, "文件重命名成功（新路径：" + targetFile.getAbsolutePath() + "）", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "重命名失败（原路径：" + targetFile.getAbsolutePath() + "）", Toast.LENGTH_SHORT).show();
                 }
             }
 
-            // 核心修改：追加时间戳（不修改原有，同一天不重复）
-            String finalContent = addContentTimestamp(content);
+            // 根目录文件不添加时间戳，子目录文件正常添加
+            String finalContent;
+            if (isRootDirectory) {
+                finalContent = content;
+            } else {
+                finalContent = addContentTimestamp(content);
+            }
 
             writeFileContent(targetFile, finalContent);
             isSaved = true;
-            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "文件更新成功（当前路径：" + targetFile.getAbsolutePath() + "）", Toast.LENGTH_SHORT).show();
             setResult(RESULT_REFRESH);
             finish();
         }
 
         hideSoftInput();
     }
+
 
     // 4. 【核心修改】时间戳从内容前换到内容后，保留“同一天只加一次”逻辑
     private String addContentTimestamp(String originalContent) {

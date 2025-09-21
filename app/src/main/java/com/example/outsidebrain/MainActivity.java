@@ -3,8 +3,6 @@ package com.example.outsidebrain;
 import android.Manifest;
 import android.content.DialogInterface;
 import android.net.Uri;
-import com.example.outsidebrain.ZipUnzipUtil;
-import androidx.core.content.FileProvider;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -46,10 +44,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -63,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private List<File> fileList;
     private List<File> searchResultList;
     private File currentDirectory;
+    private File rootDirectory; // 新增：根目录引用
     private EditText etSearch;
     private Button btnSearch;
     private boolean isInSearchMode = false;
@@ -72,10 +73,16 @@ public class MainActivity extends AppCompatActivity {
     // 正则：匹配文件名中的时间戳（格式：-yy-MM-dd）
     public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{2}-\\d{2}-\\d{2}");
 
-    // ---------------------- 新增：复制粘贴核心变量（保持原有逻辑） ----------------------
-    private File copiedFile;          // 存储被复制/剪切的文件/文件夹
-    private boolean isCutOperation;   // 标记是剪切（true）还是复制（false）
-    private View pasteButton;        // 粘贴按钮实例
+    // 匹配 TXT 中【】包裹的路径（如【文件夹1/文件夹2】）
+    private static final Pattern FILE_PATH_PATTERN = Pattern.compile("【([^】]*)】");
+
+    // 新增：匹配内容中的时间戳（格式：(yyyy-MM-dd)）
+    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)");
+
+    // 复制粘贴核心变量
+    private File copiedFile;
+    private boolean isCutOperation;
+    private View pasteButton;
 
 
     @Override
@@ -102,7 +109,7 @@ public class MainActivity extends AppCompatActivity {
         // 权限检查与初始化
         checkPermission();
 
-        // 搜索按钮点击事件（添加：点击搜索时隐藏粘贴按钮）
+        // 搜索按钮点击事件
         btnSearch.setOnClickListener(v -> {
             hidePasteButton();
             performSearch();
@@ -124,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(android.text.Editable s) {}
         });
 
-        // 搜索框点击事件（添加：点击输入框时隐藏粘贴按钮）
+        // 搜索框点击事件
         etSearch.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 hidePasteButton();
@@ -132,7 +139,7 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        // 按钮功能配置（添加：点击时隐藏粘贴按钮）
+        // 按钮功能配置
         preEditFileBtn.setOnClickListener(v -> {
             hidePasteButton();
             startFilePreEdit();
@@ -143,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 更新层级作为搜索框hint（保持不变）
+    // 更新层级作为搜索框hint
     private void updateLevelHint() {
         if (currentDirectory == null) return;
 
@@ -158,7 +165,7 @@ public class MainActivity extends AppCompatActivity {
         etSearch.setHint(levelStr.toString());
     }
 
-    // 计算文件夹层级路径（保持不变）
+    // 计算文件夹层级路径
     private List<Integer> getLevelPath(File file) {
         List<Integer> levelPath = new ArrayList<>();
         File current = file;
@@ -199,8 +206,7 @@ public class MainActivity extends AppCompatActivity {
         return levelPath;
     }
 
-    // 跳转至文件预编辑页面（保持不变）
-    // 在MainActivity中找到startFilePreEdit方法，确保参数正确传递
+    // 跳转至文件预编辑页面
     private void startFilePreEdit() {
         if (currentDirectory == null) {
             Toast.makeText(this, "目录未初始化，请稍后重试", Toast.LENGTH_SHORT).show();
@@ -211,14 +217,12 @@ public class MainActivity extends AppCompatActivity {
         preEditIntent.putExtra("current_dir_path", currentDirectory.getAbsolutePath());
         preEditIntent.putExtra("is_pre_edit", true); // 标记为新建文件
         preEditIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+        // 新增：传递是否为根目录
+        preEditIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
-    // 调整getDisplayName方法，确保列表中正确显示文件名（隐藏时间戳）
-
-
-
-    // 接收编辑页面返回结果（添加：返回时隐藏粘贴按钮）
+    // 接收编辑页面返回结果
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -228,13 +232,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 搜索逻辑（保持不变）
-    // 替换原有的isContentContainKeyword方法，不要新增
+    // 搜索内容匹配逻辑
     private boolean isContentContainKeyword(File file, String keyword) {
         if (file.getName().toLowerCase().endsWith(".zip")) return false;
 
         try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
+                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
                 // 过滤【】及其中间内容后再判断
@@ -249,7 +252,7 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    // performSearch方法保持不变（调用上面的方法）
+    // 执行搜索
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
         etSearch.clearFocus();
@@ -276,8 +279,7 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-
-    // 递归搜索（保持不变）
+    // 递归搜索
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
 
@@ -300,48 +302,45 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 检查是否为支持的文件类型（保持不变）
+    // 检查是否为支持的文件类型
     private boolean isSupportedFile(File file) {
         String fileName = file.getName().toLowerCase();
         return fileName.endsWith(".txt") || fileName.endsWith(".zip");
     }
 
-    // 检查文件内容是否包含关键词（保持不变）
-
-
-    // ---------------------- 修改：搜索结果排序（ZIP 在 TXT 前面） ----------------------
+    // 搜索结果排序（ZIP 在 TXT 前面）
     private void sortSearchResult() {
         if (searchResultList.isEmpty()) return;
 
         List<File> folders = new ArrayList<>();
-        List<File> zipFiles = new ArrayList<>();  // 先定义ZIP集合
-        List<File> txtFiles = new ArrayList<>();  // 后定义TXT集合
+        List<File> zipFiles = new ArrayList<>();
+        List<File> txtFiles = new ArrayList<>();
 
         for (File f : searchResultList) {
             if (f.isDirectory()) {
                 folders.add(f);
             } else if (f.getName().toLowerCase().endsWith(".zip")) {
-                zipFiles.add(f);  // ZIP文件加入ZIP集合
+                zipFiles.add(f);
             } else if (f.getName().toLowerCase().endsWith(".txt")) {
-                txtFiles.add(f);  // TXT文件加入TXT集合
+                txtFiles.add(f);
             }
         }
 
-        // 排序逻辑不变，调整添加顺序：文件夹 → ZIP → TXT
         Collections.sort(folders, Comparator.comparing(File::getName));
         Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
         searchResultList.clear();
         searchResultList.addAll(folders);
-        searchResultList.addAll(zipFiles);  // ZIP排在TXT前面
+        searchResultList.addAll(zipFiles);
         searchResultList.addAll(txtFiles);
     }
 
-    // 初始化根文件夹（保持不变）
+    // 初始化根文件夹
     private void initExternalBrain() {
         File sdCard = Environment.getExternalStorageDirectory();
-        currentDirectory = new File(sdCard, ROOT_FOLDER_NAME);
+        rootDirectory = new File(sdCard, ROOT_FOLDER_NAME); // 初始化根目录引用
+        currentDirectory = rootDirectory;
 
         if (!currentDirectory.exists()) {
             if (currentDirectory.mkdirs()) {
@@ -358,37 +357,39 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        // 新增：修正根目录中已存在的文件（移除路径和时间戳）
+        batchCorrectTxtFilepaths(currentDirectory);
+
         loadFileList();
         updateLevelHint();
     }
 
-    // ---------------------- 修改：加载文件列表（ZIP 在 TXT 前面） ----------------------
+    // 加载文件列表（ZIP 在 TXT 前面）
     private void loadFileList() {
         fileList.clear();
 
         File[] files = currentDirectory.listFiles();
         if (files != null) {
             List<File> folders = new ArrayList<>();
-            List<File> zipFiles = new ArrayList<>();  // 先定义ZIP集合
-            List<File> txtFiles = new ArrayList<>();  // 后定义TXT集合
+            List<File> zipFiles = new ArrayList<>();
+            List<File> txtFiles = new ArrayList<>();
 
             for (File file : files) {
                 if (file.isDirectory()) {
                     folders.add(file);
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    zipFiles.add(file);  // ZIP文件加入ZIP集合
+                    zipFiles.add(file);
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    txtFiles.add(file);  // TXT文件加入TXT集合
+                    txtFiles.add(file);
                 }
             }
 
-            // 排序逻辑不变，调整添加顺序：文件夹 → ZIP → TXT
             Collections.sort(folders, Comparator.comparing(File::getName));
             Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);
-            fileList.addAll(zipFiles);  // ZIP排在TXT前面
+            fileList.addAll(zipFiles);
             fileList.addAll(txtFiles);
         }
 
@@ -401,7 +402,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 返回键逻辑（添加：退出搜索时隐藏粘贴按钮，切换文件夹不隐藏）
+    // 返回键逻辑
     @Override
     public void onBackPressed() {
         if (isInSearchMode) {
@@ -410,18 +411,17 @@ public class MainActivity extends AppCompatActivity {
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
-            hidePasteButton(); // 退出搜索时隐藏
+            hidePasteButton();
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
             loadFileList();
-            // 切换文件夹不隐藏粘贴按钮
         } else {
             super.onBackPressed();
         }
     }
 
-    // 新建文件夹对话框（保持不变）
+    // 新建文件夹对话框
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("新建文件夹");
@@ -453,7 +453,7 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    // 创建文件夹（保持不变）
+    // 创建文件夹
     private void createFolder(String name) {
         File newFolder = new File(currentDirectory, name);
         if (newFolder.exists()) {
@@ -469,24 +469,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 创建测试TXT文件（保持不变）
+    // 创建测试TXT文件
     private void createTestFile() {
-        File testFile = new File(currentDirectory, "使用说明与注意事项-25-09-20.txt"); // 带时间戳
+        File testFile = new File(currentDirectory, "使用说明与注意事项-25-09-20.txt");
         try {
             if (testFile.createNewFile()) {
-                // 生成相对根目录的路径
-                String dirPath = getRelativeDirPath(currentDirectory, ROOT_FOLDER_NAME);
-                // 拼接内容（仅非根目录添加路径标识）
-                String content;
-                if (TextUtils.isEmpty(dirPath)) {
-                    // 根目录：不添加路径标识
-                    content = "此文件编辑软件会自动增加文件路径和每次修改的时间戳，传输文件过程中可能会暴露隐私。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
-                } else {
-                    // 子目录：添加路径标识
-                    content = "【" + dirPath + "】\n\n此文件编辑软件会自动增加文件路径和每次修改的时间戳，传输文件过程中可能会暴露隐私。\n\n从屏幕左边缘向右划返回或退出。\\n\\n左上角添加新文件夹，可文件夹内创建文件夹。\\n\\n搜索功能只能搜索到当前文件夹里的内容。\\n\\n右下角加号可以新增TXT文件。\\n\\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\\n\\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\\n\\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\\n\\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
-                }
+                // 生成内容（根目录不添加路径标识）
+                String content = "此文件编辑软件会自动增加文件路径和每次修改的时间戳，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
+
                 FileOutputStream fos = new FileOutputStream(testFile);
-                fos.write(content.getBytes());
+                fos.write(content.getBytes(StandardCharsets.UTF_8));
                 fos.close();
             }
         } catch (IOException e) {
@@ -495,7 +487,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 获取文件显示名称（保持不变）
+    // 获取文件显示名称
     private String getDisplayName(File file) {
         if (file.isDirectory()) return file.getName();
 
@@ -511,7 +503,7 @@ public class MainActivity extends AppCompatActivity {
         return fileName;
     }
 
-    // 计算当前目录相对于根目录的路径（保持不变）
+    // 计算当前目录相对于根目录的路径
     public static String getRelativeDirPath(File dir, String rootName) {
         List<String> pathSegments = new ArrayList<>();
         File current = dir;
@@ -520,12 +512,12 @@ public class MainActivity extends AppCompatActivity {
             pathSegments.add(current.getName());
             current = current.getParentFile();
         }
-        // 反转列表，生成从根到当前的路径（如：文件夹2 → 文件夹2.2 → 路径为“文件夹2/文件夹2.2”）
+        // 反转列表，生成从根到当前的路径
         Collections.reverse(pathSegments);
         return String.join("/", pathSegments);
     }
 
-    // ZIP文件单击事件 - 显示解压对话框（添加：解压时隐藏粘贴按钮）
+    // ZIP文件单击事件 - 显示解压对话框（解压后修正路径）
     private void showZipExtractDialog(File zipFile) {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -533,17 +525,21 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        // 替换为新的解压工具类方法
+                        // 解压文件
                         boolean result = ZipUnzipUtil.unzipToCurrentDir(
                                 zipFile.getAbsolutePath(),
                                 currentDirectory.getAbsolutePath()
                         );
                         runOnUiThread(() -> {
                             if (result) {
-                                Toast.makeText(MainActivity.this, "解压成功", Toast.LENGTH_SHORT).show();
-                                loadFileList(); // 解压后刷新列表
+                                Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
+                                // 解压成功后批量修正路径
+                                new Thread(() -> {
+                                    batchCorrectTxtFilepaths(currentDirectory);
+                                    runOnUiThread(this::loadFileList);
+                                }).start();
                             } else {
-                                Toast.makeText(MainActivity.this, "解压失败", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
                             }
                         });
                     }).start();
@@ -552,25 +548,21 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ZIP解压逻辑（保持不变）
+    // ZIP解压逻辑
     private boolean extractZip(File zipFile, File targetDir) {
         try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))) {
             ZipEntry entry;
-            byte[] buffer = new byte[1024 * 4]; // 4KB缓冲
+            byte[] buffer = new byte[1024 * 4];
 
             while ((entry = zis.getNextEntry()) != null) {
-                // 生成解压后的目标文件/文件夹路径
                 File entryFile = new File(targetDir, entry.getName());
-                // 处理重名：生成不重复的路径
                 entryFile = getUniqueExtractFile(entryFile);
 
                 if (entry.isDirectory()) {
-                    // 是文件夹：创建（含父目录）
                     if (!entryFile.mkdirs()) {
                         return false;
                     }
                 } else {
-                    // 是文件：创建父目录并写入内容
                     File parentDir = entryFile.getParentFile();
                     if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
                         return false;
@@ -583,7 +575,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 }
-                zis.closeEntry(); // 关闭当前条目
+                zis.closeEntry();
             }
             return true;
         } catch (IOException e) {
@@ -592,7 +584,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 处理解压重名（保持不变）
+    // 处理解压重名
     private File getUniqueExtractFile(File targetFile) {
         if (!targetFile.exists()) return targetFile;
 
@@ -601,13 +593,11 @@ public class MainActivity extends AppCompatActivity {
         String extension = "";
         int dotIndex = name.lastIndexOf(".");
 
-        // 分离文件名和后缀（如“文档.txt” → 名称“文档”，后缀“.txt”）
         if (dotIndex != -1) {
             extension = name.substring(dotIndex);
             name = name.substring(0, dotIndex);
         }
 
-        // 循环生成不重复名称（如“文档(1).txt”“文档(2).txt”）
         int counter = 1;
         File uniqueFile;
         do {
@@ -619,11 +609,10 @@ public class MainActivity extends AppCompatActivity {
         return uniqueFile;
     }
 
-    // ---------------------- 修改：文件夹长按选项（新增复制/剪切） ----------------------
+    // 文件夹长按选项
     private void showFolderOptions(File folder) {
-        hidePasteButton(); // 长按弹出选项时隐藏粘贴按钮
+        hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        // 新增“复制”“剪切”选项，保持原有款式
         String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
@@ -634,12 +623,12 @@ public class MainActivity extends AppCompatActivity {
                     deleteFile(folder);
                     break;
                 case 2:
-                    zipFolder(folder); // 调用压缩逻辑
+                    zipFolder(folder);
                     break;
-                case 3: // 复制文件夹
+                case 3:
                     copyFileOrFolder(folder, false);
                     break;
-                case 4: // 剪切文件夹
+                case 4:
                     copyFileOrFolder(folder, true);
                     break;
             }
@@ -647,11 +636,10 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // ---------------------- 修改：文件长按选项（新增复制/剪切） ----------------------
+    // 文件长按选项
     private void showFileOptions(File file) {
-        hidePasteButton(); // 长按弹出选项时隐藏粘贴按钮
+        hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        // 新增“复制”“剪切”选项，保持原有款式
         String[] options = {"重命名", "删除", "分享", "复制", "剪切"};
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
@@ -662,12 +650,12 @@ public class MainActivity extends AppCompatActivity {
                     deleteFile(file);
                     break;
                 case 2:
-                    shareFile(file); // 调用分享逻辑
+                    shareFile(file);
                     break;
-                case 3: // 复制文件
+                case 3:
                     copyFileOrFolder(file, false);
                     break;
-                case 4: // 剪切文件
+                case 4:
                     copyFileOrFolder(file, true);
                     break;
             }
@@ -675,7 +663,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 压缩文件夹（保持不变）
+    // 压缩文件夹
     private void zipFolder(File folder) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_ZIP_FOLDER", true);
@@ -683,7 +671,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 分享文件（保持不变）
+    // 分享文件
     private void shareFile(File file) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_SHARE_FILE", true);
@@ -691,7 +679,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 重命名文件/文件夹（保持不变）
+    // 重命名文件/文件夹
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
@@ -707,7 +695,6 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // 保留文件后缀
             if (file.isFile()) {
                 if (file.getName().endsWith(".txt") && !newName.endsWith(".txt")) {
                     newName += ".txt";
@@ -734,7 +721,7 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // 删除文件/文件夹（保持不变）
+    // 删除文件/文件夹
     private void deleteFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("确认删除")
@@ -751,7 +738,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 递归删除文件夹（保持不变）
+    // 递归删除文件夹
     private boolean deleteRecursive(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -764,7 +751,7 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
-    // 权限检查（保持不变）
+    // 权限检查
     private void checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -781,7 +768,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 权限申请结果（保持不变）
+    // 权限申请结果
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -795,7 +782,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 点击外部清除搜索框焦点（保持不变）
+    // 点击外部清除搜索框焦点
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
@@ -815,12 +802,7 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
-    // ---------------------- 新增：复制/剪切核心方法（保持原有逻辑） ----------------------
-    /**
-     * 复制或剪切文件/文件夹
-     * @param target 目标文件/文件夹
-     * @param isCut 是否为剪切操作（true=剪切，false=复制）
-     */
+    // 复制或剪切文件/文件夹
     private void copyFileOrFolder(File target, boolean isCut) {
         if (target == null || !target.exists()) {
             Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
@@ -828,44 +810,38 @@ public class MainActivity extends AppCompatActivity {
         }
         copiedFile = target;
         isCutOperation = isCut;
-        showPasteButton(); // 显示搜索按钮旁的粘贴按钮
+        showPasteButton();
         String tip = isCut ? "已剪切：" : "已复制：";
         Toast.makeText(this, tip + getDisplayName(target), Toast.LENGTH_SHORT).show();
     }
 
-    // ---------------------- 新增：显示搜索按钮旁的粘贴按钮（核心修改） ----------------------
+    // 显示粘贴按钮
     private void showPasteButton() {
-        // 先移除已存在的粘贴按钮，避免重复
         if (pasteButton != null && pasteButton.getParent() != null) {
             ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
         }
 
-        // 加载粘贴按钮布局（与搜索按钮样式统一）
         pasteButton = LayoutInflater.from(this).inflate(R.layout.paste_button, null);
         Button btnPaste = pasteButton.findViewById(R.id.btn_paste);
         btnPaste.setOnClickListener(v -> performPaste());
 
-        // 添加到搜索按钮旁的容器（R.id.paste_container）
         FrameLayout pasteContainer = findViewById(R.id.paste_container);
-        pasteContainer.removeAllViews(); // 清除旧视图
+        pasteContainer.removeAllViews();
         pasteContainer.addView(pasteButton);
     }
 
-    // ---------------------- 新增：隐藏粘贴按钮（保持原有消失逻辑） ----------------------
+    // 隐藏粘贴按钮
     private void hidePasteButton() {
         if (pasteButton != null && pasteButton.getParent() != null) {
             ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
         }
-        // 清除复制/剪切状态
         copiedFile = null;
         isCutOperation = false;
         pasteButton = null;
     }
 
-    // ---------------------- 新增：执行粘贴操作（保持原有逻辑） ----------------------
-    // 修正后的执行粘贴操作方法
+    // 执行粘贴操作（粘贴后修正路径）
     private void performPaste() {
-        // 校验状态
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
             hidePasteButton();
@@ -877,25 +853,18 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. 解决targetFile作用域问题：在子线程外定义基础路径
         final File baseTargetFile = new File(currentDirectory, copiedFile.getName());
-        // 处理重名：生成不重复路径
         final File finalTargetFile = getUniqueExtractFile(baseTargetFile);
 
-        // 2. 子线程执行文件操作（避免UI阻塞）
         new Thread(() -> {
-            // 解决isSuccess作用域问题：在子线程内声明变量
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
-                    // 复制文件夹（含子文件/子文件夹）
                     threadSuccess = copyDirectory(copiedFile, finalTargetFile);
                 } else {
-                    // 复制单个文件
                     threadSuccess = copySingleFile(copiedFile, finalTargetFile);
                 }
 
-                // 剪切操作：成功后删除原文件
                 if (threadSuccess && isCutOperation) {
                     deleteRecursive(copiedFile);
                 }
@@ -903,22 +872,25 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
 
-            // 3. 主线程更新UI（使用最终的成功状态）
             final boolean successResult = threadSuccess;
             runOnUiThread(() -> {
                 if (successResult) {
-                    Toast.makeText(MainActivity.this, "粘贴成功", Toast.LENGTH_SHORT).show();
-                    loadFileList(); // 刷新文件列表
+                    Toast.makeText(this, "粘贴成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
+                    // 粘贴完成后批量修正路径
+                    new Thread(() -> {
+                        batchCorrectTxtFilepaths(finalTargetFile);
+                        runOnUiThread(this::loadFileList);
+                    }).start();
                 } else {
-                    Toast.makeText(MainActivity.this, "粘贴失败，请重试", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "粘贴失败，请重试", Toast.LENGTH_SHORT).show();
+                    loadFileList();
                 }
-                hidePasteButton(); // 粘贴完成后隐藏按钮
+                hidePasteButton();
             });
         }).start();
     }
 
-
-    // ---------------------- 新增：复制单个文件（保持原有逻辑） ----------------------
+    // 复制单个文件
     private boolean copySingleFile(File source, File target) throws IOException {
         if (!source.exists()) return false;
         File parent = target.getParentFile();
@@ -936,7 +908,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ---------------------- 新增：递归复制文件夹（保持原有逻辑） ----------------------
+    // 递归复制文件夹
     private boolean copyDirectory(File sourceDir, File targetDir) throws IOException {
         if (!sourceDir.isDirectory()) return false;
         if (!targetDir.exists() && !targetDir.mkdirs()) {
@@ -959,11 +931,118 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    // 文件列表适配器（保持不变，仅排序逻辑已在loadFileList中调整）
+    // ---------------------- 路径修正核心方法（更新） ----------------------
+    /**
+     * 提取TXT文件中【】包裹的现有路径
+     */
+    private String extractExistingPathInFile(File file) {
+        if (!file.getName().toLowerCase().endsWith(".txt")) return null;
+
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                content.append(line);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        Matcher matcher = FILE_PATH_PATTERN.matcher(content.toString());
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        return null;
+    }
+
+    /**
+     * 修正单个TXT文件的路径和时间戳
+     * 根目录文件：移除【】及路径，删除时间戳
+     * 子目录文件：保留路径，正常处理
+     */
+    private boolean correctFilepathInTxt(File file) {
+        if (!file.getName().toLowerCase().endsWith(".txt")) return false;
+
+        // 检查文件是否在根目录
+        boolean isInRootDir = file.getParentFile().equals(rootDirectory);
+
+        StringBuilder newContent = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+            String line;
+            boolean pathReplaced = false;
+
+            while ((line = br.readLine()) != null) {
+                // 根目录文件处理
+                if (isInRootDir) {
+                    // 移除【】及其中的内容
+                    line = FILE_PATH_PATTERN.matcher(line).replaceAll("");
+                    // 移除时间戳
+                    line = CONTENT_TIMESTAMP_PATTERN.matcher(line).replaceAll("");
+                }
+                // 子目录文件处理
+                else if (!pathReplaced) {
+                    String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
+                    String existingPath = extractExistingPathInFile(file);
+
+                    Matcher matcher = FILE_PATH_PATTERN.matcher(line);
+                    if (matcher.find()) {
+                        // 替换路径
+                        if (!actualPath.equals(existingPath)) {
+                            line = matcher.replaceFirst("【" + actualPath + "】");
+                        }
+                        pathReplaced = true;
+                    } else if (TextUtils.isEmpty(existingPath) && line.trim().isEmpty()) {
+                        // 添加路径标识
+                        line = "【" + actualPath + "】";
+                        pathReplaced = true;
+                    }
+                }
+
+                newContent.append(line).append("\n");
+            }
+
+            // 子目录文件且未找到路径标识，在开头添加
+            if (!isInRootDir && !pathReplaced) {
+                String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
+                newContent.insert(0, "【" + actualPath + "】\n\n");
+            }
+
+            // 写入修正后的内容
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(newContent.toString().getBytes(StandardCharsets.UTF_8));
+                return true;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * 批量修正文件夹内所有TXT文件的路径和时间戳
+     */
+    private void batchCorrectTxtFilepaths(File folder) {
+        if (!folder.isDirectory()) return;
+
+        File[] files = folder.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                batchCorrectTxtFilepaths(file);
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                correctFilepathInTxt(file);
+            }
+        }
+    }
+
+    // 文件列表适配器
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
-        // 设置列表数据（保持不变）
         public void setData(List<File> newData) {
             if (newData != null) {
                 mData.clear();
@@ -972,7 +1051,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 创建ViewHolder（保持不变）
         @NonNull
         @Override
         public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -981,36 +1059,29 @@ public class MainActivity extends AppCompatActivity {
             return new FileViewHolder(itemView);
         }
 
-        // 绑定数据到ViewHolder（核心修改：ZIP文件适配）
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 按文件类型设置样式（核心修改：新增ZIP文件单独适配）
             if (file.isDirectory()) {
-                // 文件夹：原有逻辑（ic_folder图标 + 黑色字体）
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else {
-                // 文件类型：区分TXT和ZIP
                 if (file.getName().toLowerCase().endsWith(".zip")) {
-                    // ---------------------- ZIP文件：使用ic_folder图标 + zipColor字体 ----------------------
-                    holder.ivIcon.setImageResource(R.drawable.ic_folder2); // ZIP用文件夹图标
-                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg); // 保留原有ZIP背景
-                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor)); // ZIP字体用zipColor
+                    holder.ivIcon.setImageResource(R.drawable.ic_folder2);
+                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
                 } else {
-                    // TXT文件：原有逻辑（ic_file图标 + 白色字体）
                     holder.ivIcon.setImageResource(R.drawable.ic_file);
                     holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                     holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
                 }
             }
 
-            // 显示文件名（保持不变：TXT隐藏时间戳和后缀，ZIP显示完整名称）
             holder.tvName.setText(getDisplayName(file));
 
-            // 点击事件（保持不变）
+            // 点击事件（TXT打开前先修正路径）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     isInSearchMode = false;
@@ -1019,17 +1090,28 @@ public class MainActivity extends AppCompatActivity {
                     loadFileList();
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
-                    Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                    editIntent.putExtra("file_path", file.getAbsolutePath());
-                    editIntent.putExtra("is_pre_edit", false);
-                    editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
-                    startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+                    // 打开前修正路径
+                    new Thread(() -> {
+                        boolean corrected = correctFilepathInTxt(file);
+                        runOnUiThread(() -> {
+                            if (corrected) {
+                                Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
+                                editIntent.putExtra("file_path", file.getAbsolutePath());
+                                editIntent.putExtra("is_pre_edit", false);
+                                editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+                                // 新增：传递是否为根目录
+                                editIntent.putExtra("is_root_directory", file.getParentFile().equals(rootDirectory));
+                                startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+                            } else {
+                                Toast.makeText(MainActivity.this, "文件路径修正失败，无法打开", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 }
             });
 
-            // 长按事件（保持不变）
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
@@ -1040,13 +1122,11 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        // 获取列表项数量（保持不变）
         @Override
         public int getItemCount() {
             return mData.size();
         }
 
-        // ViewHolder（保持不变）
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;
