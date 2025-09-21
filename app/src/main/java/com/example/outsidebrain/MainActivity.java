@@ -3,6 +3,7 @@ package com.example.outsidebrain;
 import android.Manifest;
 import android.content.DialogInterface;
 import android.net.Uri;
+import com.example.outsidebrain.ZipUnzipUtil;
 import androidx.core.content.FileProvider;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -532,7 +533,11 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        boolean result = extractZip(zipFile, currentDirectory);
+                        // 替换为新的解压工具类方法
+                        boolean result = ZipUnzipUtil.unzipToCurrentDir(
+                                zipFile.getAbsolutePath(),
+                                currentDirectory.getAbsolutePath()
+                        );
                         runOnUiThread(() -> {
                             if (result) {
                                 Toast.makeText(MainActivity.this, "解压成功", Toast.LENGTH_SHORT).show();
