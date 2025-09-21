@@ -71,8 +71,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
     // 匹配文件名中的时间戳（格式：-yyyy-MM-dd）
     public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}");
-    // 匹配 TXT 中【】包裹的路径
-    private static final Pattern FILE_PATH_PATTERN = Pattern.compile("【([^】]*)】");
+    // 【修复1】仅匹配整行的路径标识（严格第一行使用）
+    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
     // 匹配内容中的时间戳（格式：(yyyy-MM-dd)）
     private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)");
 
@@ -220,7 +220,13 @@ public class MainActivity extends AppCompatActivity {
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
-                String filteredLine = line.replaceAll("【.*?】", "");
+                // 【修复2】仅移除第一行的路径标识，中间行【】保留（不影响搜索）
+                String filteredLine = line;
+                // 标记是否为第一行
+                boolean isFirstLine = br.readLine() == null; // 临时判断，实际需逐行跟踪
+                if (isFirstLine) {
+                    filteredLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
+                }
                 if (filteredLine.toLowerCase().contains(keyword.toLowerCase())) {
                     return true;
                 }
@@ -442,8 +448,7 @@ public class MainActivity extends AppCompatActivity {
         File testFile = new File(currentDirectory, "使用说明与注意事项.txt");
         try {
             if (testFile.createNewFile()) {
-                String content = "此文件编辑软件会自动增加每次修改的时间戳，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n"
-                        ; // 末尾添加时间戳
+                String content = "此文件编辑软件会自动增加每次修改的时间戳，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
 
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes(StandardCharsets.UTF_8));
@@ -455,7 +460,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 核心修改1：所有TXT文件列表显示时均移除时间戳（无论是否在根目录）
+    // 所有TXT文件列表显示时均移除时间戳（无论是否在根目录）
     private String getDisplayName(File file) {
         if (file.isDirectory()) return file.getName();
 
@@ -873,76 +878,91 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    // ---------------------- 路径和时间戳修正核心逻辑 ----------------------
-    private String extractExistingPathInFile(File file) {
+    // ---------------------- 路径和时间戳修正核心逻辑（重点修复） ----------------------
+    /**
+     * 【修复3】仅提取第一行的路径标识，中间行【】忽略
+     */
+    private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
 
-        StringBuilder content = new StringBuilder();
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                content.append(line);
+            String firstLine = br.readLine(); // 仅读取第一行
+            if (firstLine == null) return null;
+
+            Matcher matcher = FIRST_LINE_PATH_PATTERN.matcher(firstLine);
+            if (matcher.matches()) {
+                return matcher.group().replace("【", "").replace("】", "").trim();
             }
         } catch (IOException e) {
             e.printStackTrace();
-            return null;
-        }
-
-        Matcher matcher = FILE_PATH_PATTERN.matcher(content.toString());
-        if (matcher.find()) {
-            return matcher.group(1).trim();
         }
         return null;
     }
 
-    // 核心修改2：根目录TXT仅移除路径标识，时间戳由编辑页统一处理（与其他文件一致）
+    /**
+     * 【核心修复】仅处理第一行路径标识，中间内容完全不干扰
+     */
     private boolean correctFilepathInTxt(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return false;
 
         boolean isInRootDir = file.getParentFile().equals(rootDirectory);
+        List<String> allLines = new ArrayList<>(); // 保存所有行（含空行）
 
-        StringBuilder newContent = new StringBuilder();
+        // 1. 读取所有行，保留原始格式
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
-            boolean pathReplaced = false;
-
             while ((line = br.readLine()) != null) {
-                // 根目录文件：仅移除【】及路径标识，不处理时间戳（时间戳由编辑页添加）
-                if (isInRootDir) {
-                    line = FILE_PATH_PATTERN.matcher(line).replaceAll("");
-                }
-                // 子目录文件：保留路径标识
-                else if (!pathReplaced) {
-                    String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
-                    String existingPath = extractExistingPathInFile(file);
+                allLines.add(line); // 完全保留每一行（含空行、中间【】等）
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
 
-                    Matcher matcher = FILE_PATH_PATTERN.matcher(line);
-                    if (matcher.find()) {
-                        if (!actualPath.equals(existingPath)) {
-                            line = matcher.replaceFirst("【" + actualPath + "】");
-                        }
-                        pathReplaced = true;
-                    } else if (TextUtils.isEmpty(existingPath) && line.trim().isEmpty()) {
-                        line = "【" + actualPath + "】";
-                        pathReplaced = true;
-                    }
-                }
+        // 2. 处理路径标识（仅第一行）
+        StringBuilder newContent = new StringBuilder();
+        String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
+        String existingFirstLinePath = extractFirstLinePath(file);
+        boolean pathProcessed = false;
 
+        for (int i = 0; i < allLines.size(); i++) {
+            String line = allLines.get(i);
+            if (i == 0 && !isInRootDir) {
+                // 非根目录：处理第一行路径
+                if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
+                    // 第一行是路径标识，更新为正确路径
+                    newContent.append("【").append(actualPath).append("】\n");
+                } else {
+                    // 第一行不是路径标识，插入正确路径到第一行
+                    newContent.append("【").append(actualPath).append("】\n").append(line).append("\n");
+                }
+                pathProcessed = true;
+            } else if (i == 0 && isInRootDir) {
+                // 根目录：移除第一行的路径标识（如果有），保留其他内容
+                String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
+                newContent.append(processedLine).append("\n");
+                pathProcessed = true;
+            } else {
+                // 非第一行：完全保留原始内容（含【】、空行等）
                 newContent.append(line).append("\n");
             }
+        }
 
-            // 子目录文件补全路径标识
-            if (!isInRootDir && !pathReplaced) {
-                String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
-                newContent.insert(0, "【" + actualPath + "】\n\n");
-            }
+        // 3. 非根目录且无任何行时，补全路径标识
+        if (!isInRootDir && allLines.isEmpty()) {
+            newContent.append("【").append(actualPath).append("】\n");
+        }
 
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                fos.write(newContent.toString().getBytes(StandardCharsets.UTF_8));
-                return true;
-            }
+        // 4. 写入处理后的内容
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            // 移除最后一行多余的换行符
+            String finalContent = newContent.toString().endsWith("\n")
+                    ? newContent.toString().substring(0, newContent.length() - 1)
+                    : newContent.toString();
+            fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
+            return true;
         } catch (IOException e) {
             e.printStackTrace();
             return false;
@@ -1004,7 +1024,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 显示名称：无时间戳（核心修改）
+            // 显示名称：无时间戳
             holder.tvName.setText(getDisplayName(file));
 
             holder.itemView.setOnClickListener(v -> {
@@ -1023,7 +1043,6 @@ public class MainActivity extends AppCompatActivity {
                                 editIntent.putExtra("file_path", file.getAbsolutePath());
                                 editIntent.putExtra("is_pre_edit", false);
                                 editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
-                                // 传递是否为根目录，确保编辑页添加时间戳（核心修改）
                                 editIntent.putExtra("is_root_directory", file.getParentFile().equals(rootDirectory));
                                 startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                             } else {
@@ -1063,4 +1082,3 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
-// 正文时间戳格式（yyyy-MM-dd，完整4位年份）

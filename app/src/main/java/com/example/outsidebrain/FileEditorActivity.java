@@ -1,7 +1,5 @@
 package com.example.outsidebrain;
 
-
-
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -44,10 +42,10 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault());
     // 正文时间戳（yyyy-MM-dd）
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    // 匹配最后一行时间戳（(yyyy-MM-dd)）
-    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)$");
-    // 匹配第一行路径（【路径】）
-    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【([^】]*)】$");
+    // 匹配最后一行有效时间戳（整行：(yyyy-MM-dd)）
+    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
+    // 匹配第一行有效路径标识（整行：【路径】）
+    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +73,7 @@ public class FileEditorActivity extends AppCompatActivity {
         setupTextChangeListeners();
     }
 
+    // 压缩和分享相关方法（完全保留原逻辑）
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
@@ -185,6 +184,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    // 加载文件数据（完全保留原格式，包括空行）
     private void loadExistingFileData() {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -204,14 +204,20 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         etFileName.setText(fileName);
 
+        // 【修复1】保留所有空行，不做任何过滤
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
             String line;
+            // 逐行读取，完全保留原始格式（包括空行）
             while ((line = br.readLine()) != null) {
-                content.append(line).append("\n");
+                content.append(line).append("\n"); // 保留每行的换行符
             }
-            etContent.setText(content.toString().trim());
+            // 仅去除末尾多余的一个换行符，避免最后一行空行
+            String finalContent = content.toString().endsWith("\n")
+                    ? content.toString().substring(0, content.length() - 1)
+                    : content.toString();
+            etContent.setText(finalContent);
         } catch (IOException e) {
             e.printStackTrace();
             Toast.makeText(this, "加载内容失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -242,26 +248,26 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
+    // 自动保存核心逻辑（重点修复路径干扰和空行问题）
     private void autoSave() {
         if (isSaved) return;
 
         String inputTitle = etFileName.getText().toString().trim();
-        String content = etContent.getText().toString().trim();
+        String content = etContent.getText().toString(); // 【修复2】不trim，保留首尾空行
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
 
         if (rootFolderName == null) rootFolderName = "外置大脑";
-
         String fileTimestamp = FILE_NAME_TIMESTAMP.format(new Date());
 
         if (isPreEdit) {
-            if (inputTitle.isEmpty() && content.isEmpty()) {
+            if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
 
-            String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
+            String finalTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
 
             targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp);
@@ -295,7 +301,7 @@ public class FileEditorActivity extends AppCompatActivity {
             String inputTitleTrimmed = inputTitle.trim();
             String originalTitle = targetFile.getName().replace(".txt", "");
 
-            if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
+            if (!TextUtils.isEmpty(inputTitleTrimmed) && !inputTitleTrimmed.equals(originalTitle)) {
                 String newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp;
                 File newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
 
@@ -318,10 +324,26 @@ public class FileEditorActivity extends AppCompatActivity {
             if (isRootDirectory) {
                 finalContent = addContentTimestamp(content);
             } else {
-                // 仅替换第一行的路径标识，其他行的【】不处理
-                String contentWithoutFirstPath = content.replaceFirst("^【.*?】\n?", "");
+                // 【修复3】严格仅处理第一行路径，不干扰中间任何内容（包括空行和【】）
+                String[] allLines = content.split("\n", -1); // -1 保留所有空行（关键参数）
+                ArrayList<String> userLines = new ArrayList<>();
+                // 逐行添加，仅跳过第一行的路径标识（其他行完全保留）
+                for (int i = 0; i < allLines.length; i++) {
+                    String line = allLines[i];
+                    // 仅第一行可能是旧路径标识，其他行全部保留
+                    if (i == 0 && FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
+                        continue; // 跳过第一行的旧路径
+                    }
+                    userLines.add(line); // 保留所有其他行（含空行、中间【】等）
+                }
+
+                // 拼接用户内容（保留所有空行和格式）
+                String userContent = TextUtils.join("\n", userLines);
+                // 处理时间戳
+                String contentWithTimestamp = addContentTimestamp(userContent);
+                // 拼接新路径（第一行）+ 用户内容
                 String dirPath = MainActivity.getRelativeDirPath(targetFile.getParentFile(), rootFolderName);
-                finalContent = "【" + dirPath + "】\n" + addContentTimestamp(contentWithoutFirstPath);
+                finalContent = "【" + dirPath + "】\n" + contentWithTimestamp;
             }
 
             writeFileContent(targetFile, finalContent);
@@ -334,41 +356,48 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
     }
 
-    // 仅最后一行添加时间戳，其他行时间戳不处理
-    // 仅最后一行添加时间戳，且检查最后一行时间戳是否为当天
+    // 时间戳处理（保留所有空行，仅最后一行有效）
     private String addContentTimestamp(String originalContent) {
-        if (TextUtils.isEmpty(originalContent)) {
-            return "(" + CONTENT_TIMESTAMP.format(new Date()) + ")";
-        }
-
-        String[] lines = originalContent.split("\n");
+        // 【修复4】保留所有空行，split参数用-1
+        String[] allLines = originalContent.split("\n", -1);
         ArrayList<String> lineList = new ArrayList<>();
-        for (String line : lines) {
-            lineList.add(line);
+        for (String line : allLines) {
+            lineList.add(line); // 完全保留所有行（含空行）
         }
 
-        String lastLine = lineList.isEmpty() ? "" : lineList.get(lineList.size() - 1);
-        Matcher timestampMatcher = LAST_LINE_TIMESTAMP_PATTERN.matcher(lastLine);
-
-        // 生成当天时间戳（yyyy-MM-dd）
         String todayTimestamp = CONTENT_TIMESTAMP.format(new Date());
-        boolean hasTodayTimestamp = false;
+        boolean needAddTimestamp = true;
 
-        if (timestampMatcher.find()) {
-            // 提取最后一行的时间戳（如：2025-09-20）
-            String existingTimestamp = timestampMatcher.group().replace("(", "").replace(")", "");
-            // 比较是否为当天时间戳
-            hasTodayTimestamp = existingTimestamp.equals(todayTimestamp);
+        // 找到最后一个非空行，判断是否为有效时间戳（空行不视为有效行）
+        int lastValidLineIndex = -1;
+        for (int i = lineList.size() - 1; i >= 0; i--) {
+            if (!TextUtils.isEmpty(lineList.get(i).trim())) {
+                lastValidLineIndex = i;
+                break;
+            }
         }
 
-        // 最后一行没有时间戳，或时间戳不是当天 → 追加当天时间戳
-        if (!hasTodayTimestamp) {
+        // 检查最后一个有效行是否为当天时间戳
+        if (lastValidLineIndex != -1) {
+            String lastValidLine = lineList.get(lastValidLineIndex);
+            if (LAST_LINE_TIMESTAMP_PATTERN.matcher(lastValidLine).matches()) {
+                String existingDate = lastValidLine.replace("(", "").replace(")", "");
+                if (existingDate.equals(todayTimestamp)) {
+                    needAddTimestamp = false;
+                }
+            }
+        }
+
+        // 需要添加时，在最后一行（无论是否为空）后面追加
+        if (needAddTimestamp) {
             lineList.add("(" + todayTimestamp + ")");
         }
 
+        // 拼接所有行，保留原始格式
         return TextUtils.join("\n", lineList);
     }
 
+    // 以下方法完全保留原逻辑，不做修改
     private File getUniqueFile(File parentDir, String baseTitle, String timestamp) {
         String baseFileName = baseTitle + timestamp + ".txt";
         File file = new File(parentDir, baseFileName);
@@ -384,8 +413,11 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private String getContentSubtitle(String content) {
-        if (content.isEmpty()) return "无内容文件";
-        return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
+        if (TextUtils.isEmpty(content.trim())) return "无内容文件";
+        String trimmedContent = content.trim();
+        return trimmedContent.length() <= MAX_TITLE_LEN
+                ? trimmedContent
+                : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
     }
 
     private String removeOldTimestamp(String fileName) {
@@ -430,4 +462,3 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 }
-
