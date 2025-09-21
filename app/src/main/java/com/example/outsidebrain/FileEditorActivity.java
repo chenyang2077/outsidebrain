@@ -1,5 +1,7 @@
 package com.example.outsidebrain;
 
+
+
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -19,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -28,40 +31,38 @@ import java.util.zip.ZipOutputStream;
 
 public class FileEditorActivity extends AppCompatActivity {
 
-    public static final int RESULT_REFRESH = 100; // 通知刷新列表的结果码
-    private EditText etFileName;      // 标题编辑区（文件名）
-    private EditText etContent;       // 内容编辑区
-    private boolean isPreEdit;        // 是否为“预编辑”状态（首次创建）
-    private File currentDir;         // 预编辑文件保存目录
-    private File targetFile;          // 已有文件（非预编辑时使用）
-    private boolean isSaved = true;   // 是否已保存
-    private static final int MAX_TITLE_LEN = 31; // 内容截取最大长度
+    public static final int RESULT_REFRESH = 100;
+    private EditText etFileName;
+    private EditText etContent;
+    private boolean isPreEdit;
+    private File currentDir;
+    private File targetFile;
+    private boolean isSaved = true;
+    private static final int MAX_TITLE_LEN = 31;
 
-    // 文件名时间戳格式（-yyyy-MM-dd）
+    // 文件名时间戳（-yyyy-MM-dd）
     private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault());
-    // 正文时间戳格式（yyyy-MM-dd）
+    // 正文时间戳（yyyy-MM-dd）
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    // 匹配正文时间戳（(yyyy-MM-dd)）
-    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)");
+    // 匹配最后一行时间戳（(yyyy-MM-dd)）
+    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)$");
+    // 匹配第一行路径（【路径】）
+    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【([^】]*)】$");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_editor);
 
-        // 初始化控件
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
-        // 获取传递参数
         String filePath = getIntent().getStringExtra("file_path");
         String currentDirPath = getIntent().getStringExtra("current_dir_path");
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
 
-        // 优先处理压缩和分享意图
         handleZipAndShareIntent();
 
-        // 初始化编辑状态
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
@@ -71,28 +72,22 @@ public class FileEditorActivity extends AppCompatActivity {
             loadExistingFileData();
         }
 
-        // 监听文本变化，标记未保存
         setupTextChangeListeners();
     }
 
-    // 处理压缩文件夹和分享文件的意图
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
-        // 压缩文件夹
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
             String folderPath = intent.getStringExtra("FOLDER_PATH");
             zipFolder(new File(folderPath));
             finish();
-        }
-        // 分享文件
-        else if (intent.hasExtra("ACTION_SHARE_FILE")) {
+        } else if (intent.hasExtra("ACTION_SHARE_FILE")) {
             String filePath = intent.getStringExtra("FILE_PATH");
             shareFile(new File(filePath));
             finish();
         }
     }
 
-    // 压缩文件夹为ZIP
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
@@ -121,7 +116,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 递归将文件夹内容添加到ZIP
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
         File[] files = folder.listFiles();
         if (files == null) return;
@@ -146,7 +140,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 分享文件
     private void shareFile(File file) {
         if (!file.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -178,7 +171,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 根据文件名获取MIME类型
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
 
@@ -193,7 +185,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 加载已有文件数据
     private void loadExistingFileData() {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -201,21 +192,18 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // ZIP文件不支持编辑
         if (targetFile.getName().toLowerCase().endsWith(".zip")) {
             Toast.makeText(this, "ZIP文件不支持编辑", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        // 加载标题：仅去除.txt后缀（保留原始文件名，时间戳在列表中会被过滤）
         String fileName = targetFile.getName();
         if (fileName.endsWith(".txt")) {
             fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
         etFileName.setText(fileName);
 
-        // 加载文件内容（保留所有历史时间戳）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
@@ -230,7 +218,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 监听文本变化，标记未保存
     private void setupTextChangeListeners() {
         etFileName.addTextChangedListener(new android.text.TextWatcher() {
             @Override
@@ -255,23 +242,19 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
-    // 自动保存TXT文件逻辑（核心修正）
     private void autoSave() {
         if (isSaved) return;
 
         String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString().trim();
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
-        // 获取是否为根目录的标记（关键参数）
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
 
         if (rootFolderName == null) rootFolderName = "外置大脑";
 
-        // 生成文件名时间戳
         String fileTimestamp = FILE_NAME_TIMESTAMP.format(new Date());
 
         if (isPreEdit) {
-            // 首次创建文件
             if (inputTitle.isEmpty() && content.isEmpty()) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
@@ -281,7 +264,6 @@ public class FileEditorActivity extends AppCompatActivity {
             String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
 
-            // 生成唯一文件路径
             targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp);
 
             try {
@@ -289,17 +271,12 @@ public class FileEditorActivity extends AppCompatActivity {
                     String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
                     String finalContent;
 
-                    // 根目录文件：不添加路径标识，但添加时间戳
                     if (isRootDirectory) {
-                        finalContent = addContentTimestamp(content); // 核心修正：根目录也加时间戳
+                        finalContent = addContentTimestamp(content);
                     } else {
-                        // 子目录文件：添加路径标识和时间戳
-                        finalContent = TextUtils.isEmpty(dirPath)
-                                ? addContentTimestamp(content)
-                                : "【" + dirPath + "】\n" + addContentTimestamp(content);
+                        finalContent = "【" + dirPath + "】\n" + addContentTimestamp(content);
                     }
 
-                    // 写入内容
                     writeFileContent(targetFile, finalContent);
                     isSaved = true;
                     Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
@@ -313,18 +290,15 @@ public class FileEditorActivity extends AppCompatActivity {
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         } else {
-            // 已有文件修改
             if (targetFile == null) return;
 
             String inputTitleTrimmed = inputTitle.trim();
             String originalTitle = targetFile.getName().replace(".txt", "");
 
-            // 标题变更时重命名
             if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
                 String newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp;
                 File newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
 
-                // 处理重名
                 int counter = 1;
                 while (newFile.exists()) {
                     newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp + "(" + counter + ")";
@@ -332,7 +306,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     counter++;
                 }
 
-                // 执行重命名
                 if (targetFile.renameTo(newFile)) {
                     targetFile = newFile;
                     Toast.makeText(this, "文件重命名成功", Toast.LENGTH_SHORT).show();
@@ -341,17 +314,14 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 核心修正：根目录文件和子目录文件统一通过addContentTimestamp添加时间戳
             String finalContent;
             if (isRootDirectory) {
-                // 根目录：仅添加时间戳（无路径）
                 finalContent = addContentTimestamp(content);
             } else {
-                // 子目录：保留路径标识 + 添加时间戳
-                // 先移除现有路径标识，再重新添加（避免重复）
-                String contentWithoutPath = content.replaceAll("【.*?】\n?", "");
+                // 仅替换第一行的路径标识，其他行的【】不处理
+                String contentWithoutFirstPath = content.replaceFirst("^【.*?】\n?", "");
                 String dirPath = MainActivity.getRelativeDirPath(targetFile.getParentFile(), rootFolderName);
-                finalContent = "【" + dirPath + "】\n" + addContentTimestamp(contentWithoutPath);
+                finalContent = "【" + dirPath + "】\n" + addContentTimestamp(contentWithoutFirstPath);
             }
 
             writeFileContent(targetFile, finalContent);
@@ -364,32 +334,41 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
     }
 
-    // 内容末尾添加时间戳（同一天只加一次）
+    // 仅最后一行添加时间戳，其他行时间戳不处理
+    // 仅最后一行添加时间戳，且检查最后一行时间戳是否为当天
     private String addContentTimestamp(String originalContent) {
-        String currentTimeStamp = "(" + CONTENT_TIMESTAMP.format(new Date()) + ")";
-
-        // 检查是否已存在当天时间戳
-        Matcher matcher = CONTENT_TIMESTAMP_PATTERN.matcher(originalContent);
-        boolean hasSameTimestamp = false;
-
-        while (matcher.find()) {
-            if (matcher.group().equals(currentTimeStamp)) {
-                hasSameTimestamp = true;
-                break;
-            }
+        if (TextUtils.isEmpty(originalContent)) {
+            return "(" + CONTENT_TIMESTAMP.format(new Date()) + ")";
         }
 
-        if (hasSameTimestamp) {
-            return originalContent;
-        } else {
-            // 时间戳追加到内容末尾
-            return TextUtils.isEmpty(originalContent)
-                    ? currentTimeStamp
-                    : originalContent + "\n" + currentTimeStamp;
+        String[] lines = originalContent.split("\n");
+        ArrayList<String> lineList = new ArrayList<>();
+        for (String line : lines) {
+            lineList.add(line);
         }
+
+        String lastLine = lineList.isEmpty() ? "" : lineList.get(lineList.size() - 1);
+        Matcher timestampMatcher = LAST_LINE_TIMESTAMP_PATTERN.matcher(lastLine);
+
+        // 生成当天时间戳（yyyy-MM-dd）
+        String todayTimestamp = CONTENT_TIMESTAMP.format(new Date());
+        boolean hasTodayTimestamp = false;
+
+        if (timestampMatcher.find()) {
+            // 提取最后一行的时间戳（如：2025-09-20）
+            String existingTimestamp = timestampMatcher.group().replace("(", "").replace(")", "");
+            // 比较是否为当天时间戳
+            hasTodayTimestamp = existingTimestamp.equals(todayTimestamp);
+        }
+
+        // 最后一行没有时间戳，或时间戳不是当天 → 追加当天时间戳
+        if (!hasTodayTimestamp) {
+            lineList.add("(" + todayTimestamp + ")");
+        }
+
+        return TextUtils.join("\n", lineList);
     }
 
-    // 处理TXT文件重名
     private File getUniqueFile(File parentDir, String baseTitle, String timestamp) {
         String baseFileName = baseTitle + timestamp + ".txt";
         File file = new File(parentDir, baseFileName);
@@ -404,18 +383,15 @@ public class FileEditorActivity extends AppCompatActivity {
         return file;
     }
 
-    // 从内容截取标题
     private String getContentSubtitle(String content) {
         if (content.isEmpty()) return "无内容文件";
         return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
     }
 
-    // 移除旧时间戳
     private String removeOldTimestamp(String fileName) {
         return MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }
 
-    // 写入文件内容
     private void writeFileContent(File file, String content) {
         try (FileOutputStream fos = new FileOutputStream(file)) {
             fos.write(content.getBytes(StandardCharsets.UTF_8));
@@ -425,7 +401,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 聚焦并显示输入法
     private void focusAndShowSoftInput(EditText editText) {
         editText.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
@@ -434,7 +409,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 隐藏输入法
     private void hideSoftInput() {
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) {
@@ -442,14 +416,12 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 返回键触发保存
     @Override
     public void onBackPressed() {
         autoSave();
         super.onBackPressed();
     }
 
-    // 应用后台触发保存
     @Override
     protected void onPause() {
         super.onPause();
@@ -458,3 +430,4 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 }
+
