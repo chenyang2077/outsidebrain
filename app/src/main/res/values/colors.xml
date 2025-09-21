@@ -14,11 +14,13 @@
     <!-- 新增：文件编辑页面背景（深灰色） -->
     <color name="editorBgColor">#333333</color>
     <!-- 新增：编辑页面文字颜色（白色，与深灰背景对比） -->
-    <color name="editorTextColor">#FFFFFF</color>
+    <color name="editorTextColor">#E7E7E7</color>
     <color name="zipColor2">#FBFF53</color>
 
 
     <color name="titleBarBg">#FFFFFF</color>
+
+
 
 
     <color name="zipColor">#EBA887EB</color>    <!-- ZIP文件背景色（浅橙） -->

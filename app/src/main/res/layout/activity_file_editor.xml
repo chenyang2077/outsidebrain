@@ -33,7 +33,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@drawable/editor_border"
+        android:background="@drawable/editor_border2"
         android:padding="5dp"
         android:hint="请输入文件内容..."
         app:hintTextColor="#888888"

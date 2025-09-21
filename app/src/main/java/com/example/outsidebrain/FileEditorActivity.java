@@ -33,7 +33,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private File currentDir;         // 预编辑文件保存目录
     private File targetFile;          // 已有文件（非预编辑时使用）
     private boolean isSaved = true;   // 是否已保存
-    private static final int MAX_TITLE_LEN = 20; // 内容截取最大长度
+    private static final int MAX_TITLE_LEN = 31; // 内容截取最大长度
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

@@ -26,7 +26,7 @@
         android:left="0dp"
         android:right="0dp"
         android:top="0.6dp"
-        android:bottom="0.6dp">
+        android:bottom="0dp">
         <shape>
             <solid android:color="@color/editorBgColor" />
         </shape>

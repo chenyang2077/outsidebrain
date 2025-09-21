@@ -465,10 +465,10 @@ public class MainActivity extends AppCompatActivity {
                 String content;
                 if (TextUtils.isEmpty(dirPath)) {
                     // 根目录：不添加路径标识
-                    content = "从屏幕左边缘向右划返回或退出。\n左上角添加新文件夹，可无限套娃。\n右下角加号可以新增文件夹。\n长按文件或者文件夹可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n单击压缩文件解压文件\n";
+                    content = "从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为不联网软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
                 } else {
                     // 子目录：添加路径标识
-                    content = "{" + dirPath + "}\n从屏幕左边缘向右划返回或退出。\n左上角添加新文件夹，可无限套娃。\n右下角加号可以新增文件夹。\n长按文件或者文件夹可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n单击压缩文件解压文件\n";
+                    content = "{" + dirPath + "}\n从屏幕左边缘向右划返回或退出。\\n\\n左上角添加新文件夹，可文件夹内创建文件夹。\\n\\n搜索功能只能搜索到当前文件夹里的内容。\\n\\n右下角加号可以新增TXT文件。\\n\\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\\n\\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\\n\\n此软件为不联网软件，查询更新功能，或者有增加功能的意见，直接找开发者。\\n\\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
                 }
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes());
@@ -979,7 +979,7 @@ public class MainActivity extends AppCompatActivity {
                     // ---------------------- ZIP文件：使用ic_folder图标 + zipColor字体 ----------------------
                     holder.ivIcon.setImageResource(R.drawable.ic_folder2); // ZIP用文件夹图标
                     holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg); // 保留原有ZIP背景
-                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor)); // ZIP字体用zipColor
+                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor)); // ZIP字体用zipColor
                 } else {
                     // TXT文件：原有逻辑（ic_file图标 + 白色字体）
                     holder.ivIcon.setImageResource(R.drawable.ic_file);
