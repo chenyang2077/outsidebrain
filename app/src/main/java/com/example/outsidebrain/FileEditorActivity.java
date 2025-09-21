@@ -264,6 +264,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
         // 1. 新建文件逻辑（保留自动加时间戳）
         if (isPreEdit) {
+            // 新建文件逻辑
             if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
@@ -272,7 +273,9 @@ public class FileEditorActivity extends AppCompatActivity {
 
             String finalTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
-            targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp); // 自动加时间戳
+
+            // 核心修改：不生成文件名时间戳，直接调用getUniqueFile
+            targetFile = getUniqueFile(currentDir, finalTitle); // 自动加时间戳
 
             try {
                 if (targetFile.createNewFile()) {
@@ -415,16 +418,17 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     // 以下方法保持不变
-    private File getUniqueFile(File parentDir, String baseTitle, String timestamp) {
-        String baseFileName = baseTitle + timestamp + ".txt";
+    // 移除时间戳参数，仅使用标题生成文件名
+    private File getUniqueFile(File parentDir, String baseTitle) {
+        String baseFileName = baseTitle + ".txt"; // 直接用标题+后缀，无时间戳
         File file = new File(parentDir, baseFileName);
-        int suffixCount = 0;
+        int counter = 1;
 
         while (file.exists()) {
-            suffixCount++;
-            String suffix = "+".repeat(suffixCount);
-            String uniqueFileName = baseTitle + suffix + timestamp + ".txt";
+            // 重名时添加序号（如“笔记(1).txt”）
+            String uniqueFileName = baseTitle + "(" + counter + ")" + ".txt";
             file = new File(parentDir, uniqueFileName);
+            counter++;
         }
         return file;
     }
