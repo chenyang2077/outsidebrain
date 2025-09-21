@@ -10,14 +10,14 @@
     <!-- 上边框 -->
     <item android:top="0dp">
         <shape>
-            <solid android:color="#CCCCCC" />
+            <solid android:color="#FFFFFF" />
         </shape>
     </item>
 
     <!-- 下边框 -->
     <item android:bottom="0dp">
         <shape>
-            <solid android:color="#CCCCCC" />
+            <solid android:color="#FFFFFF" />
         </shape>
     </item>
 
@@ -25,8 +25,8 @@
     <item
         android:left="0dp"
         android:right="0dp"
-        android:top="0.6dp"
-        android:bottom="0.6dp">
+        android:top="0.4dp"
+        android:bottom="0.4dp">
         <shape>
             <solid android:color="@color/editorBgColor" />
         </shape>

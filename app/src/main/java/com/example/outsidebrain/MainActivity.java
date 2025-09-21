@@ -2,6 +2,8 @@ package com.example.outsidebrain;
 
 import android.Manifest;
 import android.content.DialogInterface;
+import android.net.Uri;
+import androidx.core.content.FileProvider;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -197,6 +199,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 跳转至文件预编辑页面（保持不变）
+    // 在MainActivity中找到startFilePreEdit方法，确保参数正确传递
     private void startFilePreEdit() {
         if (currentDirectory == null) {
             Toast.makeText(this, "目录未初始化，请稍后重试", Toast.LENGTH_SHORT).show();
@@ -205,10 +208,14 @@ public class MainActivity extends AppCompatActivity {
 
         Intent preEditIntent = new Intent(MainActivity.this, FileEditorActivity.class);
         preEditIntent.putExtra("current_dir_path", currentDirectory.getAbsolutePath());
-        preEditIntent.putExtra("is_pre_edit", true);
-        preEditIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME); // 传递根文件夹名称
+        preEditIntent.putExtra("is_pre_edit", true); // 标记为新建文件
+        preEditIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
+
+    // 调整getDisplayName方法，确保列表中正确显示文件名（隐藏时间戳）
+
+
 
     // 接收编辑页面返回结果（添加：返回时隐藏粘贴按钮）
     @Override
@@ -221,6 +228,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 搜索逻辑（保持不变）
+    // 替换原有的isContentContainKeyword方法，不要新增
+    private boolean isContentContainKeyword(File file, String keyword) {
+        if (file.getName().toLowerCase().endsWith(".zip")) return false;
+
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                // 过滤【】及其中间内容后再判断
+                String filteredLine = line.replaceAll("【.*?】", "");
+                if (filteredLine.toLowerCase().contains(keyword.toLowerCase())) {
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // performSearch方法保持不变（调用上面的方法）
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
         etSearch.clearFocus();
@@ -246,6 +274,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+
 
     // 递归搜索（保持不变）
     private void recursiveSearch(File dir, String keyword) {
@@ -277,22 +306,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 检查文件内容是否包含关键词（保持不变）
-    private boolean isContentContainKeyword(File file, String keyword) {
-        if (file.getName().toLowerCase().endsWith(".zip")) return false;
 
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.toLowerCase().contains(keyword.toLowerCase())) {
-                    return true;
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
 
     // ---------------------- 修改：搜索结果排序（ZIP 在 TXT 前面） ----------------------
     private void sortSearchResult() {
@@ -465,10 +479,10 @@ public class MainActivity extends AppCompatActivity {
                 String content;
                 if (TextUtils.isEmpty(dirPath)) {
                     // 根目录：不添加路径标识
-                    content = "从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为不联网软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
+                    content = "从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
                 } else {
                     // 子目录：添加路径标识
-                    content = "{" + dirPath + "}\n从屏幕左边缘向右划返回或退出。\\n\\n左上角添加新文件夹，可文件夹内创建文件夹。\\n\\n搜索功能只能搜索到当前文件夹里的内容。\\n\\n右下角加号可以新增TXT文件。\\n\\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\\n\\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\\n\\n此软件为不联网软件，查询更新功能，或者有增加功能的意见，直接找开发者。\\n\\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
+                    content = "【" + dirPath + "】\n\n从屏幕左边缘向右划返回或退出。\\n\\n左上角添加新文件夹，可文件夹内创建文件夹。\\n\\n搜索功能只能搜索到当前文件夹里的内容。\\n\\n右下角加号可以新增TXT文件。\\n\\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\\n\\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\\n\\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\\n\\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”\n";
                 }
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes());

@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -29,11 +31,18 @@ public class FileEditorActivity extends AppCompatActivity {
     public static final int RESULT_REFRESH = 100; // 通知刷新列表的结果码
     private EditText etFileName;      // 标题编辑区（文件名）
     private EditText etContent;       // 内容编辑区
-    private boolean isPreEdit;        // 是否为“预编辑”状态
+    private boolean isPreEdit;        // 是否为“预编辑”状态（首次创建）
     private File currentDir;         // 预编辑文件保存目录
     private File targetFile;          // 已有文件（非预编辑时使用）
     private boolean isSaved = true;   // 是否已保存
     private static final int MAX_TITLE_LEN = 31; // 内容截取最大长度
+
+    // 时间戳格式（精确到天，年份取后两位）
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault());
+    // 正文时间戳格式：(25-09-21)
+    private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yy-MM-dd", Locale.getDefault());
+    // 匹配任意位置的时间戳（用于检查是否已存在当天时间戳）
+    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{2}-\\d{2}-\\d{2}\\)");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -184,7 +193,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 核心修改：加载TXT时显示全名（保留时间戳，仅去除后缀）
+    // 加载已有文件数据
     private void loadExistingFileData() {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -199,14 +208,14 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // 加载标题：仅去除.txt后缀，保留时间戳（显示全名）
+        // 加载标题：仅去除.txt后缀，保留时间戳
         String fileName = targetFile.getName();
         if (fileName.endsWith(".txt")) {
-            fileName = fileName.substring(0, fileName.lastIndexOf(".")); // 只删后缀，保留时间戳
+            fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
-        etFileName.setText(fileName); // 显示含时间戳的全名（如“测试文件-25-09-20”）
+        etFileName.setText(fileName);
 
-        // 加载文件内容（保留原有标识）
+        // 加载文件内容（保留所有历史时间戳）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
@@ -246,52 +255,44 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
-    // 自动保存TXT文件逻辑（保留目录标识功能）
+    // 自动保存TXT文件逻辑
     private void autoSave() {
         if (isSaved) return;
 
         String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString().trim();
-        // 获取根文件夹名称（从MainActivity传递）
+        // 获取根文件夹名称
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         if (rootFolderName == null) rootFolderName = "外置大脑";
 
-        // 生成文件名时间戳（格式：-yy-MM-dd）
-        String fileTimestamp = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault()).format(new Date());
+        // 生成文件名时间戳
+        String fileTimestamp = FILE_NAME_TIMESTAMP.format(new Date());
 
         if (isPreEdit) {
-            // 预编辑状态（新建文件）
+            // 首次创建文件：无时间戳
             if (inputTitle.isEmpty() && content.isEmpty()) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
 
-            // 生成最终标题（去除旧时间戳，避免重复）
             String finalTitle = inputTitle.isEmpty() ? getContentSubtitle(content) : inputTitle;
             finalTitle = removeOldTimestamp(finalTitle);
 
-            // 生成文件保存路径
             targetFile = getUniqueFile(currentDir, finalTitle, fileTimestamp);
 
             try {
                 if (targetFile.createNewFile()) {
-                    // 生成目录标识（相对根目录的路径）
                     String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
-
-                    // 拼接标识拼接逻辑：根目录不添加标识，子目录添加
                     String finalContent;
+
                     if (TextUtils.isEmpty(dirPath)) {
-                        // 根目录：直接使用用户内容，不添加路径标识
                         finalContent = content;
                     } else {
-                        // 子目录：添加路径标识
-                        finalContent = "{" + dirPath + "}\n" + content;
+                        finalContent = "【" + dirPath + "】\n" + content;
                     }
 
-                    // 写入文件
                     writeFileContent(targetFile, finalContent);
-
                     isSaved = true;
                     Toast.makeText(this, "文件创建成功：" + targetFile.getName(), Toast.LENGTH_SHORT).show();
                     setResult(RESULT_REFRESH);
@@ -304,15 +305,14 @@ public class FileEditorActivity extends AppCompatActivity {
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         } else {
-            // 已有文件（编辑文件，保留原有标识）
+            // 已有文件：追加时间戳（不修改原有）
             if (targetFile == null) return;
 
-            // 处理标题重命名（保留时间戳逻辑）
+            // 处理标题重命名
             String inputTitleTrimmed = inputTitle.trim();
-            String originalTitle = targetFile.getName().replace(".txt", ""); // 原标题（含时间戳）
+            String originalTitle = targetFile.getName().replace(".txt", "");
 
             if (!inputTitleTrimmed.isEmpty() && !inputTitleTrimmed.equals(originalTitle)) {
-                // 新标题不含时间戳：自动添加当前时间戳
                 String newTitle = removeOldTimestamp(inputTitleTrimmed) + fileTimestamp;
                 File newFile = new File(targetFile.getParentFile(), newTitle + ".txt");
                 if (targetFile.renameTo(newFile)) {
@@ -322,8 +322,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 直接写入用户编辑的内容（保留原有标识）
-            writeFileContent(targetFile, content);
+            // 核心修改：追加时间戳（不修改原有，同一天不重复）
+            String finalContent = addContentTimestamp(content);
+
+            writeFileContent(targetFile, finalContent);
             isSaved = true;
             Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
             setResult(RESULT_REFRESH);
@@ -333,7 +335,33 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
     }
 
-    // 处理TXT文件重名（在日期前添加"+"）
+    // 核心修改：新增时间戳追加在前面，不修改原有，同一天只加一次
+    private String addContentTimestamp(String originalContent) {
+        // 生成当前时间戳 (25-09-21)
+        String currentTimeStamp = "(" + CONTENT_TIMESTAMP.format(new Date()) + ")";
+
+        // 检查内容中是否已存在当天时间戳（任意位置）
+        Matcher matcher = CONTENT_TIMESTAMP_PATTERN.matcher(originalContent);
+        boolean hasSameTimestamp = false;
+
+        while (matcher.find()) {
+            String existing = matcher.group();
+            if (existing.equals(currentTimeStamp)) {
+                // 已存在当天时间戳，不添加
+                hasSameTimestamp = true;
+                break;
+            }
+        }
+
+        if (hasSameTimestamp) {
+            return originalContent;
+        } else {
+            // 不存在当天时间戳，追加到最前面（不换行）
+            return currentTimeStamp + originalContent;
+        }
+    }
+
+    // 处理TXT文件重名
     private File getUniqueFile(File parentDir, String baseTitle, String timestamp) {
         String baseFileName = baseTitle + timestamp + ".txt";
         File file = new File(parentDir, baseFileName);
@@ -348,18 +376,18 @@ public class FileEditorActivity extends AppCompatActivity {
         return file;
     }
 
-    // 从内容截取前15字生成标题
+    // 从内容截取标题
     private String getContentSubtitle(String content) {
         if (content.isEmpty()) return "无内容文件";
         return content.length() <= MAX_TITLE_LEN ? content : content.substring(0, MAX_TITLE_LEN) + "…";
     }
 
-    // 移除旧时间戳（用于新建/重命名时避免重复）
+    // 移除旧时间戳
     private String removeOldTimestamp(String fileName) {
         return MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }
 
-    // 写入TXT文件内容
+    // 写入文件内容
     private void writeFileContent(File file, String content) {
         try (FileOutputStream fos = new FileOutputStream(file)) {
             fos.write(content.getBytes(StandardCharsets.UTF_8));
