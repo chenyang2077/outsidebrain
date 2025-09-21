@@ -10,10 +10,12 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -103,6 +105,22 @@ public class MainActivity extends AppCompatActivity {
         fileRecyclerView.setAdapter(fileAdapter);
 
         checkPermission();
+
+        etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                // 当点击软键盘的搜索图标时触发
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    performSearch();  // 调用原有的搜索逻辑
+                    // 隐藏软键盘
+                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    imm.hideSoftInputFromWindow(etSearch.getWindowToken(), 0);
+                    return true;
+                }
+                return false;
+            }
+        });
+
 
         btnSearch.setOnClickListener(v -> {
             hidePasteButton();
@@ -379,6 +397,11 @@ public class MainActivity extends AppCompatActivity {
 
         if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
             updateLevelHint();
+        }
+
+        // 【新增】切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
+        if (copiedFile != null && currentDirectory.equals(copiedFile)) {
+            hidePasteButton();
         }
     }
 
@@ -810,6 +833,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // 【新增】核心校验：禁止在“被复制/剪切的文件夹”内部粘贴
+        if (copiedFile.isDirectory() && currentDirectory.equals(copiedFile)) {
+            Toast.makeText(this, "无法在当前复制/剪切的文件夹内粘贴，避免循环嵌套", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            return;
+        }
+
+        // ... 以下粘贴文件/文件夹的逻辑保持不变 ...
         final File baseTargetFile = new File(currentDirectory, copiedFile.getName());
         final File finalTargetFile = getUniqueExtractFile(baseTargetFile);
 
@@ -841,7 +872,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "粘贴失败，请重试", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 }
-                hidePasteButton();
+                hidePasteButton(); // 粘贴完成后自动隐藏按钮
             });
         }).start();
     }
@@ -1018,6 +1049,10 @@ public class MainActivity extends AppCompatActivity {
 
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
+                    if (copiedFile != null && file.equals(copiedFile)) {
+                        hidePasteButton(); // 隐藏粘贴按钮
+                        Toast.makeText(MainActivity.this, "禁止在当前复制/剪切的文件夹内粘贴，已自动隐藏粘贴功能", Toast.LENGTH_SHORT).show();
+                    }
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = file;

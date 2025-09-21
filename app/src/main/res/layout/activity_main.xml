@@ -57,7 +57,9 @@
                 android:textSize="16sp"
                 android:hint="Lv-1"
                 android:textColor="#FFFFFF"
-                android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
+                android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
             <FrameLayout
                 android:id="@+id/paste_container"
                 android:layout_width="wrap_content"
