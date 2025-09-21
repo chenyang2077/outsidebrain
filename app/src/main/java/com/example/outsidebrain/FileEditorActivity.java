@@ -37,12 +37,12 @@ public class FileEditorActivity extends AppCompatActivity {
     private boolean isSaved = true;   // 是否已保存
     private static final int MAX_TITLE_LEN = 31; // 内容截取最大长度
 
-    // 时间戳格式（精确到天，年份取后两位）
-    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yy-MM-dd", Locale.getDefault());
-    // 正文时间戳格式：(25-09-21)
-    private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yy-MM-dd", Locale.getDefault());
-    // 匹配任意位置的时间戳（用于检查是否已存在当天时间戳）
-    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{2}-\\d{2}-\\d{2}\\)");
+    // 1. 【修改】文件名时间戳：年份改为完整4位（yyyy）
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault());
+    // 2. 【修改】正文时间戳：年份改为完整4位（yyyy），格式保持 (yyyy-MM-dd)
+    private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+    // 3. 【修改】时间戳匹配正则：适配4位年份（\\d{4} 表示4位数字）
+    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -335,9 +335,9 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
     }
 
-    // 核心修改：新增时间戳追加在前面，不修改原有，同一天只加一次
+    // 4. 【核心修改】时间戳从内容前换到内容后，保留“同一天只加一次”逻辑
     private String addContentTimestamp(String originalContent) {
-        // 生成当前时间戳 (25-09-21)
+        // 生成当前完整年份时间戳 (yyyy-MM-dd)
         String currentTimeStamp = "(" + CONTENT_TIMESTAMP.format(new Date()) + ")";
 
         // 检查内容中是否已存在当天时间戳（任意位置）
@@ -356,8 +356,12 @@ public class FileEditorActivity extends AppCompatActivity {
         if (hasSameTimestamp) {
             return originalContent;
         } else {
-            // 不存在当天时间戳，追加到最前面（不换行）
-            return currentTimeStamp + originalContent;
+            // 5. 【修改】时间戳追加到内容末尾（空内容时直接加时间戳，非空时加换行分隔）
+            if (TextUtils.isEmpty(originalContent)) {
+                return currentTimeStamp;
+            } else {
+                return originalContent + "\n" + currentTimeStamp;
+            }
         }
     }
 
