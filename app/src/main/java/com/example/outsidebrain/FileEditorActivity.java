@@ -38,14 +38,16 @@ public class FileEditorActivity extends AppCompatActivity {
     private boolean isSaved = true;
     private static final int MAX_TITLE_LEN = 31;
 
-    // 文件名时间戳（仅新建文件时使用）
-    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault());
-    // 正文时间戳（yyyy-MM-dd）
+    // 新秒级时间戳格式（下划线+14位数字：_yyyyMMddHHmmss）
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("_yyyyMMddHHmmss", Locale.getDefault());
+    // 正文时间戳（保持原有格式不变）
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    // 匹配最后一行有效时间戳（整行：(yyyy-MM-dd)）
+    // 匹配最后一行有效时间戳
     private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
-    // 匹配第一行有效路径标识（整行：【路径】）
+    // 匹配第一行有效路径标识
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
+    // 新秒级时间戳正则（用于隐藏和重名判断）
+    private static final Pattern NEW_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,9 +57,12 @@ public class FileEditorActivity extends AppCompatActivity {
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
+        // 获取意图参数（新增时间戳相关参数接收）
         String filePath = getIntent().getStringExtra("file_path");
         String currentDirPath = getIntent().getStringExtra("current_dir_path");
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
+        // 新增：接收是否需要处理时间戳的标记（默认true）
+        boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
         handleZipAndShareIntent();
 
@@ -65,15 +70,34 @@ public class FileEditorActivity extends AppCompatActivity {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
             focusAndShowSoftInput(etContent);
+
+            // 新增：如果是新建文件且需要处理时间戳，预先清理可能的时间戳残留
+            if (needHandleTimestamp) {
+                etFileName.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {
+                        // 实时移除用户输入中可能包含的时间戳格式
+                        String cleaned = NEW_SECOND_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
+                        if (!cleaned.equals(s.toString())) {
+                            s.replace(0, s.length(), cleaned);
+                        }
+                    }
+                });
+            }
         } else if (filePath != null) {
             targetFile = new File(filePath);
-            loadExistingFileData(); // 加载已有文件的标题和内容
+            // 新增：传递是否需要处理时间戳的参数到加载方法
+            loadExistingFileData(needHandleTimestamp);
         }
 
         setupTextChangeListeners();
     }
 
-    // 压缩和分享相关方法（完全保留原逻辑）
+    // 压缩和分享相关方法（保持不变）
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
@@ -184,8 +208,8 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 加载文件数据（保留原格式，标题显示去除后缀的文件名）
-    private void loadExistingFileData() {
+    // 新增：接收是否需要处理时间戳的参数
+    private void loadExistingFileData(boolean needHandleTimestamp) {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
             finish();
@@ -198,14 +222,20 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // 加载标题：去除 .txt 后缀（保留用户之前设置的完整标题，包括手动添加的时间戳）
         String fileName = targetFile.getName();
         if (fileName.endsWith(".txt")) {
             fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
-        etFileName.setText(fileName); // 用户可在此输入框修改标题
 
-        // 加载内容：完全保留原格式（含空行、中间【】等）
+        // 新增：根据参数决定是否处理时间戳隐藏
+        if (needHandleTimestamp) {
+            Matcher timestampMatcher = NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
+            if (timestampMatcher.find()) {
+                fileName = timestampMatcher.replaceAll("");
+            }
+        }
+        etFileName.setText(fileName);
+
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
             StringBuilder content = new StringBuilder();
@@ -213,7 +243,6 @@ public class FileEditorActivity extends AppCompatActivity {
             while ((line = br.readLine()) != null) {
                 content.append(line).append("\n");
             }
-            // 去除末尾多余换行符
             String finalContent = content.toString().endsWith("\n")
                     ? content.toString().substring(0, content.length() - 1)
                     : content.toString();
@@ -225,7 +254,6 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private void setupTextChangeListeners() {
-        // 标题变化时标记为未保存
         etFileName.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -237,7 +265,6 @@ public class FileEditorActivity extends AppCompatActivity {
             public void afterTextChanged(android.text.Editable s) {}
         });
 
-        // 内容变化时标记为未保存
         etContent.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -250,7 +277,6 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
-    // 【核心修复】自动保存逻辑：新增“编辑已有文件时的标题修改”处理
     private void autoSave() {
         if (isSaved) return;
 
@@ -258,13 +284,12 @@ public class FileEditorActivity extends AppCompatActivity {
         String content = etContent.getText().toString();
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
+        boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
         if (rootFolderName == null) rootFolderName = "外置大脑";
-        String fileTimestamp = FILE_NAME_TIMESTAMP.format(new Date());
+        String fileTimestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
 
-        // 1. 新建文件逻辑（保留自动加时间戳）
         if (isPreEdit) {
-            // 新建文件逻辑
             if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
@@ -272,10 +297,11 @@ public class FileEditorActivity extends AppCompatActivity {
             }
 
             String finalTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
-            finalTitle = removeOldTimestamp(finalTitle);
+            if (needHandleTimestamp) {
+                finalTitle = removeOldTimestamp(finalTitle);
+            }
 
-            // 核心修改：不生成文件名时间戳，直接调用getUniqueFile
-            targetFile = getUniqueFile(currentDir, finalTitle); // 自动加时间戳
+            targetFile = getUniqueFile(currentDir, finalTitle, needHandleTimestamp);
 
             try {
                 if (targetFile.createNewFile()) {
@@ -295,37 +321,28 @@ public class FileEditorActivity extends AppCompatActivity {
                 e.printStackTrace();
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
-        }
-        // 2. 编辑已有文件逻辑（新增标题修改处理）
-        else {
+        } else {
             if (targetFile == null) return;
 
-            // 【新增】处理用户手动修改的标题（文件名）
-            String originalFileName = targetFile.getName(); // 原始完整文件名（含.txt）
+            String originalFileName = targetFile.getName();
             String originalTitle = originalFileName.endsWith(".txt")
                     ? originalFileName.substring(0, originalFileName.lastIndexOf("."))
                     : originalFileName;
+            if (needHandleTimestamp) {
+                originalTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(originalTitle).replaceAll("");
+            }
 
-            // 若用户修改了标题（输入框内容与原标题不同）
-            // 在编辑文件逻辑中，更新文件名时间戳
-            if (!TextUtils.isEmpty(inputTitle) && !inputTitle.equals(originalTitle)) {
-                // 清理标题中的旧时间戳
-                String cleanTitle = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(inputTitle).replaceAll("");
-                // 添加新的秒级时间戳
-                String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
-                String newFileName = cleanTitle + newTimestamp + ".txt";
+            if (!TextUtils.isEmpty(inputTitle) && !inputTitle.equals(originalTitle) && needHandleTimestamp) {
+                String cleanTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(inputTitle).replaceAll("");
+                String newFileName = cleanTitle + fileTimestamp + ".txt";
                 File newFile = new File(targetFile.getParentFile(), newFileName);
+                newFile = getUniqueEditFile(newFile, needHandleTimestamp);
 
-                // 处理重名（忽略时间戳）
-                newFile = getUniqueEditFile(newFile);
-
-                // 执行重命名
                 if (targetFile.renameTo(newFile)) {
                     targetFile = newFile;
                 }
             }
 
-            // 处理文件内容（路径标识、时间戳，逻辑不变）
             String finalContent;
             if (isRootDirectory) {
                 finalContent = addContentTimestamp(content);
@@ -355,8 +372,7 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
     }
 
-    // 【新增】处理编辑已有文件时的重名问题（避免覆盖已有文件）
-    private File getUniqueEditFile(File targetFile) {
+    private File getUniqueEditFile(File targetFile, boolean needHandleTimestamp) {
         if (!targetFile.exists()) return targetFile;
 
         File parentDir = targetFile.getParentFile();
@@ -365,22 +381,28 @@ public class FileEditorActivity extends AppCompatActivity {
         int dotIndex = fileName.lastIndexOf(".");
 
         if (dotIndex != -1) {
-            extension = fileName.substring(dotIndex); // .txt
-            fileName = fileName.substring(0, dotIndex); // 去除后缀的标题
+            extension = fileName.substring(dotIndex);
+            fileName = fileName.substring(0, dotIndex);
+        }
+
+        String coreTitle = fileName;
+        if (needHandleTimestamp) {
+            coreTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
         }
 
         int counter = 1;
         File uniqueFile;
         do {
-            String uniqueFileName = fileName + "(" + counter + ")" + extension;
-            uniqueFile = new File(parentDir, uniqueFileName);
+            String newFileName = needHandleTimestamp
+                    ? coreTitle + FILE_NAME_TIMESTAMP.format(new Date()) + "(" + counter + ")" + extension
+                    : coreTitle + "(" + counter + ")" + extension;
+            uniqueFile = new File(parentDir, newFileName);
             counter++;
         } while (uniqueFile.exists());
 
         return uniqueFile;
     }
 
-    // 时间戳处理（保留所有空行，仅最后一行有效）
     private String addContentTimestamp(String originalContent) {
         String[] allLines = originalContent.split("\n", -1);
         ArrayList<String> lineList = new ArrayList<>();
@@ -391,7 +413,6 @@ public class FileEditorActivity extends AppCompatActivity {
         String todayTimestamp = CONTENT_TIMESTAMP.format(new Date());
         boolean needAddTimestamp = true;
 
-        // 找到最后一个非空行
         int lastValidLineIndex = -1;
         for (int i = lineList.size() - 1; i >= 0; i--) {
             if (!TextUtils.isEmpty(lineList.get(i).trim())) {
@@ -400,7 +421,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         }
 
-        // 检查最后一个有效行是否为当天时间戳
         if (lastValidLineIndex != -1) {
             String lastValidLine = lineList.get(lastValidLineIndex);
             if (LAST_LINE_TIMESTAMP_PATTERN.matcher(lastValidLine).matches()) {
@@ -418,22 +438,17 @@ public class FileEditorActivity extends AppCompatActivity {
         return TextUtils.join("\n", lineList);
     }
 
-    // 以下方法保持不变
-    // 移除时间戳参数，仅使用标题生成文件名
-    // 生成带隐藏秒级时间戳的文件名
-    private File getUniqueFile(File parentDir, String baseTitle) {
-        // 移除标题中可能存在的旧时间戳
-        String cleanTitle = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(baseTitle).replaceAll("");
-        // 生成隐藏的秒级时间戳（格式：_yyyyMMddHHmmss）
-        String timestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
-        // 时间戳放在文件名末尾、扩展名之前（隐藏效果）
+    private File getUniqueFile(File parentDir, String baseTitle, boolean needHandleTimestamp) {
+        String cleanTitle = needHandleTimestamp ? NEW_SECOND_TIMESTAMP_PATTERN.matcher(baseTitle).replaceAll("") : baseTitle;
+        String timestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
         String baseFileName = cleanTitle + timestamp + ".txt";
         File file = new File(parentDir, baseFileName);
 
-        // 重名判断：忽略时间戳部分，仅对比核心标题
         int counter = 1;
         while (file.exists()) {
-            String uniqueFileName = cleanTitle + timestamp + "(" + counter + ")" + ".txt";
+            String uniqueFileName = needHandleTimestamp
+                    ? cleanTitle + timestamp + "(" + counter + ")" + ".txt"
+                    : cleanTitle + "(" + counter + ")" + ".txt";
             file = new File(parentDir, uniqueFileName);
             counter++;
         }
@@ -449,7 +464,7 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private String removeOldTimestamp(String fileName) {
-        return MainActivity.FILE_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
+        return NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }
 
     private void writeFileContent(File file, String content) {

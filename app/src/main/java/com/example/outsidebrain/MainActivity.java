@@ -80,10 +80,15 @@ public class MainActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
     // 匹配文件名中的时间戳（格式：-yyyy-MM-dd）
     // 文件名中隐藏的秒级时间戳正则（格式：_yyyyMMddHHmmss，使用下划线避免视觉干扰）
+    // 替换原有的FILE_TIMESTAMP_PATTERN为新的秒级时间戳正则
+// 原定义：public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2}");
+    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");  // 新：下划线+14位数字（yyyyMMddHHmmss）
+
+    // 同时更新时间戳格式化工具
+    public static final SimpleDateFormat SECOND_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
     public static final Pattern FILE_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
     // 秒级时间戳生成器（精确到秒，格式：yyyyMMddHHmmss）
-    public static final SimpleDateFormat SECOND_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
-    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}");
+
     // 仅匹配整行的路径标识（严格第一行使用）
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
     // 匹配内容中的时间戳（格式：(yyyy-MM-dd)）
