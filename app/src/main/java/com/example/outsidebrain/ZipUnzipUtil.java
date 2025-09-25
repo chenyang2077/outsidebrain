@@ -2,6 +2,7 @@ package com.example.outsidebrain;
 
 import android.util.Log;
 import java.io.*;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Set;
@@ -86,7 +87,41 @@ public class ZipUnzipUtil {
             return false;
         }
     }
+    // 在解压逻辑中，对TXT文件添加隐藏时间戳
+    private static void processTxtFileTimestamp(File txtFile) {
+        if (txtFile == null || !txtFile.getName().toLowerCase().endsWith(".txt")) {
+            return;
+        }
 
+        // 1. 移除文件名中可能存在的旧时间戳
+        String originalName = txtFile.getName();
+        String cleanName = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(originalName).replaceAll("");
+
+        // 2. 去除原有扩展名
+        if (cleanName.endsWith(".txt")) {
+            cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+        }
+
+        // 3. 添加新的秒级时间戳（放在末尾隐藏）
+        String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+        String newFileName = cleanName + newTimestamp + ".txt";
+        File newFile = new File(txtFile.getParentFile(), newFileName);
+
+        // 4. 处理重名（忽略时间戳）
+        if (newFile.exists()) {
+            int counter = 1;
+            do {
+                newFileName = cleanName + newTimestamp + "(" + counter + ")" + ".txt";
+                newFile = new File(txtFile.getParentFile(), newFileName);
+                counter++;
+            } while (newFile.exists());
+        }
+
+        // 5. 执行重命名
+        if (!txtFile.renameTo(newFile)) {
+            Log.w(TAG, "无法为TXT文件添加时间戳: " + originalName);
+        }
+    }
     /**
      * 分析压缩包根目录结构
      * 主要判断：是否所有内容都在一个单一的根文件夹下

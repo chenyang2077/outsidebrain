@@ -1,6 +1,10 @@
 package com.example.outsidebrain;
 
 import android.Manifest;
+import java.text.ParseException;
+
+// 如果还有 SimpleDateFormat 错误也需要这个
+import java.text.SimpleDateFormat;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -75,6 +79,10 @@ public class MainActivity extends AppCompatActivity {
     private FloatingActionButton preEditFileBtn;
     private static final String ROOT_FOLDER_NAME = "外置大脑";
     // 匹配文件名中的时间戳（格式：-yyyy-MM-dd）
+    // 文件名中隐藏的秒级时间戳正则（格式：_yyyyMMddHHmmss，使用下划线避免视觉干扰）
+    public static final Pattern FILE_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
+    // 秒级时间戳生成器（精确到秒，格式：yyyyMMddHHmmss）
+    public static final SimpleDateFormat SECOND_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
     public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}");
     // 仅匹配整行的路径标识（严格第一行使用）
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
@@ -155,6 +163,39 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             showFolderCreateDialog();
         });
+    }
+
+    // 修改TXT文件比较器，使用文件名中的秒级时间戳
+    private class TxtTimestampComparator implements Comparator<File> {
+        @Override
+        public int compare(File f1, File f2) {
+            long time1 = getSecondTimestampFromFileName(f1.getName());
+            long time2 = getSecondTimestampFromFileName(f2.getName());
+
+            // 优先按文件名中的秒级时间戳排序（新的在前）
+            if (time1 != 0 && time2 != 0) {
+                return Long.compare(time2, time1);
+            }
+            // 时间戳缺失时用文件修改时间兜底
+            return Long.compare(f2.lastModified(), f1.lastModified());
+        }
+    }
+
+    // 从文件名提取秒级时间戳
+    private long getSecondTimestampFromFileName(String fileName) {
+        if (!fileName.endsWith(".txt")) return 0;
+
+        Matcher matcher = FILE_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
+        if (matcher.find()) {
+            String timestampStr = matcher.group().replaceFirst("_", "");
+            try {
+                Date date = SECOND_TIMESTAMP_FORMAT.parse(timestampStr);
+                return date != null ? date.getTime() : 0;
+            } catch (ParseException e) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private void updateLevelHint() {
@@ -383,7 +424,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             Collections.sort(folders, Comparator.comparing(File::getName));
-            Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            Collections.sort(txtFiles, new TxtTimestampComparator());
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);

@@ -307,20 +307,21 @@ public class FileEditorActivity extends AppCompatActivity {
                     : originalFileName;
 
             // 若用户修改了标题（输入框内容与原标题不同）
+            // 在编辑文件逻辑中，更新文件名时间戳
             if (!TextUtils.isEmpty(inputTitle) && !inputTitle.equals(originalTitle)) {
-                // 新文件名 = 用户输入标题 + .txt（保留后缀，不自动加时间戳）
-                String newFileName = inputTitle + ".txt";
+                // 清理标题中的旧时间戳
+                String cleanTitle = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(inputTitle).replaceAll("");
+                // 添加新的秒级时间戳
+                String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+                String newFileName = cleanTitle + newTimestamp + ".txt";
                 File newFile = new File(targetFile.getParentFile(), newFileName);
 
-                // 处理重名：若新文件名已存在，添加序号（如“笔记(1).txt”）
+                // 处理重名（忽略时间戳）
                 newFile = getUniqueEditFile(newFile);
 
                 // 执行重命名
                 if (targetFile.renameTo(newFile)) {
-                    targetFile = newFile; // 更新目标文件为新文件
-                    Toast.makeText(this, "标题修改成功", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(this, "标题修改失败（可能被其他应用占用）", Toast.LENGTH_SHORT).show();
+                    targetFile = newFile;
                 }
             }
 
@@ -419,14 +420,20 @@ public class FileEditorActivity extends AppCompatActivity {
 
     // 以下方法保持不变
     // 移除时间戳参数，仅使用标题生成文件名
+    // 生成带隐藏秒级时间戳的文件名
     private File getUniqueFile(File parentDir, String baseTitle) {
-        String baseFileName = baseTitle + ".txt"; // 直接用标题+后缀，无时间戳
+        // 移除标题中可能存在的旧时间戳
+        String cleanTitle = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(baseTitle).replaceAll("");
+        // 生成隐藏的秒级时间戳（格式：_yyyyMMddHHmmss）
+        String timestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+        // 时间戳放在文件名末尾、扩展名之前（隐藏效果）
+        String baseFileName = cleanTitle + timestamp + ".txt";
         File file = new File(parentDir, baseFileName);
-        int counter = 1;
 
+        // 重名判断：忽略时间戳部分，仅对比核心标题
+        int counter = 1;
         while (file.exists()) {
-            // 重名时添加序号（如“笔记(1).txt”）
-            String uniqueFileName = baseTitle + "(" + counter + ")" + ".txt";
+            String uniqueFileName = cleanTitle + timestamp + "(" + counter + ")" + ".txt";
             file = new File(parentDir, uniqueFileName);
             counter++;
         }
