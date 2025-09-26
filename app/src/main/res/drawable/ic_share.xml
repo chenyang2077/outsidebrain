@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0">
+    <!-- 基础文件形状，与原图保持一致 -->
+    <path
+        android:fillColor="#FFB85C"
+        android:pathData="M10,4H4C3.45,4 3,4.45 3,5v15c0,0.55 0.45,1 1,1h16c0.55,0 1,-0.45 1,-1V8L14,4h-4zM19,19H5V5h4v3h6V5h4v14z" />
 
-</selector>
+    <!-- 竖版拉链元素 - 靠左放置 -->
+
+    <!-- 条纹使用指定的宽度（h5），放置在竖版拉链元素上 -->
+    <path
+        android:fillColor="#E09E39"
+        android:pathData="M11,9h5v1h-5zM11,12h5v1h-5zM11,15h5v1h-5zM11,18h5v1h-5z" />
+</vector>

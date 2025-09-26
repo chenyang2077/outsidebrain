@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
@@ -35,6 +37,7 @@ import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.BufferedInputStream;
@@ -1344,6 +1347,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void loadImageThumbnail(File imageFile, ImageView imageView) {
+        // 使用Glide库加载缩略图（推荐方式）
+        Glide.with(MainActivity.this)
+                .load(imageFile)
+                .thumbnail(0.1f) // 加载原图的1/10作为缩略图
+                .centerCrop()
+                .error(R.drawable.ic_image) // 加载失败时显示默认图片图标
+                .into(imageView);
+    }
+    // 添加加载图片缩略图的方法
+
+
     // 文件列表适配器
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
@@ -1383,13 +1398,16 @@ public class MainActivity extends AppCompatActivity {
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             } else if (isImageFile(file)) {
-                holder.ivIcon.setImageResource(R.drawable.ic_image);
+                // 图片文件 - 显示缩略图
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.imageColor));
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+
+                // 加载图片缩略图
+                loadImageThumbnail(file, holder.ivIcon);
             } else {
                 holder.ivIcon.setImageResource(R.drawable.ic_other_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor));
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
             holder.tvName.setText(getDisplayName(file));
