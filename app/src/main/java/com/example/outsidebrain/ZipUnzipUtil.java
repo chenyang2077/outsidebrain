@@ -16,7 +16,7 @@ public class ZipUnzipUtil {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     /**
-     * 解压到当前文件夹，处理根目录文件夹重名（整体添加序列号）
+     * 解压到当前文件夹，处理所有文件夹重名（包括根目录和内部文件夹）
      * @param zipFilePath 压缩文件路径
      * @param targetDir 当前目标文件夹（解压到这里）
      * @return 解压是否成功
@@ -39,65 +39,133 @@ public class ZipUnzipUtil {
             // 2. 处理根目录重名：生成不冲突的目标文件夹名称
             String targetRootFolder = getNonConflictFolderName(targetDir, rootDirInfo.rootFolderName);
             String finalTargetPath = new File(targetDir, targetRootFolder).getAbsolutePath();
+            File rootTargetDir = new File(finalTargetPath);
 
-            // 3. 执行解压（保持内部结构）
+            // 3. 收集所有需要解压的条目，先处理文件夹
+            Set<ZipEntry> dirEntries = new HashSet<>();
+            Set<ZipEntry> fileEntries = new HashSet<>();
+
             Enumeration<? extends ZipEntry> entries = zf.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                String entryName = entry.getName();
-
-                // 处理路径分隔符统一为"/"
-                entryName = entryName.replace("\\", "/");
-
-                // 构建目标路径：根目录替换为带序列号的文件夹，保留内部结构
-                String relativePath;
-                if (rootDirInfo.hasSingleRootFolder) {
-                    // 情况1：有单一根文件夹（如"123/"），去掉根文件夹后取相对路径
-                    relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
-                } else {
-                    // 情况2：无单一根文件夹，直接使用entryName作为相对路径
-                    relativePath = entryName;
-                }
-
-                // 拼接最终目标路径
-                File targetFile = new File(new File(targetDir, targetRootFolder), relativePath);
-
                 if (entry.isDirectory()) {
-                    if (!targetFile.exists() && !targetFile.mkdirs()) {
-                        Log.e(TAG, "创建文件夹失败: " + targetFile.getAbsolutePath());
-                        return false;
-                    }
+                    dirEntries.add(entry);
                 } else {
-                    File parentFile = targetFile.getParentFile();
-                    if (parentFile != null && !parentFile.exists() && !parentFile.mkdirs()) {
-                        Log.e(TAG, "创建父文件夹失败: " + parentFile.getAbsolutePath());
-                        return false;
-                    }
-
-                    // 写入文件内容
-                    try (InputStream is = zf.getInputStream(entry);
-                         OutputStream os = new FileOutputStream(targetFile)) {
-                        byte[] buffer = new byte[1024 * 4];
-                        int len;
-                        while ((len = is.read(buffer)) != -1) {
-                            os.write(buffer, 0, len);
-                        }
-                    }
-
-                    // 处理TXT文件的时间戳和唯一性
-                    if (targetFile.getName().toLowerCase().endsWith(".txt")) {
-                        // 传入外置大脑根目录
-                        File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-                        processTxtFileTimestamp(targetFile, rootDir);
-                    }
+                    fileEntries.add(entry);
                 }
             }
+
+            // 4. 先创建所有文件夹（处理重名）
+            for (ZipEntry entry : dirEntries) {
+                processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
+            }
+
+            // 5. 再处理所有文件
+            for (ZipEntry entry : fileEntries) {
+                processFileEntry(zf, entry, rootDirInfo, rootTargetDir);
+            }
+
             Log.d(TAG, "解压成功，目标路径: " + finalTargetPath);
             return true;
 
         } catch (IOException e) {
             Log.e(TAG, "解压失败", e);
             return false;
+        }
+    }
+
+    /**
+     * 处理文件夹条目，确保名称唯一
+     */
+    private static void processDirectoryEntry(ZipFile zipFile, ZipEntry entry,
+                                              RootDirInfo rootDirInfo, File rootTargetDir) throws IOException {
+        String entryName = entry.getName().replace("\\", "/");
+        String relativePath;
+
+        // 计算相对路径
+        if (rootDirInfo.hasSingleRootFolder) {
+            relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
+        } else {
+            relativePath = entryName;
+        }
+
+        // 处理空路径
+        if (relativePath.isEmpty() || relativePath.equals("/")) {
+            return;
+        }
+
+        // 构建目标文件夹路径
+        File targetDir = new File(rootTargetDir, relativePath);
+        File parentDir = targetDir.getParentFile();
+
+        // 确保父目录存在
+        if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+            Log.e(TAG, "创建父文件夹失败: " + parentDir.getAbsolutePath());
+            return;
+        }
+
+        // 检查并处理当前文件夹重名
+        String uniqueDirName = getNonConflictFolderName(parentDir.getAbsolutePath(),
+                targetDir.getName());
+        File uniqueTargetDir = new File(parentDir, uniqueDirName);
+
+        // 创建唯一文件夹
+        if (!uniqueTargetDir.exists() && !uniqueTargetDir.mkdirs()) {
+            Log.e(TAG, "创建文件夹失败: " + uniqueTargetDir.getAbsolutePath());
+        }
+    }
+
+    /**
+     * 处理文件条目，使用已创建的唯一文件夹路径
+     */
+    private static void processFileEntry(ZipFile zipFile, ZipEntry entry,
+                                         RootDirInfo rootDirInfo, File rootTargetDir) throws IOException {
+        String entryName = entry.getName().replace("\\", "/");
+        String relativePath;
+
+        // 计算相对路径
+        if (rootDirInfo.hasSingleRootFolder) {
+            relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
+        } else {
+            relativePath = entryName;
+        }
+
+        // 构建目标文件路径
+        File targetFile = new File(rootTargetDir, relativePath);
+        File parentDir = targetFile.getParentFile();
+
+        // 如果父目录不存在，说明是新文件夹，需要检查重名
+        if (parentDir != null && !parentDir.exists()) {
+            // 获取唯一父目录名
+            String uniqueParentName = getNonConflictFolderName(
+                    parentDir.getParentFile().getAbsolutePath(),
+                    parentDir.getName());
+            parentDir = new File(parentDir.getParentFile(), uniqueParentName);
+
+            // 创建父目录
+            if (!parentDir.mkdirs()) {
+                Log.e(TAG, "创建父文件夹失败: " + parentDir.getAbsolutePath());
+                return;
+            }
+
+            // 更新目标文件路径
+            targetFile = new File(parentDir, targetFile.getName());
+        }
+
+        // 写入文件内容
+        try (InputStream is = zipFile.getInputStream(entry);
+             OutputStream os = new FileOutputStream(targetFile)) {
+            byte[] buffer = new byte[1024 * 4];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                os.write(buffer, 0, len);
+            }
+        }
+
+        // 处理TXT文件的时间戳和唯一性
+        if (targetFile.getName().toLowerCase().endsWith(".txt")) {
+            File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
+            processTxtFileTimestamp(targetFile, rootDir);
         }
     }
 
@@ -186,8 +254,9 @@ public class ZipUnzipUtil {
 
     /**
      * 生成不冲突的文件夹名称（重名则加序列号）
+     * 已修改为public权限，允许外部类访问
      */
-    private static String getNonConflictFolderName(String targetDir, String originalName) {
+    public static String getNonConflictFolderName(String targetDir, String originalName) {
         String baseName = originalName;
         File targetFolder = new File(targetDir, baseName);
 

@@ -28,6 +28,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -564,11 +565,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createFolder(String name) {
-        File newFolder = new File(currentDirectory, name);
-        if (newFolder.exists()) {
-            Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 使用统一的重名处理方法生成唯一文件夹名称
+        String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
+                currentDirectory.getAbsolutePath(),
+                name
+        );
+        File newFolder = new File(currentDirectory, uniqueName);
 
         if (newFolder.mkdirs()) {
             Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
@@ -631,7 +633,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        boolean result = extractZip(zipFile, currentDirectory);
+                        boolean result = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
                         runOnUiThread(() -> {
                             if (result) {
                                 Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
@@ -647,65 +649,6 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    private boolean extractZip(File zipFile, File targetDir) {
-        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))) {
-            ZipEntry entry;
-            byte[] buffer = new byte[1024 * 4];
-
-            while ((entry = zis.getNextEntry()) != null) {
-                File entryFile = new File(targetDir, entry.getName());
-                entryFile = getUniqueExtractFile(entryFile);
-
-                if (entry.isDirectory()) {
-                    if (!entryFile.mkdirs()) {
-                        return false;
-                    }
-                } else {
-                    File parentDir = entryFile.getParentFile();
-                    if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
-                        return false;
-                    }
-
-                    try (FileOutputStream fos = new FileOutputStream(entryFile)) {
-                        int len;
-                        while ((len = zis.read(buffer)) > 0) {
-                            fos.write(buffer, 0, len);
-                        }
-                    }
-                }
-                zis.closeEntry();
-            }
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private File getUniqueExtractFile(File targetFile) {
-        if (!targetFile.exists()) return targetFile;
-
-        File parentDir = targetFile.getParentFile();
-        String name = targetFile.getName();
-        String extension = "";
-        int dotIndex = name.lastIndexOf(".");
-
-        if (dotIndex != -1) {
-            extension = name.substring(dotIndex);
-            name = name.substring(0, dotIndex);
-        }
-
-        int counter = 1;
-        File uniqueFile;
-        do {
-            String uniqueName = name + "(" + counter + ")" + extension;
-            uniqueFile = new File(parentDir, uniqueName);
-            counter++;
-        } while (uniqueFile.exists());
-
-        return uniqueFile;
     }
 
     private void showFolderOptions(File folder) {
@@ -835,26 +778,12 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
                 }
             } else {
-                // 非TXT文件直接使用用户输入的名称
-                if (file.isFile()) {
-                    // 保留原文件扩展名
-                    String extension = "";
-                    int dotIndex = file.getName().lastIndexOf(".");
-                    if (dotIndex != -1) {
-                        extension = file.getName().substring(dotIndex);
-                    }
-
-                    // 如果用户没有输入扩展名，自动添加
-                    if (!newName.toLowerCase().endsWith(extension.toLowerCase())) {
-                        newName += extension;
-                    }
-                }
-
-                File newFile = new File(file.getParentFile(), newName);
-                if (newFile.exists()) {
-                    Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
-                    return;
-                }
+                // 非TXT文件处理（特别是文件夹）
+                String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
+                        file.getParentFile().getAbsolutePath(),
+                        newName
+                );
+                File newFile = new File(file.getParentFile(), uniqueName);
 
                 if (file.renameTo(newFile)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
@@ -1001,22 +930,25 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        final File baseTargetFile = new File(currentDirectory, copiedFile.getName());
-
         new Thread(() -> {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
-                    // 文件夹操作：复制或剪切整个文件夹
-                    threadSuccess = copyDirectory(copiedFile, baseTargetFile, isCutOperation);
+                    // 生成不冲突的文件夹名称
+                    String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
+                            currentDirectory.getAbsolutePath(),
+                            copiedFile.getName()
+                    );
+                    File targetDir = new File(currentDirectory, uniqueName);
+                    threadSuccess = copyDirectory(copiedFile, targetDir, isCutOperation);
                 } else {
                     // 文件操作：根据是复制还是剪切采取不同策略
                     if (isCutOperation) {
                         // 剪切操作：直接移动，不改变文件名，只更新时间戳
-                        threadSuccess = moveFileWithTimestampUpdate(copiedFile, baseTargetFile);
+                        threadSuccess = moveFileWithTimestampUpdate(copiedFile, new File(currentDirectory, copiedFile.getName()));
                     } else {
                         // 复制操作：创建副本，确保文件名唯一
-                        threadSuccess = copyFileWithUniqueName(copiedFile, baseTargetFile);
+                        threadSuccess = copyFileWithUniqueName(copiedFile, new File(currentDirectory, copiedFile.getName()));
                     }
                 }
 
@@ -1228,6 +1160,14 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean copyDirectory(File sourceDir, File targetDir, boolean isCut) throws IOException {
         if (!sourceDir.isDirectory()) return false;
+
+        // 检查并处理目标文件夹重名
+        String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
+                targetDir.getParentFile().getAbsolutePath(),
+                targetDir.getName()
+        );
+        targetDir = new File(targetDir.getParentFile(), uniqueName);
+
         if (!targetDir.exists() && !targetDir.mkdirs()) {
             return false;
         }
