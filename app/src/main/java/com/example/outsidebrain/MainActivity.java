@@ -1,14 +1,11 @@
 package com.example.outsidebrain;
 
 import android.Manifest;
-import java.text.ParseException;
-
-// 如果还有 SimpleDateFormat 错误也需要这个
-import java.text.SimpleDateFormat;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -34,6 +31,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -50,6 +48,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -78,16 +77,11 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
     private static final String ROOT_FOLDER_NAME = "外置大脑";
-    // 匹配文件名中的时间戳（格式：-yyyy-MM-dd）
-    // 文件名中隐藏的秒级时间戳正则（格式：_yyyyMMddHHmmss，使用下划线避免视觉干扰）
-    // 替换原有的FILE_TIMESTAMP_PATTERN为新的秒级时间戳正则
-// 原定义：public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2}");
-    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");  // 新：下划线+14位数字（yyyyMMddHHmmss）
 
-    // 同时更新时间戳格式化工具
+    // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
+    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
     public static final SimpleDateFormat SECOND_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
     public static final Pattern FILE_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
-    // 秒级时间戳生成器（精确到秒，格式：yyyyMMddHHmmss）
 
     // 仅匹配整行的路径标识（严格第一行使用）
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
@@ -97,6 +91,11 @@ public class MainActivity extends AppCompatActivity {
     private File copiedFile;
     private boolean isCutOperation;
     private View pasteButton;
+
+    // 图片文件扩展名
+    private static final String[] IMAGE_EXTENSIONS = {
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"
+    };
 
 
     @Override
@@ -122,10 +121,8 @@ public class MainActivity extends AppCompatActivity {
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                // 当点击软键盘的搜索图标时触发
                 if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                    performSearch();  // 调用原有的搜索逻辑
-                    // 隐藏软键盘
+                    performSearch();
                     InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
                     imm.hideSoftInputFromWindow(etSearch.getWindowToken(), 0);
                     return true;
@@ -287,7 +284,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isContentContainKeyword(File file, String keyword) {
-        if (file.getName().toLowerCase().endsWith(".zip")) return false;
+        if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
+            return false;
+        }
 
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
@@ -358,9 +357,34 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean isSupportedFile(File file) {
+    // 判断是否为图片文件
+    private boolean isImageFile(File file) {
+        if (file.isDirectory()) return false;
+
         String fileName = file.getName().toLowerCase();
-        return fileName.endsWith(".txt") || fileName.endsWith(".zip");
+        for (String ext : IMAGE_EXTENSIONS) {
+            if (fileName.endsWith(ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 判断是否为其他文件（非文件夹、非ZIP、非TXT、非图片）
+    private boolean isOtherFile(File file) {
+        if (file.isDirectory()) return false;
+
+        String fileName = file.getName().toLowerCase();
+        // 明确排除已知类型
+        return !(fileName.endsWith(".txt") || fileName.endsWith(".zip") || isImageFile(file));
+    }
+
+    private boolean isSupportedFile(File file) {
+        return file.isDirectory() ||
+                file.getName().toLowerCase().endsWith(".txt") ||
+                file.getName().toLowerCase().endsWith(".zip") ||
+                isImageFile(file) ||
+                isOtherFile(file);
     }
 
     private void sortSearchResult() {
@@ -369,6 +393,8 @@ public class MainActivity extends AppCompatActivity {
         List<File> folders = new ArrayList<>();
         List<File> zipFiles = new ArrayList<>();
         List<File> txtFiles = new ArrayList<>();
+        List<File> imageFiles = new ArrayList<>();
+        List<File> otherFiles = new ArrayList<>();
 
         for (File f : searchResultList) {
             if (f.isDirectory()) {
@@ -377,23 +403,30 @@ public class MainActivity extends AppCompatActivity {
                 zipFiles.add(f);
             } else if (f.getName().toLowerCase().endsWith(".txt")) {
                 txtFiles.add(f);
+            } else if (isImageFile(f)) {
+                imageFiles.add(f);
+            } else {
+                otherFiles.add(f);
             }
         }
 
-        Collections.sort(fileList, new Comparator<File>() {
+        Collections.sort(folders, new Comparator<File>() {
             @Override
             public int compare(File file1, File file2) {
-                // 按文件名排序
                 return file1.getName().compareTo(file2.getName());
             }
         });
-        Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        Collections.sort(txtFiles, new TxtTimestampComparator());
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
         searchResultList.clear();
         searchResultList.addAll(folders);
         searchResultList.addAll(zipFiles);
         searchResultList.addAll(txtFiles);
+        searchResultList.addAll(imageFiles);
+        searchResultList.addAll(otherFiles);
     }
 
     private void initExternalBrain() {
@@ -429,6 +462,8 @@ public class MainActivity extends AppCompatActivity {
             List<File> folders = new ArrayList<>();
             List<File> zipFiles = new ArrayList<>();
             List<File> txtFiles = new ArrayList<>();
+            List<File> imageFiles = new ArrayList<>();
+            List<File> otherFiles = new ArrayList<>();
 
             for (File file : files) {
                 if (file.isDirectory()) {
@@ -437,22 +472,29 @@ public class MainActivity extends AppCompatActivity {
                     zipFiles.add(file);
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     txtFiles.add(file);
+                } else if (isImageFile(file)) {
+                    imageFiles.add(file);
+                } else {
+                    otherFiles.add(file);
                 }
             }
 
-            Collections.sort(fileList, new Comparator<File>() {
+            Collections.sort(folders, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
-                    // 按文件名排序
                     return file1.getName().compareTo(file2.getName());
                 }
             });
             Collections.sort(txtFiles, new TxtTimestampComparator());
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
             fileList.addAll(folders);
             fileList.addAll(zipFiles);
             fileList.addAll(txtFiles);
+            fileList.addAll(imageFiles);
+            fileList.addAll(otherFiles);
         }
 
         if (!isInSearchMode) {
@@ -463,7 +505,7 @@ public class MainActivity extends AppCompatActivity {
             updateLevelHint();
         }
 
-        // 【新增】切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
+        // 切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
         }
@@ -562,6 +604,8 @@ public class MainActivity extends AppCompatActivity {
             return fileName.substring(0, fileName.lastIndexOf("."));
         } else if (fileName.endsWith(".zip")) {
             return fileName;
+        } else if (isImageFile(file)) {
+            return fileName;
         }
         return fileName;
     }
@@ -584,10 +628,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        boolean result = ZipUnzipUtil.unzipToCurrentDir(
-                                zipFile.getAbsolutePath(),
-                                currentDirectory.getAbsolutePath()
-                        );
+                        boolean result = extractZip(zipFile, currentDirectory);
                         runOnUiThread(() -> {
                             if (result) {
                                 Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
@@ -693,11 +734,23 @@ public class MainActivity extends AppCompatActivity {
     private void showFileOptions(File file) {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = {"重命名", "删除", "分享", "复制", "剪切"};
+        String[] options;
+
+        // 为不同类型的文件提供不同的操作选项
+        if (file.getName().toLowerCase().endsWith(".txt")) {
+            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
+        } else if (file.getName().toLowerCase().endsWith(".zip")) {
+            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
+        } else if (isImageFile(file)) {
+            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
+        } else {
+            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
+        }
+
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
                 case 0:
-                    renameFile(file); // 允许用户手动重命名
+                    renameFile(file);
                     break;
                 case 1:
                     deleteFile(file);
@@ -730,7 +783,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 【核心】用户手动重命名TXT文件（完全按用户输入，不自动添加时间戳）
+    // 【核心】用户手动重命名文件
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
@@ -781,10 +834,16 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 // 非TXT文件直接使用用户输入的名称
                 if (file.isFile()) {
-                    if (file.getName().endsWith(".txt") && !newName.endsWith(".txt")) {
-                        newName += ".txt";
-                    } else if (file.getName().endsWith(".zip") && !newName.endsWith(".zip")) {
-                        newName += ".zip";
+                    // 保留原文件扩展名
+                    String extension = "";
+                    int dotIndex = file.getName().lastIndexOf(".");
+                    if (dotIndex != -1) {
+                        extension = file.getName().substring(dotIndex);
+                    }
+
+                    // 如果用户没有输入扩展名，自动添加
+                    if (!newName.toLowerCase().endsWith(extension.toLowerCase())) {
+                        newName += extension;
                     }
                 }
 
@@ -982,6 +1041,40 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+
+    // 打开图片文件
+    // 改进图片打开方法，增加文件提供器支持
+    private void openImageFile(File imageFile) {
+        try {
+            // 使用FileProvider确保Android 7.0+兼容性
+            Uri imageUri = FileProvider.getUriForFile(
+                    this,
+                    getPackageName() + ".fileprovider",
+                    imageFile
+            );
+
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(imageUri, "image/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            // 检查是否有应用可以打开图片
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "没有找到可以打开图片的应用", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 提供更详细的错误信息
+            Toast.makeText(this, "打开图片失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 提示不支持的文件类型
+    private void showUnsupportedFileMessage() {
+        Toast.makeText(this, "暂不支持此文件类型", Toast.LENGTH_SHORT).show();
+    }
+
     private boolean moveFileWithTimestampUpdate(File source, File target) throws IOException {
         if (!source.exists()) return false;
 
@@ -1035,6 +1128,25 @@ public class MainActivity extends AppCompatActivity {
             );
 
             finalTarget = new File(parent, uniqueName);
+        } else if (!source.getName().toLowerCase().endsWith(".txt") &&
+                !source.getName().toLowerCase().endsWith(".zip") &&
+                !isImageFile(source)) {
+            // 处理其他文件类型的重名问题
+            String fileName = source.getName();
+            String baseName = fileName;
+            String extension = "";
+            int dotIndex = fileName.lastIndexOf(".");
+
+            if (dotIndex != -1) {
+                baseName = fileName.substring(0, dotIndex);
+                extension = fileName.substring(dotIndex);
+            }
+
+            int counter = 1;
+            while (finalTarget.exists()) {
+                finalTarget = new File(parent, baseName + "(" + counter + ")" + extension);
+                counter++;
+            }
         }
 
         // 执行复制操作
@@ -1048,6 +1160,7 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
     }
+
     // 修改copySingleFile方法，处理TXT文件的重命名
     private boolean copySingleFile(File source, File target) throws IOException {
         if (!source.exists()) return false;
@@ -1077,6 +1190,25 @@ public class MainActivity extends AppCompatActivity {
             );
 
             finalTarget = new File(parent, uniqueName);
+        } else if (!source.getName().toLowerCase().endsWith(".txt") &&
+                !source.getName().toLowerCase().endsWith(".zip") &&
+                !isImageFile(source)) {
+            // 处理其他文件类型的重名问题
+            String fileName = source.getName();
+            String baseName = fileName;
+            String extension = "";
+            int dotIndex = fileName.lastIndexOf(".");
+
+            if (dotIndex != -1) {
+                baseName = fileName.substring(0, dotIndex);
+                extension = fileName.substring(dotIndex);
+            }
+
+            int counter = 1;
+            while (finalTarget.exists()) {
+                finalTarget = new File(parent, baseName + "(" + counter + ")" + extension);
+                counter++;
+            }
         }
 
         try (InputStream in = new BufferedInputStream(new FileInputStream(source));
@@ -1236,20 +1368,28 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
+            // 严格按类型设置样式，确保TXT文件正确显示
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
+            } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                holder.ivIcon.setImageResource(R.drawable.ic_folder2);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                // 恢复TXT文件的原始样式
+                holder.ivIcon.setImageResource(R.drawable.ic_file);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+            } else if (isImageFile(file)) {
+                holder.ivIcon.setImageResource(R.drawable.ic_image);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.imageColor));
             } else {
-                if (file.getName().toLowerCase().endsWith(".zip")) {
-                    holder.ivIcon.setImageResource(R.drawable.ic_folder2);
-                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
-                } else {
-                    holder.ivIcon.setImageResource(R.drawable.ic_file);
-                    holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                    holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                }
+                holder.ivIcon.setImageResource(R.drawable.ic_other_file);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.zipColor));
             }
 
             holder.tvName.setText(getDisplayName(file));
@@ -1283,6 +1423,12 @@ public class MainActivity extends AppCompatActivity {
                     }).start();
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
+                } else if (isImageFile(file)) {
+                    hidePasteButton();
+                    openImageFile(file);
+                } else {
+                    hidePasteButton();
+                    showUnsupportedFileMessage();
                 }
             });
 

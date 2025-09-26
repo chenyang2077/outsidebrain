@@ -26,5 +26,15 @@
     <color name="zipColor">#EBA887EB</color>    <!-- ZIP文件背景色（浅橙） -->
 
 
+    <!-- 图片文件颜色 -->
+    <color name="imageColor">#FF03A9F4</color>
+
+    <!-- 其他文件颜色 -->
+    <color name="otherFileColor">#FF795548</color>
+
+    <!-- 背景颜色 -->
+    <color name="item_image_rounded_bg">#E3F2FD</color>
+    <color name="item_other_rounded_bg">#FFF5F5F5</color>
+
 
 </resources>
