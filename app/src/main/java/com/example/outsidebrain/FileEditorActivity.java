@@ -3,6 +3,7 @@ package com.example.outsidebrain;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.text.TextUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -37,6 +38,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private File targetFile;
     private boolean isSaved = true;
     private static final int MAX_TITLE_LEN = 31;
+    private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     // 新秒级时间戳格式（下划线+14位数字：_yyyyMMddHHmmss）
     private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("_yyyyMMddHHmmss", Locale.getDefault());
@@ -57,11 +59,10 @@ public class FileEditorActivity extends AppCompatActivity {
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
-        // 获取意图参数（新增时间戳相关参数接收）
+        // 获取意图参数
         String filePath = getIntent().getStringExtra("file_path");
         String currentDirPath = getIntent().getStringExtra("current_dir_path");
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
-        // 新增：接收是否需要处理时间戳的标记（默认true）
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
         handleZipAndShareIntent();
@@ -71,7 +72,6 @@ public class FileEditorActivity extends AppCompatActivity {
             etFileName.setHint(":标题");
             focusAndShowSoftInput(etContent);
 
-            // 新增：如果是新建文件且需要处理时间戳，预先清理可能的时间戳残留
             if (needHandleTimestamp) {
                 etFileName.addTextChangedListener(new android.text.TextWatcher() {
                     @Override
@@ -90,14 +90,12 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         } else if (filePath != null) {
             targetFile = new File(filePath);
-            // 新增：传递是否需要处理时间戳的参数到加载方法
             loadExistingFileData(needHandleTimestamp);
         }
 
         setupTextChangeListeners();
     }
 
-    // 压缩和分享相关方法（保持不变）
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
@@ -208,7 +206,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // 新增：接收是否需要处理时间戳的参数
     private void loadExistingFileData(boolean needHandleTimestamp) {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -227,7 +224,6 @@ public class FileEditorActivity extends AppCompatActivity {
             fileName = fileName.substring(0, fileName.lastIndexOf("."));
         }
 
-        // 新增：根据参数决定是否处理时间戳隐藏
         if (needHandleTimestamp) {
             Matcher timestampMatcher = NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
             if (timestampMatcher.find()) {
@@ -298,7 +294,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
             String finalTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
             if (needHandleTimestamp) {
-                finalTitle = removeOldTimestamp(finalTitle);
+                finalTitle = UniqueFileNameHandler.removeTimestamp(finalTitle);
             }
 
             targetFile = getUniqueFile(currentDir, finalTitle, needHandleTimestamp);
@@ -329,15 +325,20 @@ public class FileEditorActivity extends AppCompatActivity {
                     ? originalFileName.substring(0, originalFileName.lastIndexOf("."))
                     : originalFileName;
             if (needHandleTimestamp) {
-                originalTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(originalTitle).replaceAll("");
+                originalTitle = UniqueFileNameHandler.removeTimestamp(originalTitle);
             }
 
             if (!TextUtils.isEmpty(inputTitle) && !inputTitle.equals(originalTitle) && needHandleTimestamp) {
-                String cleanTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(inputTitle).replaceAll("");
-                String newFileName = cleanTitle + fileTimestamp + ".txt";
-                File newFile = new File(targetFile.getParentFile(), newFileName);
-                newFile = getUniqueEditFile(newFile, needHandleTimestamp);
+                String cleanTitle = UniqueFileNameHandler.removeTimestamp(inputTitle);
+                // 使用全局唯一性检查
+                String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        new File(Environment.getExternalStorageDirectory(), rootFolderName),
+                        targetFile.getParentFile(),
+                        cleanTitle,
+                        fileTimestamp
+                );
 
+                File newFile = new File(targetFile.getParentFile(), newFileName);
                 if (targetFile.renameTo(newFile)) {
                     targetFile = newFile;
                 }
@@ -387,20 +388,20 @@ public class FileEditorActivity extends AppCompatActivity {
 
         String coreTitle = fileName;
         if (needHandleTimestamp) {
-            coreTitle = NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
+            coreTitle = UniqueFileNameHandler.removeTimestamp(fileName);
         }
 
-        int counter = 1;
-        File uniqueFile;
-        do {
-            String newFileName = needHandleTimestamp
-                    ? coreTitle + FILE_NAME_TIMESTAMP.format(new Date()) + "(" + counter + ")" + extension
-                    : coreTitle + "(" + counter + ")" + extension;
-            uniqueFile = new File(parentDir, newFileName);
-            counter++;
-        } while (uniqueFile.exists());
+        String timestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
 
-        return uniqueFile;
+        // 使用全局唯一性检查
+        String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME),
+                parentDir,
+                coreTitle,
+                timestamp
+        );
+
+        return new File(parentDir, newFileName);
     }
 
     private String addContentTimestamp(String originalContent) {
@@ -439,20 +440,18 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private File getUniqueFile(File parentDir, String baseTitle, boolean needHandleTimestamp) {
-        String cleanTitle = needHandleTimestamp ? NEW_SECOND_TIMESTAMP_PATTERN.matcher(baseTitle).replaceAll("") : baseTitle;
+        String cleanTitle = needHandleTimestamp ? UniqueFileNameHandler.removeTimestamp(baseTitle) : baseTitle;
         String timestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
-        String baseFileName = cleanTitle + timestamp + ".txt";
-        File file = new File(parentDir, baseFileName);
 
-        int counter = 1;
-        while (file.exists()) {
-            String uniqueFileName = needHandleTimestamp
-                    ? cleanTitle + timestamp + "(" + counter + ")" + ".txt"
-                    : cleanTitle + "(" + counter + ")" + ".txt";
-            file = new File(parentDir, uniqueFileName);
-            counter++;
-        }
-        return file;
+        // 使用全局唯一性检查
+        String fileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME),
+                parentDir,
+                cleanTitle,
+                timestamp
+        );
+
+        return new File(parentDir, fileName);
     }
 
     private String getContentSubtitle(String content) {

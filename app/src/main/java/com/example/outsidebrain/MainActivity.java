@@ -518,7 +518,7 @@ public class MainActivity extends AppCompatActivity {
     // 新建测试文件时添加时间戳（仅新建时）
     private void createTestFile() {
         String timestamp = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        File testFile = new File(currentDirectory, "使用说明与注意事项" + timestamp + ".txt");
+        File testFile = new File(currentDirectory, "使用说明与注意事项"  + ".txt");
         try {
             if (testFile.createNewFile()) {
                 String content = "此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
@@ -717,7 +717,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle("重命名");
 
         final EditText input = new EditText(this);
-        // 显示无时间戳的名称（供用户编辑，实际文件名保留时间戳）
+        // 显示无时间戳的名称（供用户编辑）
         input.setText(getDisplayName(file));
         builder.setView(input);
 
@@ -728,27 +728,59 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // 仅处理文件后缀，不自动添加时间戳
-            if (file.isFile()) {
-                if (file.getName().endsWith(".txt") && !newName.endsWith(".txt")) {
-                    newName += ".txt"; // 仅补全后缀，不添加时间戳
-                } else if (file.getName().endsWith(".zip") && !newName.endsWith(".zip")) {
-                    newName += ".zip";
+            // 对于TXT文件，需要检查全局唯一性
+            if (file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
+                // 去除可能的扩展名
+                String baseName = newName.toLowerCase().endsWith(".txt")
+                        ? newName.substring(0, newName.lastIndexOf("."))
+                        : newName;
+
+                // 生成新的时间戳
+                String timestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+
+                // 获取全局唯一文件名
+                String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        rootDirectory,
+                        file.getParentFile(),
+                        baseName,
+                        timestamp
+                );
+
+                File newFile = new File(file.getParentFile(), uniqueName);
+                if (newFile.exists()) {
+                    Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
+                    return;
                 }
-            }
 
-            File newFile = new File(file.getParentFile(), newName);
-            if (newFile.exists()) {
-                Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            // 执行重命名（完全按用户输入）
-            if (file.renameTo(newFile)) {
-                Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
-                loadFileList();
+                // 执行重命名
+                if (file.renameTo(newFile)) {
+                    Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
+                    loadFileList();
+                } else {
+                    Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                }
             } else {
-                Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                // 非TXT文件直接使用用户输入的名称
+                if (file.isFile()) {
+                    if (file.getName().endsWith(".txt") && !newName.endsWith(".txt")) {
+                        newName += ".txt";
+                    } else if (file.getName().endsWith(".zip") && !newName.endsWith(".zip")) {
+                        newName += ".zip";
+                    }
+                }
+
+                File newFile = new File(file.getParentFile(), newName);
+                if (newFile.exists()) {
+                    Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                if (file.renameTo(newFile)) {
+                    Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
+                    loadFileList();
+                } else {
+                    Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                }
             }
         });
 
@@ -832,6 +864,7 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
+    // 修改copyFileOrFolder方法，明确区分复制和剪切
     private void copyFileOrFolder(File target, boolean isCut) {
         if (target == null || !target.exists()) {
             Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
@@ -867,6 +900,7 @@ public class MainActivity extends AppCompatActivity {
         pasteButton = null;
     }
 
+    // 修改performPaste方法，处理剪切和复制的不同逻辑
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -879,24 +913,30 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 【新增】核心校验：禁止在“被复制/剪切的文件夹”内部粘贴
+        // 禁止在“被复制/剪切的文件夹”内部粘贴
         if (copiedFile.isDirectory() && currentDirectory.equals(copiedFile)) {
             Toast.makeText(this, "无法在当前复制/剪切的文件夹内粘贴，避免循环嵌套", Toast.LENGTH_SHORT).show();
             hidePasteButton();
             return;
         }
 
-        // ... 以下粘贴文件/文件夹的逻辑保持不变 ...
         final File baseTargetFile = new File(currentDirectory, copiedFile.getName());
-        final File finalTargetFile = getUniqueExtractFile(baseTargetFile);
 
         new Thread(() -> {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
-                    threadSuccess = copyDirectory(copiedFile, finalTargetFile);
+                    // 文件夹操作：复制或剪切整个文件夹
+                    threadSuccess = copyDirectory(copiedFile, baseTargetFile, isCutOperation);
                 } else {
-                    threadSuccess = copySingleFile(copiedFile, finalTargetFile);
+                    // 文件操作：根据是复制还是剪切采取不同策略
+                    if (isCutOperation) {
+                        // 剪切操作：直接移动，不改变文件名，只更新时间戳
+                        threadSuccess = moveFileWithTimestampUpdate(copiedFile, baseTargetFile);
+                    } else {
+                        // 复制操作：创建副本，确保文件名唯一
+                        threadSuccess = copyFileWithUniqueName(copiedFile, baseTargetFile);
+                    }
                 }
 
                 if (threadSuccess && isCutOperation) {
@@ -909,28 +949,119 @@ public class MainActivity extends AppCompatActivity {
             final boolean successResult = threadSuccess;
             runOnUiThread(() -> {
                 if (successResult) {
-                    Toast.makeText(this, "粘贴成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
+                    String operation = isCutOperation ? "移动" : "复制";
+                    Toast.makeText(this, operation + "成功，正在刷新列表...", Toast.LENGTH_SHORT).show();
                     new Thread(() -> {
-                        batchCorrectTxtFilepaths(finalTargetFile);
+                        batchCorrectTxtFilepaths(currentDirectory);
                         runOnUiThread(this::loadFileList);
                     }).start();
                 } else {
-                    Toast.makeText(this, "粘贴失败，请重试", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "操作失败，请重试", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 }
-                hidePasteButton(); // 粘贴完成后自动隐藏按钮
+                hidePasteButton(); // 操作完成后自动隐藏按钮
             });
         }).start();
     }
-
-    private boolean copySingleFile(File source, File target) throws IOException {
+    private boolean moveFileWithTimestampUpdate(File source, File target) throws IOException {
         if (!source.exists()) return false;
+
+        // 对于TXT文件，仅更新时间戳，不改变文件名
+        File finalTarget = target;
+        if (source.getName().toLowerCase().endsWith(".txt")) {
+            String fileName = source.getName();
+            String cleanName = UniqueFileNameHandler.removeTimestamp(fileName);
+            if (cleanName.toLowerCase().endsWith(".txt")) {
+                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+            }
+
+            // 生成新的时间戳
+            String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+
+            // 构建新文件名（保留原有序列号）
+            String newFileName = cleanName + newTimestamp + ".txt";
+            finalTarget = new File(target.getParentFile(), newFileName);
+        }
+
+        // 执行移动操作
+        return source.renameTo(finalTarget);
+    }
+
+    // 复制文件并确保唯一文件名（复制操作）
+    private boolean copyFileWithUniqueName(File source, File target) throws IOException {
+        if (!source.exists()) return false;
+
         File parent = target.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             return false;
         }
+
+        // 对于TXT文件，确保全局唯一
+        File finalTarget = target;
+        if (source.getName().toLowerCase().endsWith(".txt")) {
+            String cleanName = UniqueFileNameHandler.removeTimestamp(source.getName());
+            if (cleanName.toLowerCase().endsWith(".txt")) {
+                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+            }
+
+            // 生成新的时间戳
+            String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+
+            // 获取全局唯一文件名
+            String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                    rootDirectory,
+                    parent,
+                    cleanName,
+                    newTimestamp
+            );
+
+            finalTarget = new File(parent, uniqueName);
+        }
+
+        // 执行复制操作
         try (InputStream in = new BufferedInputStream(new FileInputStream(source));
-             OutputStream out = new BufferedOutputStream(new FileOutputStream(target))) {
+             OutputStream out = new BufferedOutputStream(new FileOutputStream(finalTarget))) {
+            byte[] buffer = new byte[1024 * 4];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+            return true;
+        }
+    }
+    // 修改copySingleFile方法，处理TXT文件的重命名
+    private boolean copySingleFile(File source, File target) throws IOException {
+        if (!source.exists()) return false;
+
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            return false;
+        }
+
+        // 对于TXT文件，确保全局唯一
+        File finalTarget = target;
+        if (source.getName().toLowerCase().endsWith(".txt")) {
+            String cleanName = UniqueFileNameHandler.removeTimestamp(source.getName());
+            if (cleanName.toLowerCase().endsWith(".txt")) {
+                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+            }
+
+            String timestamp = UniqueFileNameHandler.removeTimestamp(
+                    MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date())
+            );
+
+            String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                    rootDirectory,
+                    parent,
+                    cleanName,
+                    "_" + timestamp
+            );
+
+            finalTarget = new File(parent, uniqueName);
+        }
+
+        try (InputStream in = new BufferedInputStream(new FileInputStream(source));
+             OutputStream out = new BufferedOutputStream(new FileOutputStream(finalTarget))) {
             byte[] buffer = new byte[1024 * 4];
             int len;
             while ((len = in.read(buffer)) != -1) {
@@ -940,22 +1071,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean copyDirectory(File sourceDir, File targetDir) throws IOException {
+
+    private boolean copyDirectory(File sourceDir, File targetDir, boolean isCut) throws IOException {
         if (!sourceDir.isDirectory()) return false;
         if (!targetDir.exists() && !targetDir.mkdirs()) {
             return false;
         }
+
         File[] files = sourceDir.listFiles();
         if (files == null) return false;
+
         for (File file : files) {
             File targetFile = new File(targetDir, file.getName());
             if (file.isDirectory()) {
-                if (!copyDirectory(file, targetFile)) {
+                if (!copyDirectory(file, targetFile, isCut)) {
                     return false;
                 }
             } else {
-                if (!copySingleFile(file, targetFile)) {
-                    return false;
+                if (isCut) {
+                    // 剪切：移动文件并更新时间戳
+                    if (!moveFileWithTimestampUpdate(file, targetFile)) {
+                        return false;
+                    }
+                } else {
+                    // 复制：创建副本并确保唯一
+                    if (!copyFileWithUniqueName(file, targetFile)) {
+                        return false;
+                    }
                 }
             }
         }

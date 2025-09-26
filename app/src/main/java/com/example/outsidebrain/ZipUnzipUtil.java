@@ -1,6 +1,8 @@
 package com.example.outsidebrain;
 
+import android.os.Environment;
 import android.util.Log;
+
 import java.io.*;
 import java.util.Date;
 import java.util.Enumeration;
@@ -11,6 +13,7 @@ import java.util.zip.ZipFile;
 
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
+    private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     /**
      * 解压到当前文件夹，处理根目录文件夹重名（整体添加序列号）
@@ -26,7 +29,7 @@ public class ZipUnzipUtil {
         }
 
         try (ZipFile zf = new ZipFile(zipFile)) {
-            // 1. 分析压缩包根目录结构（关键修正点）
+            // 1. 分析压缩包根目录结构
             RootDirInfo rootDirInfo = analyzeRootDirectory(zf);
             if (rootDirInfo == null) {
                 Log.e(TAG, "无法识别压缩包结构");
@@ -42,6 +45,9 @@ public class ZipUnzipUtil {
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 String entryName = entry.getName();
+
+                // 处理路径分隔符统一为"/"
+                entryName = entryName.replace("\\", "/");
 
                 // 构建目标路径：根目录替换为带序列号的文件夹，保留内部结构
                 String relativePath;
@@ -77,6 +83,13 @@ public class ZipUnzipUtil {
                             os.write(buffer, 0, len);
                         }
                     }
+
+                    // 处理TXT文件的时间戳和唯一性
+                    if (targetFile.getName().toLowerCase().endsWith(".txt")) {
+                        // 传入外置大脑根目录
+                        File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
+                        processTxtFileTimestamp(targetFile, rootDir);
+                    }
                 }
             }
             Log.d(TAG, "解压成功，目标路径: " + finalTargetPath);
@@ -87,15 +100,16 @@ public class ZipUnzipUtil {
             return false;
         }
     }
+
     // 在解压逻辑中，对TXT文件添加隐藏时间戳
-    private static void processTxtFileTimestamp(File txtFile) {
+    private static void processTxtFileTimestamp(File txtFile, File rootDir) {
         if (txtFile == null || !txtFile.getName().toLowerCase().endsWith(".txt")) {
             return;
         }
 
         // 1. 移除文件名中可能存在的旧时间戳
         String originalName = txtFile.getName();
-        String cleanName = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(originalName).replaceAll("");
+        String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
 
         // 2. 去除原有扩展名
         if (cleanName.endsWith(".txt")) {
@@ -104,24 +118,23 @@ public class ZipUnzipUtil {
 
         // 3. 添加新的秒级时间戳（放在末尾隐藏）
         String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
-        String newFileName = cleanName + newTimestamp + ".txt";
-        File newFile = new File(txtFile.getParentFile(), newFileName);
 
-        // 4. 处理重名（忽略时间戳）
-        if (newFile.exists()) {
-            int counter = 1;
-            do {
-                newFileName = cleanName + newTimestamp + "(" + counter + ")" + ".txt";
-                newFile = new File(txtFile.getParentFile(), newFileName);
-                counter++;
-            } while (newFile.exists());
-        }
+        // 4. 获取全局唯一文件名
+        String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                rootDir,
+                txtFile.getParentFile(),
+                cleanName,
+                newTimestamp
+        );
+
+        File newFile = new File(txtFile.getParentFile(), newFileName);
 
         // 5. 执行重命名
         if (!txtFile.renameTo(newFile)) {
             Log.w(TAG, "无法为TXT文件添加时间戳: " + originalName);
         }
     }
+
     /**
      * 分析压缩包根目录结构
      * 主要判断：是否所有内容都在一个单一的根文件夹下
