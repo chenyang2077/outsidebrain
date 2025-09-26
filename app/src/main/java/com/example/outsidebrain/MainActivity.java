@@ -240,7 +240,13 @@ public class MainActivity extends AppCompatActivity {
             if (siblings != null) {
                 List<File> sortedSiblings = new ArrayList<>();
                 Collections.addAll(sortedSiblings, siblings);
-                Collections.sort(sortedSiblings, Comparator.comparing(File::getName));
+                Collections.sort(fileList, new Comparator<File>() {
+                    @Override
+                    public int compare(File file1, File file2) {
+                        // 按文件名排序
+                        return file1.getName().compareTo(file2.getName());
+                    }
+                });
 
                 for (int i = 0; i < sortedSiblings.size(); i++) {
                     if (sortedSiblings.get(i).getName().equals(fileName)) {
@@ -374,7 +380,13 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        Collections.sort(folders, Comparator.comparing(File::getName));
+        Collections.sort(fileList, new Comparator<File>() {
+            @Override
+            public int compare(File file1, File file2) {
+                // 按文件名排序
+                return file1.getName().compareTo(file2.getName());
+            }
+        });
         Collections.sort(txtFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
@@ -391,7 +403,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (!currentDirectory.exists()) {
             if (currentDirectory.mkdirs()) {
-                Toast.makeText(this, "已新建根文件夹「" + ROOT_FOLDER_NAME + "」", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "感谢世界有你", Toast.LENGTH_SHORT).show();
                 createTestFile();
             } else {
                 Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
@@ -428,7 +440,13 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            Collections.sort(folders, Comparator.comparing(File::getName));
+            Collections.sort(fileList, new Comparator<File>() {
+                @Override
+                public int compare(File file1, File file2) {
+                    // 按文件名排序
+                    return file1.getName().compareTo(file2.getName());
+                }
+            });
             Collections.sort(txtFiles, new TxtTimestampComparator());
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
@@ -517,8 +535,9 @@ public class MainActivity extends AppCompatActivity {
 
     // 新建测试文件时添加时间戳（仅新建时）
     private void createTestFile() {
-        String timestamp = new SimpleDateFormat("-yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        File testFile = new File(currentDirectory, "使用说明与注意事项"  + ".txt");
+        // 使用秒级时间戳格式
+        String timestamp = "_" + SECOND_TIMESTAMP_FORMAT.format(new Date());
+        File testFile = new File(currentDirectory, "使用说明与注意事项" + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
                 String content = "此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
