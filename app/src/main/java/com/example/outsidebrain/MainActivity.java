@@ -822,8 +822,9 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle("重命名");
 
         final EditText input = new EditText(this);
-        // 显示无时间戳的名称（供用户编辑）
-        input.setText(getDisplayName(file));
+        // 获取原文件的显示名称（无时间戳）
+        String originalDisplayName = getDisplayName(file);
+        input.setText(originalDisplayName);
         builder.setView(input);
 
         builder.setPositiveButton("确认", (dialog, which) -> {
@@ -831,6 +832,12 @@ public class MainActivity extends AppCompatActivity {
             if (newName.isEmpty()) {
                 Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
+            }
+
+            // 新增：判断输入的新名称是否与原显示名称相同
+            if (newName.equals(originalDisplayName)) {
+                Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
+                return; // 直接返回，不执行后续操作
             }
 
             // 对于TXT文件，需要检查全局唯一性
@@ -985,7 +992,69 @@ public class MainActivity extends AppCompatActivity {
         pasteButton = null;
     }
 
+    // 新增：带TXT全局查重和时间戳更新的文件夹复制方法
+    private boolean copyFolderWithTxtGlobalCheck(File sourceFolder, File targetParent) throws IOException {
+        // 文件夹自身查重（当前目录内）
+        String targetFolderName = FileUtils.generateUniqueFolderName(
+                targetParent,
+                sourceFolder.getName()
+        );
+        File targetFolder = new File(targetParent, targetFolderName);
+        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
+            Log.e("MainActivity", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
+            return false;
+        }
+
+        File[] files = sourceFolder.listFiles();
+        if (files == null) {
+            return true; // 空文件夹复制成功
+        }
+
+        for (File sourceFile : files) {
+            if (sourceFile.isDirectory()) {
+                // 子文件夹递归复制，保持原有查重逻辑
+                if (!copyFolderWithTxtGlobalCheck(sourceFile, targetFolder)) {
+                    return false;
+                }
+            } else {
+                if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
+                    // TXT文件：全局查重并更新时间戳
+                    String originalName = sourceFile.getName();
+                    String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+                    if (cleanName.toLowerCase().endsWith(".txt")) {
+                        cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+                    }
+
+                    // 生成新的时间戳
+                    String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+
+                    // 全局查重
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            newTimestamp
+                    );
+
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    if (!copyFileContent(sourceFile, targetFile)) {
+                        return false;
+                    }
+                } else {
+                    // 非TXT文件：当前目录内查重
+                    File targetFile = new File(targetFolder, sourceFile.getName());
+                    File uniqueTargetFile = getNonConflictFile(targetFile);
+                    if (!copyFileContent(sourceFile, uniqueTargetFile)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     // 修改performPaste方法，处理剪切和复制的不同逻辑
+    // 修改performPaste方法中的文件操作逻辑
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -998,50 +1067,42 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // -------------------------- 核心修改：按操作类型区分路径校验 --------------------------
-        // 获取待粘贴文件的原父目录绝对路径（用于判断是否为“原位置”）
+        // 路径校验逻辑保持不变
         String originalParentPath = copiedFile.getParentFile().getAbsolutePath();
-        // 获取当前目标粘贴目录的绝对路径
         String targetPath = currentDirectory.getAbsolutePath();
 
-        // 1. 若为“剪切操作”：禁止剪切到原文件夹（无效操作）
         if (isCutOperation) {
-            // 剪切到原位置 → 提示无效
             if (originalParentPath.equals(targetPath)) {
                 Toast.makeText(this, "剪切目标与原位置相同，无需操作", Toast.LENGTH_SHORT).show();
                 hidePasteButton();
                 return;
             }
-            // 剪切到自身子文件夹 → 禁止循环嵌套
             if (copiedFile.isDirectory() && targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
                 Toast.makeText(this, "无法剪切到当前文件夹的子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
                 hidePasteButton();
                 return;
             }
-        }
-        // 2. 若为“复制操作”：允许复制到原文件夹（生成副本），仅禁止复制到自身子文件夹（循环嵌套）
-        else {
+        } else {
             if (copiedFile.isDirectory() && targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
                 Toast.makeText(this, "无法复制到当前文件夹的子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
                 hidePasteButton();
                 return;
             }
         }
-        // -----------------------------------------------------------------------------------
 
         new Thread(() -> {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
-                        // 剪切文件夹：移动到目标目录（不查重，因剪切是“移动”逻辑）
+                        // 剪切文件夹：不查重，直接移动
                         threadSuccess = FileUtils.moveFolder(copiedFile, currentDirectory);
                     } else {
-                        // 复制文件夹：调用带全局查重的复制逻辑（生成唯一副本）
-                        threadSuccess = FileUtils.copyFolder(copiedFile, currentDirectory);
+                        // 复制文件夹：使用带TXT全局查重和时间戳更新的逻辑
+                        threadSuccess = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
-                    // 文件操作：按复制/剪切区分逻辑
+                    // 文件操作保持不变
                     if (isCutOperation) {
                         // 剪切文件：移动并更新时间戳（不改变文件名）
                         threadSuccess = moveFileWithTimestampUpdate(copiedFile, new File(currentDirectory, copiedFile.getName()));
@@ -1067,10 +1128,11 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "操作失败，请重试", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 }
-                hidePasteButton(); // 操作完成后隐藏粘贴按钮
+                hidePasteButton();
             });
         }).start();
     }
+
 
 
 
@@ -1079,9 +1141,9 @@ public class MainActivity extends AppCompatActivity {
      * 复用解压/TXT文件复制的查重逻辑，保持一致性
      */
     private boolean copyFolderWithTxtCheck(File sourceFolder, File targetParent) throws IOException {
-        // 修正：将String类型的targetParent路径改为File对象
+        // 文件夹自身查重逻辑保持不变（当前目录内查重，生成唯一文件夹名）
         String targetFolderName = FileUtils.generateUniqueFolderName(
-                targetParent,  // 此处修正为File对象，而非String路径
+                targetParent,
                 sourceFolder.getName()
         );
         File targetFolder = new File(targetParent, targetFolderName);
@@ -1090,46 +1152,43 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
 
-        // 2. 递归复制文件夹内所有内容
         File[] files = sourceFolder.listFiles();
         if (files == null) {
-            return true; // 空文件夹，复制成功
+            return true; // 空文件夹复制成功
         }
 
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 递归复制子文件夹
+                // 子文件夹查重逻辑完全不变，递归调用保持原有规则
                 if (!copyFolderWithTxtCheck(sourceFile, targetFolder)) {
-                    return false; // 子文件夹复制失败，整体返回失败
+                    return false;
                 }
             } else {
-                // 处理文件：区分TXT和非TXT
+                // 仅修改TXT文件的处理逻辑
                 if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                    // TXT文件：调用全域查重（和解压、复制单个TXT逻辑一致）
+                    // TXT文件使用全局查重（与单独复制TXT逻辑一致）
                     String originalName = sourceFile.getName();
-                    // 移除旧时间戳，提取纯净名称
                     String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
                     if (cleanName.toLowerCase().endsWith(".txt")) {
                         cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                     }
-                    // 生成新时间戳（与其他场景保持格式一致）
+
                     String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
-                    // 调用全域查重，生成唯一文件名
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDirectory,          // 外置大脑根目录（全域范围）
-                            targetFolder,           // 当前目标文件夹
-                            cleanName,              // 去时间戳的纯净名称
-                            newTimestamp            // 新时间戳
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            newTimestamp
                     );
-                    // 复制文件到目标位置（复用copyFileContent逻辑）
+
                     File targetFile = new File(targetFolder, uniqueFileName);
                     if (!copyFileContent(sourceFile, targetFile)) {
                         return false;
                     }
                 } else {
-                    // 非TXT文件：仅当前文件夹内查重（加序列号，保持原逻辑）
+                    // 非TXT文件保持原有查重逻辑不变
                     File targetFile = new File(targetFolder, sourceFile.getName());
-                    File uniqueTargetFile = getNonConflictFile(targetFile); // 复用已有非TXT查重方法
+                    File uniqueTargetFile = getNonConflictFile(targetFile);
                     if (!copyFileContent(sourceFile, uniqueTargetFile)) {
                         return false;
                     }
