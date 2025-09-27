@@ -4,8 +4,6 @@ import android.Manifest;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
@@ -62,8 +60,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -241,10 +237,10 @@ public class MainActivity extends AppCompatActivity {
             if (siblings != null) {
                 List<File> sortedSiblings = new ArrayList<>();
                 Collections.addAll(sortedSiblings, siblings);
-                Collections.sort(fileList, new Comparator<File>() {
+                // 修复排序对象错误：原代码用fileList排序，改为用siblings排序
+                Collections.sort(sortedSiblings, new Comparator<File>() {
                     @Override
                     public int compare(File file1, File file2) {
-                        // 按文件名排序
                         return file1.getName().compareTo(file2.getName());
                     }
                 });
@@ -434,17 +430,50 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initExternalBrain() {
-        File sdCard = Environment.getExternalStorageDirectory();
-        rootDirectory = new File(sdCard, ROOT_FOLDER_NAME);
+        // 明确指定SD卡根目录作为基础路径
+        File sdCardRoot = Environment.getExternalStorageDirectory();
+        if (sdCardRoot == null || !sdCardRoot.exists()) {
+            Toast.makeText(this, "未找到SD卡存储", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 构建根文件夹路径
+        rootDirectory = new File(sdCardRoot, ROOT_FOLDER_NAME);
         currentDirectory = rootDirectory;
 
+        // 检查文件夹是否存在
         if (!currentDirectory.exists()) {
-            if (currentDirectory.mkdirs()) {
+            // 尝试直接创建文件夹
+            boolean created = currentDirectory.mkdirs();
+
+            // 如果创建失败，尝试使用兼容模式创建唯一文件夹
+            if (!created) {
+                File createdDir = FileUtils.createUniqueFolder(
+                        sdCardRoot,  // 直接使用SD卡根目录作为父目录
+                        ROOT_FOLDER_NAME
+                );
+
+                if (createdDir != null) {
+                    currentDirectory = createdDir;
+                    rootDirectory = createdDir;
+                    Toast.makeText(this, "在SD卡中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
+                    createTestFile();
+                } else {
+                    // 最后尝试使用应用专属目录作为备选方案
+                    File fallbackDir = new File(getExternalFilesDir(null), ROOT_FOLDER_NAME);
+                    if (fallbackDir.mkdirs()) {
+                        currentDirectory = fallbackDir;
+                        rootDirectory = fallbackDir;
+                        Toast.makeText(this, "已使用兼容模式创建文件夹", Toast.LENGTH_SHORT).show();
+                        createTestFile();
+                    } else {
+                        Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+            } else {
                 Toast.makeText(this, "感谢世界有你", Toast.LENGTH_SHORT).show();
                 createTestFile();
-            } else {
-                Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
-                return;
             }
         } else {
             File[] files = currentDirectory.listFiles();
@@ -457,6 +486,8 @@ public class MainActivity extends AppCompatActivity {
         loadFileList();
         updateLevelHint();
     }
+
+
 
     private void loadFileList() {
         fileList.clear();
@@ -565,14 +596,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createFolder(String name) {
-        // 使用统一的重名处理方法生成唯一文件夹名称
-        String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
-                currentDirectory.getAbsolutePath(),
-                name
-        );
-        File newFolder = new File(currentDirectory, uniqueName);
-
-        if (newFolder.mkdirs()) {
+        // 使用FileUtils的全局查重方法生成唯一文件夹
+        File newFolder = FileUtils.createUniqueFolder(currentDirectory, name);
+        if (newFolder != null) {
             Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
             loadFileList();
         } else {
@@ -633,7 +659,8 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        boolean result = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
+                        // 使用FileUtils调用解压，保持逻辑统一
+                        boolean result = FileUtils.unzipFile(zipFile, currentDirectory);
                         runOnUiThread(() -> {
                             if (result) {
                                 Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
@@ -650,18 +677,49 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
+    // 重命名方法，避免与系统方法冲突
+    private void deleteSelectedFile(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("确认删除")
+                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
+                .setPositiveButton("删除", (dialog, which) -> {
+                    if (deleteRecursive(file)) {  // 使用本地递归删除方法
+                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+                        loadFileList();
+                    } else {
+                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
 
+    // 递归删除实现
+    private boolean deleteRecursive(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (!deleteRecursive(child)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return file.delete();
+    }
     private void showFolderOptions(File folder) {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
+
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
                 case 0:
                     renameFile(folder);
                     break;
                 case 1:
-                    deleteFile(folder);
+                    confirmFileDeletion(folder); // 同样使用新的删除确认方法
                     break;
                 case 2:
                     zipFolder(folder);
@@ -676,22 +734,40 @@ public class MainActivity extends AppCompatActivity {
         });
         builder.show();
     }
+    // 3. 全新的删除确认方法（确保只定义一次）
+    private void confirmFileDeletion(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("确认删除")
+                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
+                .setPositiveButton("删除", (dialog, which) -> {
+                    if (performRecursiveDeletion(file)) { // 使用全新的执行方法名
+                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+                        loadFileList();
+                    } else {
+                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+    private boolean performRecursiveDeletion(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (!performRecursiveDeletion(child)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return file.delete();
+    }
 
     private void showFileOptions(File file) {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options;
-
-        // 为不同类型的文件提供不同的操作选项
-        if (file.getName().toLowerCase().endsWith(".txt")) {
-            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
-        } else if (file.getName().toLowerCase().endsWith(".zip")) {
-            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
-        } else if (isImageFile(file)) {
-            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
-        } else {
-            options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
-        }
+        String[] options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
 
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
@@ -699,7 +775,8 @@ public class MainActivity extends AppCompatActivity {
                     renameFile(file);
                     break;
                 case 1:
-                    deleteFile(file);
+                    // 调用唯一的删除确认方法
+                    confirmFileDeletion(file); // 使用全新的方法名，彻底避免冲突
                     break;
                 case 2:
                     shareFile(file);
@@ -714,6 +791,15 @@ public class MainActivity extends AppCompatActivity {
         });
         builder.show();
     }
+
+    // 重命名的删除方法，避免与系统的 deleteFile(String) 冲突
+
+
+    // 重命名删除方法，避免与系统的deleteFile(String)冲突
+
+
+    // 递归删除文件/文件夹的实现
+
 
     private void zipFolder(File folder) {
         Intent intent = new Intent(this, FileEditorActivity.class);
@@ -779,8 +865,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else {
                 // 非TXT文件处理（特别是文件夹）
-                String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
-                        file.getParentFile().getAbsolutePath(),
+                String uniqueName = FileUtils.generateUniqueFolderName(
+                        file.getParentFile(),
                         newName
                 );
                 File newFile = new File(file.getParentFile(), uniqueName);
@@ -798,28 +884,16 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
-    private void deleteFile(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("确认删除")
-                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
-                .setPositiveButton("删除", (dialog, which) -> {
-                    if (deleteRecursive(file)) {
-                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
-                        loadFileList();
-                    } else {
-                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private boolean deleteRecursive(File file) {
+    // 在 FileUtils 类中
+    public static boolean deleteFolder(File file) {  // 将 private 改为 public
+        // 方法实现保持不变
         if (file.isDirectory()) {
             File[] children = file.listFiles();
             if (children != null) {
                 for (File child : children) {
-                    deleteRecursive(child);
+                    if (!deleteFolder(child)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -934,13 +1008,13 @@ public class MainActivity extends AppCompatActivity {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
-                    // 生成不冲突的文件夹名称
-                    String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
-                            currentDirectory.getAbsolutePath(),
-                            copiedFile.getName()
-                    );
-                    File targetDir = new File(currentDirectory, uniqueName);
-                    threadSuccess = copyDirectory(copiedFile, targetDir, isCutOperation);
+                    if (isCutOperation) {
+                        // 剪切文件夹：使用FileUtils的moveFolder（不查重）
+                        threadSuccess = FileUtils.moveFolder(copiedFile, currentDirectory);
+                    } else {
+                        // 复制文件夹：使用FileUtils的copyFolder（全局查重）
+                        threadSuccess = FileUtils.copyFolder(copiedFile, currentDirectory);
+                    }
                 } else {
                     // 文件操作：根据是复制还是剪切采取不同策略
                     if (isCutOperation) {
@@ -950,10 +1024,6 @@ public class MainActivity extends AppCompatActivity {
                         // 复制操作：创建副本，确保文件名唯一
                         threadSuccess = copyFileWithUniqueName(copiedFile, new File(currentDirectory, copiedFile.getName()));
                     }
-                }
-
-                if (threadSuccess && isCutOperation) {
-                    deleteRecursive(copiedFile);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -978,7 +1048,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 打开图片文件
-    // 改进图片打开方法，增加文件提供器支持
     private void openImageFile(File imageFile) {
         try {
             // 使用FileProvider确保Android 7.0+兼容性
@@ -1000,7 +1069,6 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            // 提供更详细的错误信息
             Toast.makeText(this, "打开图片失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
@@ -1096,108 +1164,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 修改copySingleFile方法，处理TXT文件的重命名
-    private boolean copySingleFile(File source, File target) throws IOException {
-        if (!source.exists()) return false;
-
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            return false;
-        }
-
-        // 对于TXT文件，确保全局唯一
-        File finalTarget = target;
-        if (source.getName().toLowerCase().endsWith(".txt")) {
-            String cleanName = UniqueFileNameHandler.removeTimestamp(source.getName());
-            if (cleanName.toLowerCase().endsWith(".txt")) {
-                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-            }
-
-            String timestamp = UniqueFileNameHandler.removeTimestamp(
-                    MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date())
-            );
-
-            String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDirectory,
-                    parent,
-                    cleanName,
-                    "_" + timestamp
-            );
-
-            finalTarget = new File(parent, uniqueName);
-        } else if (!source.getName().toLowerCase().endsWith(".txt") &&
-                !source.getName().toLowerCase().endsWith(".zip") &&
-                !isImageFile(source)) {
-            // 处理其他文件类型的重名问题
-            String fileName = source.getName();
-            String baseName = fileName;
-            String extension = "";
-            int dotIndex = fileName.lastIndexOf(".");
-
-            if (dotIndex != -1) {
-                baseName = fileName.substring(0, dotIndex);
-                extension = fileName.substring(dotIndex);
-            }
-
-            int counter = 1;
-            while (finalTarget.exists()) {
-                finalTarget = new File(parent, baseName + "(" + counter + ")" + extension);
-                counter++;
-            }
-        }
-
-        try (InputStream in = new BufferedInputStream(new FileInputStream(source));
-             OutputStream out = new BufferedOutputStream(new FileOutputStream(finalTarget))) {
-            byte[] buffer = new byte[1024 * 4];
-            int len;
-            while ((len = in.read(buffer)) != -1) {
-                out.write(buffer, 0, len);
-            }
-            return true;
-        }
-    }
-
-
-    private boolean copyDirectory(File sourceDir, File targetDir, boolean isCut) throws IOException {
-        if (!sourceDir.isDirectory()) return false;
-
-        // 检查并处理目标文件夹重名
-        String uniqueName = ZipUnzipUtil.getNonConflictFolderName(
-                targetDir.getParentFile().getAbsolutePath(),
-                targetDir.getName()
-        );
-        targetDir = new File(targetDir.getParentFile(), uniqueName);
-
-        if (!targetDir.exists() && !targetDir.mkdirs()) {
-            return false;
-        }
-
-        File[] files = sourceDir.listFiles();
-        if (files == null) return false;
-
-        for (File file : files) {
-            File targetFile = new File(targetDir, file.getName());
-            if (file.isDirectory()) {
-                if (!copyDirectory(file, targetFile, isCut)) {
-                    return false;
-                }
-            } else {
-                if (isCut) {
-                    // 剪切：移动文件并更新时间戳
-                    if (!moveFileWithTimestampUpdate(file, targetFile)) {
-                        return false;
-                    }
-                } else {
-                    // 复制：创建副本并确保唯一
-                    if (!copyFileWithUniqueName(file, targetFile)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
-    }
-
     // 路径修正：仅处理第一行，不干扰中间内容
     private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
@@ -1288,7 +1254,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadImageThumbnail(File imageFile, ImageView imageView) {
-        // 使用Glide库加载缩略图（推荐方式）
+        // 使用Glide库加载缩略图
         Glide.with(MainActivity.this)
                 .load(imageFile)
                 .thumbnail(0.1f) // 加载原图的1/10作为缩略图
@@ -1296,8 +1262,6 @@ public class MainActivity extends AppCompatActivity {
                 .error(R.drawable.ic_image) // 加载失败时显示默认图片图标
                 .into(imageView);
     }
-    // 添加加载图片缩略图的方法
-
 
     // 文件列表适配器
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
@@ -1323,7 +1287,7 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 严格按类型设置样式，确保TXT文件正确显示
+            // 严格按类型设置样式
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
@@ -1333,16 +1297,12 @@ public class MainActivity extends AppCompatActivity {
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
             } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                // 恢复TXT文件的原始样式
                 holder.ivIcon.setImageResource(R.drawable.ic_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             } else if (isImageFile(file)) {
-                // 图片文件 - 显示缩略图
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-
-                // 加载图片缩略图
                 loadImageThumbnail(file, holder.ivIcon);
             } else {
                 holder.ivIcon.setImageResource(R.drawable.ic_other_file);
