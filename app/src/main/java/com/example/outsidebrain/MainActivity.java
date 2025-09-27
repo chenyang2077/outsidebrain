@@ -614,7 +614,7 @@ public class MainActivity extends AppCompatActivity {
         File testFile = new File(currentDirectory, "使用说明与注意事项" + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
-                String content = "此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
+                String content = "此软件主要提供TXT文件的整理、搜索、压缩、发送，文字图片阅览等。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
 
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes(StandardCharsets.UTF_8));
@@ -822,9 +822,41 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle("重命名");
 
         final EditText input = new EditText(this);
-        // 获取原文件的显示名称（无时间戳）
-        String originalDisplayName = getDisplayName(file);
-        input.setText(originalDisplayName);
+        final String originalFileName = file.getName();
+        String displayName = originalFileName;
+        final String fileExtension;
+        final boolean isTxtFile;
+        final boolean isFolder;
+        // 新增：保存TXT文件的原始核心名称（去除时间戳和后缀）
+        final String originalTxtCoreName;
+
+        isFolder = file.isDirectory();
+        isTxtFile = !isFolder && originalFileName.toLowerCase().endsWith(".txt");
+
+        // 初始化TXT核心名称
+        if (isTxtFile) {
+            originalTxtCoreName = getDisplayName(file);
+        } else {
+            originalTxtCoreName = "";
+        }
+
+        if (!isTxtFile && !isFolder) {
+            int dotIndex = originalFileName.lastIndexOf(".");
+            if (dotIndex != -1 && dotIndex < originalFileName.length() - 1) {
+                displayName = originalFileName.substring(0, dotIndex);
+                fileExtension = originalFileName.substring(dotIndex);
+            } else {
+                fileExtension = "";
+            }
+        } else {
+            fileExtension = "";
+        }
+
+        if (isTxtFile) {
+            displayName = originalTxtCoreName; // 使用已提取的核心名称
+        }
+
+        input.setText(displayName);
         builder.setView(input);
 
         builder.setPositiveButton("确认", (dialog, which) -> {
@@ -834,23 +866,41 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // 新增：判断输入的新名称是否与原显示名称相同
-            if (newName.equals(originalDisplayName)) {
-                Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
-                return; // 直接返回，不执行后续操作
+            // 检查TXT文件核心名称是否未更改
+            if (isTxtFile) {
+                // 去除新名称可能包含的后缀
+                String newCoreName = newName.toLowerCase().endsWith(".txt")
+                        ? newName.substring(0, newName.lastIndexOf("."))
+                        : newName;
+
+                // 如果核心名称未变化，提示并返回
+                if (newCoreName.equals(originalTxtCoreName)) {
+                    Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
+                    return;
+                }
             }
 
-            // 对于TXT文件，需要检查全局唯一性
-            if (file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
-                // 去除可能的扩展名
+            final String finalNewName;
+            if (!isTxtFile && !isFolder && !fileExtension.isEmpty()) {
+                finalNewName = newName + fileExtension;
+            } else {
+                finalNewName = newName;
+            }
+
+            // 非TXT文件的完整名称检查
+            if (!isTxtFile && finalNewName.equals(originalFileName)) {
+                Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // TXT文件处理逻辑（保持不变）
+            if (isTxtFile) {
                 String baseName = newName.toLowerCase().endsWith(".txt")
                         ? newName.substring(0, newName.lastIndexOf("."))
                         : newName;
 
-                // 生成新的时间戳
                 String timestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
 
-                // 获取全局唯一文件名
                 String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                         rootDirectory,
                         file.getParentFile(),
@@ -864,7 +914,6 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                // 执行重命名
                 if (file.renameTo(newFile)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
@@ -872,10 +921,10 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
                 }
             } else {
-                // 非TXT文件处理（特别是文件夹）
+                // 非TXT文件处理逻辑（保持不变）
                 String uniqueName = FileUtils.generateUniqueFolderName(
                         file.getParentFile(),
-                        newName
+                        finalNewName
                 );
                 File newFile = new File(file.getParentFile(), uniqueName);
 
@@ -891,6 +940,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setNegativeButton("取消", null);
         builder.show();
     }
+
 
     // 在 FileUtils 类中
     public static boolean deleteFolder(File file) {  // 将 private 改为 public
@@ -1295,6 +1345,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 复制文件并确保唯一文件名（复制操作）
+    // 复制文件并确保唯一文件名（复制操作）- 核心修改
     private boolean copyFileWithUniqueName(File source, File target) throws IOException {
         if (!source.exists()) return false;
 
@@ -1303,48 +1354,29 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
 
-        // 对于TXT文件，确保全局唯一
+        // 仅TXT文件走全局查重+时间戳逻辑，其他文件（含图片/ZIP/APK）统一走当前目录查重
         File finalTarget = target;
         if (source.getName().toLowerCase().endsWith(".txt")) {
+            // TXT文件：保持原有全局查重+时间戳逻辑（不修改）
             String cleanName = UniqueFileNameHandler.removeTimestamp(source.getName());
             if (cleanName.toLowerCase().endsWith(".txt")) {
                 cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
             }
-
-            // 生成新的时间戳
             String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
-
-            // 获取全局唯一文件名
             String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                     rootDirectory,
                     parent,
                     cleanName,
                     newTimestamp
             );
-
             finalTarget = new File(parent, uniqueName);
-        } else if (!source.getName().toLowerCase().endsWith(".txt") &&
-                !source.getName().toLowerCase().endsWith(".zip") &&
-                !isImageFile(source)) {
-            // 处理其他文件类型的重名问题
-            String fileName = source.getName();
-            String baseName = fileName;
-            String extension = "";
-            int dotIndex = fileName.lastIndexOf(".");
-
-            if (dotIndex != -1) {
-                baseName = fileName.substring(0, dotIndex);
-                extension = fileName.substring(dotIndex);
-            }
-
-            int counter = 1;
-            while (finalTarget.exists()) {
-                finalTarget = new File(parent, baseName + "(" + counter + ")" + extension);
-                counter++;
-            }
+        } else {
+            // 【核心修改】：图片/ZIP/APK等所有非TXT文件，统一用getNonConflictFile实现当前目录查重
+            // 直接调用已有辅助方法，避免重复代码，确保逻辑一致
+            finalTarget = getNonConflictFile(target);
         }
 
-        // 执行复制操作
+        // 执行复制操作（保持不变）
         try (InputStream in = new BufferedInputStream(new FileInputStream(source));
              OutputStream out = new BufferedOutputStream(new FileOutputStream(finalTarget))) {
             byte[] buffer = new byte[1024 * 4];
