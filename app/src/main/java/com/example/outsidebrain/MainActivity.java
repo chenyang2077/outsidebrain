@@ -1249,13 +1249,13 @@ public class MainActivity extends AppCompatActivity {
         return baseName + "(" + (maxSerial + 1) + ")";
     }
     private boolean copyFolderWithTxtGlobalCheck(File sourceFolder, File targetParent) throws IOException {
-        // 生成带序列号的唯一文件夹名（核心修改：处理重名）
+        // 生成带序列号的唯一文件夹名
         String baseName = sourceFolder.getName();
         String uniqueFolderName = getUniqueFolderName(targetParent, baseName);
         File targetFolder = new File(targetParent, uniqueFolderName);
 
         // 创建目标文件夹
-        if (!targetFolder.mkdirs()) {
+        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
             Log.e("CopyFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
             return false;
         }
@@ -1272,14 +1272,14 @@ public class MainActivity extends AppCompatActivity {
                     return false;
                 }
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                // TXT文件处理：添加随机字符+时间戳
+                // 复制操作：保持原有逻辑，生成新的随机字符+时间戳
                 String originalName = sourceFile.getName();
                 String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
                 if (cleanName.toLowerCase().endsWith(".txt")) {
                     cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
 
-                // 生成新的随机字符和时间戳
+                // 生成全新的随机字符和时间戳（复制操作特有）
                 String randomStr = UniqueFileNameHandler.generateRandomString();
                 String timestamp = "_" + randomStr + "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
@@ -1306,6 +1306,7 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
+
 
 
     // 修改performPaste方法，处理剪切和复制的不同逻辑
@@ -1356,17 +1357,19 @@ public class MainActivity extends AppCompatActivity {
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
-                        // 剪切文件夹：使用带序列号的移动逻辑
+                        // 剪切文件夹：使用剪切专用的TXT处理逻辑
                         threadSuccess = moveFolderWithTxtUpdate(copiedFile, currentDirectory);
                     } else {
-                        // 复制文件夹：使用带序列号的复制逻辑
+                        // 复制文件夹：使用复制专用的TXT处理逻辑
                         threadSuccess = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
-                    // 文件操作
+                    // 单个文件操作
                     if (isCutOperation) {
+                        // 单个TXT文件剪切
                         threadSuccess = moveFileWithTimestampUpdate(copiedFile, new File(currentDirectory, copiedFile.getName()));
                     } else {
+                        // 单个TXT文件复制（保持原有逻辑）
                         threadSuccess = copyFileWithUniqueName(copiedFile, new File(currentDirectory, copiedFile.getName()));
                     }
                 }
@@ -1395,12 +1398,18 @@ public class MainActivity extends AppCompatActivity {
      * 2. 有随机字符+2个以上时间戳 → 刷新最后一个时间戳
      */
     private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent) throws IOException {
-        // 生成带序列号的唯一文件夹名（核心修改：处理重名）
+        // 生成带序列号的唯一文件夹名
         String baseName = sourceFolder.getName();
         String uniqueFolderName = getUniqueFolderName(targetParent, baseName);
         File targetFolder = new File(targetParent, uniqueFolderName);
 
-        // 先处理内部文件的时间戳更新
+        // 确保目标文件夹存在
+        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
+            Log.e("MoveFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
+            return false;
+        }
+
+        // 处理内部文件
         File[] files = sourceFolder.listFiles();
         if (files != null) {
             for (File file : files) {
@@ -1410,22 +1419,82 @@ public class MainActivity extends AppCompatActivity {
                         return false;
                     }
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // 处理TXT文件时间戳
-                    String fileName = file.getName();
-                    String newFileName = updateTxtTimestamp(fileName);
-                    File newFile = new File(file.getParentFile(), newFileName);
-                    if (!file.renameTo(newFile)) {
-                        Log.e("MoveFolder", "更新TXT时间戳失败: " + fileName);
-                        return false;
+                    // 剪切操作：按规则更新TXT文件名
+                    String originalName = file.getName();
+                    String newFileName = processTxtForCutOperation(originalName);
+
+                    // 执行重命名
+                    File targetFile = new File(targetFolder, newFileName);
+                    if (!file.renameTo(targetFile)) {
+                        // 重命名失败时尝试复制后删除原文件
+                        if (copyFileContent(file, targetFile)) {
+                            file.delete();
+                        } else {
+                            Log.e("MoveFolder", "处理TXT文件失败: " + originalName);
+                            return false;
+                        }
+                    }
+                } else {
+                    // 非TXT文件直接移动
+                    File targetFile = new File(targetFolder, file.getName());
+                    if (!file.renameTo(targetFile)) {
+                        if (copyFileContent(file, targetFile)) {
+                            file.delete();
+                        } else {
+                            Log.e("MoveFolder", "处理文件失败: " + file.getName());
+                            return false;
+                        }
                     }
                 }
             }
         }
 
-        // 移动文件夹到目标位置
-        return sourceFolder.renameTo(targetFolder);
+        // 删除原文件夹（确保为空）
+        return deleteEmptyDirectory(sourceFolder);
     }
 
+    private boolean deleteEmptyDirectory(File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            return false;
+        }
+
+        File[] files = dir.listFiles();
+        if (files != null && files.length > 0) {
+            return false; // 目录不为空
+        }
+
+        return dir.delete();
+    }
+    /**
+     * 剪切操作专用：处理TXT文件名的随机字符和时间戳
+     */
+    private String processTxtForCutOperation(String fileName) {
+        if (!fileName.toLowerCase().endsWith(".txt")) {
+            return fileName;
+        }
+
+        String nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
+        String ext = fileName.substring(fileName.lastIndexOf("."));
+        String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
+        // 1. 检查是否有随机字符+时间戳结构
+        Matcher targetMatcher = TARGET_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
+        if (!targetMatcher.find()) {
+            // 无随机字符和时间戳：添加完整结构
+            String randomStr = UniqueFileNameHandler.generateRandomString();
+            return nameWithoutExt + "_" + randomStr + "_" + newTimestamp + ext;
+        }
+
+        // 2. 检查是否有多个时间戳（随机字符+2个以上时间戳）
+        Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
+        if (incrementMatcher.find()) {
+            // 刷新最后一个时间戳
+            return incrementMatcher.replaceAll("$1_" + newTimestamp) + ext;
+        }
+
+        // 3. 只有随机字符+1个时间戳：增加一个新时间戳
+        return nameWithoutExt + "_" + newTimestamp + ext;
+    }
     /**
      * 根据规则更新TXT文件名的时间戳
      */
@@ -1616,24 +1685,26 @@ public class MainActivity extends AppCompatActivity {
     private boolean moveFileWithTimestampUpdate(File source, File target) throws IOException {
         if (!source.exists()) return false;
 
-        // 对于TXT文件，仅更新时间戳，不改变文件名
-        File finalTarget = target;
+        // 对于TXT文件，按剪切规则处理
         if (source.getName().toLowerCase().endsWith(".txt")) {
-            String fileName = source.getName();
-            String cleanName = UniqueFileNameHandler.removeTimestamp(fileName);
-            if (cleanName.toLowerCase().endsWith(".txt")) {
-                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-            }
+            String originalName = source.getName();
+            String newFileName = processTxtForCutOperation(originalName);
+            File finalTarget = new File(target.getParentFile(), newFileName);
 
-            String randomStr = generateRandomString(); // 生成随机字符串
-            String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-            // 文件名格式：标题_随机字符串_时间戳.txt
-            String newFileName = cleanName + "_" + randomStr + newTimestamp + ".txt";
-            finalTarget = new File(target.getParentFile(), newFileName);
+            // 执行移动
+            if (source.renameTo(finalTarget)) {
+                return true;
+            } else {
+                // 移动失败时尝试复制后删除
+                if (copyFileContent(source, finalTarget)) {
+                    return source.delete();
+                }
+                return false;
+            }
         }
 
-        // 执行移动操作
-        return source.renameTo(finalTarget);
+        // 非TXT文件直接移动
+        return source.renameTo(target);
     }
 
     // 复制文件并确保唯一文件名（复制操作）
