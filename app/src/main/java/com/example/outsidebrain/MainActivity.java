@@ -275,14 +275,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
-            loadFileList();
-            hidePasteButton();
-        }
-    }
+
 
     private boolean isContentContainKeyword(File file, String keyword) {
         if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
@@ -486,8 +479,68 @@ public class MainActivity extends AppCompatActivity {
         batchCorrectTxtFilepaths(currentDirectory);
         loadFileList();
         updateLevelHint();
+        // 新增：尝试恢复到最后访问的文件夹
+        restoreLastLocation();
+    }
+    // 新增方法：恢复最后访问的位置
+    private void restoreLastLocation() {
+        // 先检查是否有最后编辑的文件
+        String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
+        if (lastEditedFile != null && !lastEditedFile.isEmpty()) {
+            File file = new File(lastEditedFile);
+            if (file.exists() && file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
+                // 如果文件存在，先导航到它所在的文件夹
+                currentDirectory = file.getParentFile();
+                loadFileList();
+
+                // 然后打开编辑页面
+                Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
+                editIntent.putExtra("file_path", file.getAbsolutePath());
+                editIntent.putExtra("is_pre_edit", false);
+                editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+                editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
+                startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+
+                // 清除记录，避免下次打开还自动打开
+                PreferenceUtils.clearLastEditedFile(this);
+                return;
+            } else {
+                // 文件不存在，清除记录
+                PreferenceUtils.clearLastEditedFile(this);
+            }
+        }
+
+        // 如果没有编辑的文件，恢复到最后访问的文件夹
+        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
+        if (lastFolderPath != null && !lastFolderPath.isEmpty()) {
+            File lastFolder = new File(lastFolderPath);
+            if (lastFolder.exists() && lastFolder.isDirectory() &&
+                    lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
+                currentDirectory = lastFolder;
+                loadFileList();
+            }
+        }
     }
 
+    // 重写onPause方法，保存当前文件夹位置
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 只有在不是搜索模式下才保存当前位置
+        if (!isInSearchMode && currentDirectory != null && currentDirectory.exists()) {
+            PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+        }
+    }
+
+    // 修改onActivityResult方法，处理从编辑页面返回的情况
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
+            loadFileList();
+            hidePasteButton();
+        }
+    }
 
 
     private void loadFileList() {
@@ -1548,6 +1601,9 @@ public class MainActivity extends AppCompatActivity {
                     loadFileList();
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
+                    // 新增：在打开文件时就记录文件路径，无论是否会修改
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
                     new Thread(() -> {
                         boolean corrected = correctFilepathInTxt(file);
                         runOnUiThread(() -> {

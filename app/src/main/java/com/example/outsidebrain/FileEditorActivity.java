@@ -422,9 +422,35 @@ public class FileEditorActivity extends AppCompatActivity {
             Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
             setResult(RESULT_REFRESH);
         }
+        // 新增：如果是编辑现有文件，保存文件路径
+        if (!isPreEdit && targetFile != null && targetFile.exists()) {
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            // 同时保存文件所在的文件夹
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        }
 
         hideSoftInput();
         finish(); // 保存后关闭编辑页，返回列表页
+    }
+
+    @Override
+    public void onBackPressed() {
+        // 保存状态（无论是否修改）
+        if (!isPreEdit && targetFile != null && targetFile.exists()) {
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        }
+        autoSave();
+        super.onBackPressed();
+    }
+
+    // 重写onDestroy方法，确保保存
+    @Override
+    protected void onDestroy() {
+        if (!isSaved) {
+            autoSave();
+        }
+        super.onDestroy();
     }
 
     private File getUniqueEditFile(File targetFile, boolean needHandleTimestamp) {
@@ -544,15 +570,17 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    public void onBackPressed() {
-        autoSave();
-        super.onBackPressed();
-    }
+
 
     @Override
     protected void onPause() {
         super.onPause();
+        // 无论是否修改，只要是编辑已有文件，就保存状态
+        if (!isPreEdit && targetFile != null && targetFile.exists()) {
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        }
+
         if (!isFinishing() && !isSaved) {
             autoSave();
         }
