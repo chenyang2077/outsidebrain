@@ -616,9 +616,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_EDIT_FILE && resultCode == FileEditorActivity.RESULT_REFRESH) {
+
+        if (requestCode == REQUEST_EDIT_FILE) {
+            // 从TXT编辑页面返回，更新状态为main
+            PreferenceUtils.saveLastPageType(this, "main");
+            // 刷新文件列表
             loadFileList();
-            hidePasteButton();
         }
     }
 
@@ -683,17 +686,34 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (isInSearchMode) {
+            // 原有：退出搜索模式逻辑
             isInSearchMode = false;
             etSearch.setText("");
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
             hidePasteButton();
+
+            // 新增：退出搜索后，记录当前文件夹状态（确保状态正确）
+            PreferenceUtils.saveLastPageType(this, "main");
+            if (currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+            }
+
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
+            // 原有：返回上一级文件夹逻辑
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
             loadFileList();
+
+            // 新增：返回上一级文件夹后，记录当前文件夹状态
+            PreferenceUtils.saveLastPageType(this, "main");
+            if (currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+            }
+
         } else {
+            // 原有：根目录下按返回键，执行系统默认退出逻辑
             super.onBackPressed();
         }
     }
@@ -1626,13 +1646,12 @@ public class MainActivity extends AppCompatActivity {
                 .into(imageView);
     }
 
-
     @Override
     protected void onResume() {
         super.onResume();
         String lastPageType = PreferenceUtils.getLastPageType(this);
-        // 从图片查看返回时更新状态
-        if ("image".equals(lastPageType)) {
+        // 从任何子页面返回都更新为main状态
+        if ("image".equals(lastPageType) || "editor".equals(lastPageType)) {
             PreferenceUtils.saveLastPageType(this, "main");
         }
     }
@@ -1703,11 +1722,13 @@ public class MainActivity extends AppCompatActivity {
                     // 清除其他类型状态 - 修复saveLastImageFile方法名
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, null); // 改为saveLastViewedImage
-                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                } // 2. 修改TXT文件点击事件中的状态处理
+                else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
-                    // 新增：在打开文件时就记录文件路径，无论是否会修改
+                    // 记录文件路径
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+
                     new Thread(() -> {
                         boolean corrected = correctFilepathInTxt(file);
                         runOnUiThread(() -> {
@@ -1723,13 +1744,10 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }).start();
-                    // 记录TXT编辑状态
+
+                    // 记录TXT编辑状态（仅在打开编辑页面时）
                     PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
-                    PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
-                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-                    // 清除其他类型状态 - 修复saveLastImageFile方法名
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null); // 改为saveLastViewedImage
-                } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                }else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
