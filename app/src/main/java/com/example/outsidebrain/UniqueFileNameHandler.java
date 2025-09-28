@@ -22,34 +22,38 @@ public class UniqueFileNameHandler {
      * @return 唯一的文件名
      */
     public static String getGlobalUniqueFileName(File rootDir, File targetDir, String baseName, String timestamp) {
-        // 解析基础名称，提取核心名称和现有序列号
+        // 解析基础名称，提取核心名称和现有序列号（如“笔记（2）”→核心名“笔记”，序列号2）
         NameParts nameParts = parseNameParts(baseName);
         String coreName = nameParts.coreName;
         int existingSuffix = nameParts.suffix;
 
-        // 收集所有目录中与核心名称相同的文件
+        // 收集所有目录中与核心名称相同的TXT文件（全局查重）
         List<File> conflictFiles = findConflictingFiles(rootDir, coreName);
 
-        // 如果没有冲突，直接使用基础名称
+        // 如果没有冲突，直接使用基础名称+时间戳构建文件名
         if (conflictFiles.isEmpty()) {
             return buildFileName(coreName, existingSuffix, timestamp);
         }
 
-        // 找到最大的序列号
+        // 找到已存在文件中的最大序列号（用于生成新序列号）
         int maxSuffix = existingSuffix;
         for (File file : conflictFiles) {
+            // 移除文件名中的“随机字符串+时间戳”，提取纯名称
             String fileName = removeTimestamp(file.getName());
-            fileName = fileName.replace(".txt", "");
+            fileName = fileName.replace(".txt", "").trim();
 
+            // 解析该文件的核心名称和序列号
             NameParts parts = parseNameParts(fileName);
+            // 仅更新相同核心名称的最大序列号
             if (parts.coreName.equals(coreName) && parts.suffix > maxSuffix) {
                 maxSuffix = parts.suffix;
             }
         }
 
-        // 使用最大序列号+1作为新的后缀
+        // 使用“最大序列号+1”作为新序列号，确保文件名唯一
         return buildFileName(coreName, maxSuffix + 1, timestamp);
     }
+
 
     /**
      * 解析文件名，提取核心名称和序列号
@@ -85,10 +89,11 @@ public class UniqueFileNameHandler {
      */
     // 1. 修改removeTimestamp方法，使用毫秒级时间戳模式
     public static String removeTimestamp(String fileName) {
-        // 替换为毫秒级时间戳的正则表达式
+        // 匹配格式：_随机字符串_毫秒时间戳（6位字母数字 + 17位时间戳）
         Matcher matcher = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
         return matcher.replaceAll("");
     }
+
 
     /**
      * 在整个根目录下查找与核心名称冲突的文件

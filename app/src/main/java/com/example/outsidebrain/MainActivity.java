@@ -3,6 +3,7 @@ package com.example.outsidebrain;
 import android.Manifest;
 import android.content.DialogInterface;
 import android.util.Log;
+import java.util.Random;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -80,9 +81,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
-    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位毫秒级
+    // 新正则（匹配“_随机字符串_时间戳”，其中随机字符串是6位字母数字）
+    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位格式
-    public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位匹配
+    public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
 
     // 仅匹配整行的路径标识（严格第一行使用）
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
@@ -760,8 +762,10 @@ public class MainActivity extends AppCompatActivity {
     // 新建测试文件时添加时间戳（仅新建时）
     // 新建测试文件（毫秒级时间戳）
     private void createTestFile() {
+        String randomStr = generateRandomString(); // 生成随机字符串
         String timestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-        File testFile = new File(currentDirectory, "使用说明与注意事项" + timestamp + ".txt");
+        // 文件名格式：标题_随机字符串_时间戳.txt
+        File testFile = new File(currentDirectory, "使用说明与注意事项_" + randomStr + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
                 String content = "此软件主要提供TXT文件的整理、搜索、压缩、发送，文字图片阅览等。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
@@ -1049,15 +1053,14 @@ public class MainActivity extends AppCompatActivity {
                         ? newName.substring(0, newName.lastIndexOf("."))
                         : newName;
 
-                // 添加newTimestamp定义（毫秒级时间戳）
+                String randomStr = generateRandomString(); // 生成随机字符串
                 String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                // 生成唯一文件名（使用newTimestamp）
+                // 文件名格式：标题_随机字符串_时间戳.txt
                 String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                         rootDirectory,
                         file.getParentFile(),
                         baseName,
-                        newTimestamp
+                        "_" + randomStr + newTimestamp
                 );
 
                 File newFile = new File(file.getParentFile(), uniqueName);
@@ -1375,14 +1378,14 @@ public class MainActivity extends AppCompatActivity {
                         cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                     }
 
-                    // 定义newTimestamp变量（关键修改）
-                    String newTimestamp = "_" + MainActivity.MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
+                    String randomStr = generateRandomString(); // 生成随机字符串
+                    String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
+                    // 文件名格式：标题_随机字符串_时间戳.txt
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                             rootDirectory,
                             targetFolder,
                             cleanName,
-                            newTimestamp // 现在可以正确引用了
+                            "_" + randomStr + newTimestamp
                     );
 
                     File targetFile = new File(targetFolder, uniqueFileName);
@@ -1400,6 +1403,16 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+    // 生成固定长度的随机字符串（6位字母数字组合）
+    private String generateRandomString() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(6);
+        for (int i = 0; i < 6; i++) {
+            int index = new Random().nextInt(chars.length());
+            sb.append(chars.charAt(index));
+        }
+        return sb.toString();
     }
 
     /**
@@ -1492,11 +1505,10 @@ public class MainActivity extends AppCompatActivity {
                 cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
             }
 
-            // 添加newTimestamp定义（毫秒级时间戳）
+            String randomStr = generateRandomString(); // 生成随机字符串
             String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-            // 构建新文件名（使用newTimestamp）
-            String newFileName = cleanName + newTimestamp + ".txt";
+            // 文件名格式：标题_随机字符串_时间戳.txt
+            String newFileName = cleanName + "_" + randomStr + newTimestamp + ".txt";
             finalTarget = new File(target.getParentFile(), newFileName);
         }
 
@@ -1526,14 +1538,14 @@ public class MainActivity extends AppCompatActivity {
             }
             // 完全合法的写法，保留 MainActivity. 前缀
             // 添加newTimestamp定义（毫秒级时间戳）
+            String randomStr = generateRandomString(); // 生成随机字符串
             String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-            // 生成唯一文件名（使用newTimestamp）
+            // 拼接随机字符串和时间戳
             String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                     rootDirectory,
                     parent,
                     cleanName,
-                    newTimestamp
+                    "_" + randomStr + newTimestamp // 格式：_随机字符串_时间戳
             );
             finalTarget = new File(parent, uniqueName);
         } else {

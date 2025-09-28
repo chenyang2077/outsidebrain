@@ -41,7 +41,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     // 新秒级时间戳格式（下划线+14位数字：_yyyyMMddHHmmss）
-    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("_yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());// 17位
     // 正文时间戳（保持原有格式不变）
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
     // 匹配最后一行有效时间戳
@@ -49,7 +49,8 @@ public class FileEditorActivity extends AppCompatActivity {
     // 匹配第一行有效路径标识
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
     // 新秒级时间戳正则（用于隐藏和重名判断）
-    private static final Pattern NEW_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位匹配
+    // 新正则（匹配“_随机字符串_时间戳”）
+    private static final Pattern NEW_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -211,7 +212,16 @@ public class FileEditorActivity extends AppCompatActivity {
                 return "application/octet-stream";
         }
     }
-
+    private String generateRandomString() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(6);
+        java.util.Random random = new java.util.Random(); // 注意导入java.util.Random
+        for (int i = 0; i < 6; i++) {
+            int index = random.nextInt(chars.length());
+            sb.append(chars.charAt(index));
+        }
+        return sb.toString();
+    }
     private void loadExistingFileData(boolean needHandleTimestamp) {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -231,12 +241,13 @@ public class FileEditorActivity extends AppCompatActivity {
         }
 
         if (needHandleTimestamp) {
+            // 移除“随机字符串+时间戳”
             Matcher timestampMatcher = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
             if (timestampMatcher.find()) {
-                fileName = timestampMatcher.replaceAll("");
+                fileName = timestampMatcher.replaceAll(""); // 替换为空，仅保留标题
             }
         }
-        etFileName.setText(fileName);
+        etFileName.setText(fileName); // 显示时不包含随机字符串和时间戳
 
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
@@ -295,7 +306,13 @@ public class FileEditorActivity extends AppCompatActivity {
 
         // 初始化根文件夹名称和时间戳（保持原有逻辑）
         if (rootFolderName == null) rootFolderName = "外置大脑";
-        String newTimestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
+        // 修改后（拼接随机字符串）
+        String newTimestamp = "";
+        if (needHandleTimestamp) {
+            String randomStr = generateRandomString(); // 6位随机字符
+            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 17位时间戳
+            newTimestamp = "_" + randomStr + "_" + millisTimestamp; // 标准格式
+        }
         File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
 
         // -------------------------- 1. 新建文件逻辑（isPreEdit=true）：保持不变 --------------------------
@@ -482,7 +499,16 @@ public class FileEditorActivity extends AppCompatActivity {
             coreTitle = UniqueFileNameHandler.removeTimestamp(fileName);
         }
 
-        String timestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
+        // 原代码（仅生成时间戳）
+
+
+// 修改后（拼接随机字符串）
+        String timestamp = "";
+        if (needHandleTimestamp) {
+            String randomStr = generateRandomString(); // 生成随机字符串
+            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 原17位时间戳
+            timestamp = "_" + randomStr + millisTimestamp; // 格式：_随机字符串_时间戳
+        }
 
         // 使用全局唯一性检查
         String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
@@ -532,9 +558,16 @@ public class FileEditorActivity extends AppCompatActivity {
 
     private File getUniqueFile(File parentDir, String baseTitle, boolean needHandleTimestamp) {
         String cleanTitle = needHandleTimestamp ? UniqueFileNameHandler.removeTimestamp(baseTitle) : baseTitle;
-        String timestamp = needHandleTimestamp ? FILE_NAME_TIMESTAMP.format(new Date()) : "";
+        String timestamp = ""; // 初始化空时间戳
 
-        // 使用全局唯一性检查
+        if (needHandleTimestamp) {
+            // 核心：生成“_随机字符串_时间戳”格式（与隐藏正则匹配）
+            String randomStr = generateRandomString(); // 6位随机字符
+            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 17位时间戳
+            timestamp = "_" + randomStr + "_" + millisTimestamp; // 拼接后：_abc123_20250928153022123
+        }
+
+        // 调用工具类生成全局唯一文件名
         String fileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                 new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME),
                 parentDir,

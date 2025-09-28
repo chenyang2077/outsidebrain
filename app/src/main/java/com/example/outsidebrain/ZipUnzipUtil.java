@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.Random;
 
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
@@ -115,6 +116,8 @@ public class ZipUnzipUtil {
         }
     }
 
+
+
     /**
      * 处理文件条目，使用已创建的唯一文件夹路径
      */
@@ -168,38 +171,60 @@ public class ZipUnzipUtil {
             processTxtFileTimestamp(targetFile, rootDir);
         }
     }
-
+    /**
+     * 新增：生成6位随机字符串（字母+数字组合）
+     * 用于TXT文件名的随机字符串部分
+     */
+    private static String generateRandomString() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(6);
+        Random random = new Random();
+        for (int i = 0; i < 6; i++) {
+            int index = random.nextInt(chars.length());
+            sb.append(chars.charAt(index));
+        }
+        return sb.toString();
+    }
     // 在解压逻辑中，对TXT文件添加隐藏时间戳
+    // 原方法中“生成时间戳”的部分需要修改，完整修改后如下：
     private static void processTxtFileTimestamp(File txtFile, File rootDir) {
         if (txtFile == null || !txtFile.getName().toLowerCase().endsWith(".txt")) {
             return;
         }
 
-        // 1. 移除文件名中可能存在的旧时间戳
-        String originalName = txtFile.getName();
-        String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+        try {
+            // 1. 移除旧时间戳（逻辑不变）
+            String originalName = txtFile.getName();
+            String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
 
-        // 2. 去除原有扩展名
-        if (cleanName.endsWith(".txt")) {
-            cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-        }
+            // 2. 去除.txt扩展名（逻辑不变）
+            if (cleanName.toLowerCase().endsWith(".txt")) {
+                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+            }
+            cleanName = cleanName.trim();
 
-        // 2. 修改新时间戳生成逻辑，使用毫秒级格式
-        String newTimestamp = "_" + MainActivity.MILLIS_TIMESTAMP_FORMAT.format(new Date());
+            // 3. 关键修改：生成“随机字符串+毫秒时间戳”（格式：_随机字符串_17位时间戳）
+            String randomStr = generateRandomString(); // 调用新增的随机字符串方法
+            String millisTimestamp = MainActivity.MILLIS_TIMESTAMP_FORMAT.format(new Date());
+            String timestampSuffix = "_" + randomStr + "_" + millisTimestamp; // 拼接格式
 
-        // 4. 获取全局唯一文件名
-        String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                rootDir,
-                txtFile.getParentFile(),
-                cleanName,
-                newTimestamp
-        );
+            // 4. 生成唯一文件名（逻辑不变，参数改为新的timestampSuffix）
+            String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                    rootDir,
+                    txtFile.getParentFile(),
+                    cleanName,
+                    timestampSuffix // 传入带随机字符串的时间戳
+            );
 
-        File newFile = new File(txtFile.getParentFile(), newFileName);
-
-        // 5. 执行重命名
-        if (!txtFile.renameTo(newFile)) {
-            Log.w(TAG, "无法为TXT文件添加时间戳: " + originalName);
+            // 5. 重命名文件（逻辑不变，增加异常捕获更稳健）
+            File newFile = new File(txtFile.getParentFile(), newFileName);
+            if (txtFile.renameTo(newFile)) {
+                Log.d(TAG, "TXT文件添加时间戳成功: " + originalName + " → " + newFileName);
+            } else {
+                Log.w(TAG, "无法为TXT文件添加时间戳: " + originalName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "处理TXT文件时间戳失败", e); // 新增异常捕获，避免崩溃
         }
     }
 
@@ -252,6 +277,10 @@ public class ZipUnzipUtil {
         }
     }
 
+    /**
+     * 生成不冲突的文件夹名称（重名则加序列号）
+     * 已修改为public权限，允许外部类访问
+     */
     /**
      * 生成不冲突的文件夹名称（重名则加序列号）
      * 已修改为public权限，允许外部类访问
