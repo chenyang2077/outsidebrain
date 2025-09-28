@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -23,40 +24,45 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+/**
+ * V1版本 - 文件编辑活动
+ * 功能：创建新文件、编辑已有文件、自动保存、文件压缩、文件分享
+ * 特点：统一使用UniqueFileNameHandler处理文件名查重和时间戳
+ */
 public class FileEditorActivity extends AppCompatActivity {
 
     public static final int RESULT_REFRESH = 100;
     private EditText etFileName;
     private EditText etContent;
-    private boolean isPreEdit;
-    private File currentDir;
-    private File targetFile;
-    private boolean isSaved = true;
-    private static final int MAX_TITLE_LEN = 31;
-    private static final String ROOT_FOLDER_NAME = "外置大脑";
+    private boolean isPreEdit;       // 是否为新建文件模式
+    private File currentDir;         // 当前目录（新建文件时使用）
+    private File targetFile;         // 目标文件（编辑时使用）
+    private boolean isSaved = true;  // 是否已保存
+    private static final int MAX_TITLE_LEN = 31;  // 标题最大长度
+    private static final String ROOT_FOLDER_NAME = "外置大脑";  // 默认根目录名称
 
-    // 新秒级时间戳格式（下划线+14位数字：_yyyyMMddHHmmss）
-    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());// 17位
-    // 正文时间戳（保持原有格式不变）
+    // 时间戳格式定义
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    // 匹配最后一行有效时间戳
-    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
-    // 匹配第一行有效路径标识
-    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
-    // 新秒级时间戳正则（用于隐藏和重名判断）
-    // 新正则（匹配“_随机字符串_时间戳”）
-    private static final Pattern NEW_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
+
+    // 正则表达式
+    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");  // 内容末尾时间戳
+    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");  // 内容首行路径标识
+    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");  // 基础时间戳格式
+    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");  // 增量时间戳格式
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_editor);
 
+        // 初始化视图
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
@@ -66,20 +72,26 @@ public class FileEditorActivity extends AppCompatActivity {
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
+        // 处理压缩和分享意图
         handleZipAndShareIntent();
 
-        // 记录编辑状态（无论是否新建）
-        if (!isPreEdit && targetFile != null) {
-            PreferenceUtils.saveLastPageType(this, "editor");
-            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
-            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        // 记录编辑状态（仅针对已有文件）
+        if (!isPreEdit && filePath != null) {
+            targetFile = new File(filePath);
+            if (targetFile.exists()) {
+                PreferenceUtils.saveLastPageType(this, "editor");
+                PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+                PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+            }
         }
 
+        // 新建文件模式初始化
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
-            focusAndShowSoftInput(etContent);
+            focusAndShowSoftInput(etContent);  // 聚焦内容输入框
 
+            // 标题输入过滤（自动清理时间戳格式）
             if (needHandleTimestamp) {
                 etFileName.addTextChangedListener(new android.text.TextWatcher() {
                     @Override
@@ -88,21 +100,322 @@ public class FileEditorActivity extends AppCompatActivity {
                     public void onTextChanged(CharSequence s, int start, int before, int count) {}
                     @Override
                     public void afterTextChanged(android.text.Editable s) {
-                        String cleaned = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
-                        if (!cleaned.equals(s.toString())) {
-                            s.replace(0, s.length(), cleaned);
+                        String cleanedTitle = removeAllTimestampFormats(s.toString());
+                        if (!cleanedTitle.equals(s.toString())) {
+                            s.replace(0, s.length(), cleanedTitle);
                         }
                     }
                 });
             }
-        } else if (filePath != null) {
+        }
+        // 编辑已有文件模式初始化
+        else if (filePath != null) {
             targetFile = new File(filePath);
             loadExistingFileData(needHandleTimestamp);
         }
 
+        // 设置文本变化监听（标记未保存状态）
         setupTextChangeListeners();
     }
 
+    /**
+     * 移除文件名中所有时间戳格式（基础+增量）
+     */
+    private String removeAllTimestampFormats(String input) {
+        if (TextUtils.isEmpty(input)) return "";
+        // 先处理增量格式，避免被基础格式部分匹配
+        Matcher multiMatcher = MULTI_TIMESTAMP_PATTERN.matcher(input);
+        String tempResult = multiMatcher.replaceAll("");
+        // 再处理基础格式
+        Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(tempResult);
+        return singleMatcher.replaceAll("");
+    }
+
+    /**
+     * 加载已有文件数据（显示时隐藏时间戳）
+     */
+    private void loadExistingFileData(boolean needHandleTimestamp) {
+        if (targetFile == null || !targetFile.exists()) {
+            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // ZIP文件不支持编辑
+        if (targetFile.getName().toLowerCase().endsWith(".zip")) {
+            Toast.makeText(this, "ZIP文件不支持编辑", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // 处理文件名（移除扩展名和时间戳）
+        String fileName = targetFile.getName();
+        if (fileName.endsWith(".txt")) {
+            fileName = fileName.substring(0, fileName.lastIndexOf("."));
+        }
+        if (needHandleTimestamp) {
+            fileName = removeAllTimestampFormats(fileName);
+        }
+        etFileName.setText(fileName);
+
+        // 加载文件内容
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+            // 移除末尾多余换行
+            String finalContent = content.toString().endsWith("\n")
+                    ? content.toString().substring(0, content.length() - 1)
+                    : content.toString();
+            etContent.setText(finalContent);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this, "加载内容失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 设置文本变化监听（编辑时标记未保存状态）
+     */
+    private void setupTextChangeListeners() {
+        etFileName.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                isSaved = false;
+            }
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                String cleanedTitle = removeAllTimestampFormats(s.toString());
+                if (!cleanedTitle.equals(s.toString())) {
+                    s.replace(0, s.length(), cleanedTitle);
+                }
+            }
+        });
+
+        etContent.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                isSaved = false;
+            }
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+    }
+
+    /**
+     * 自动保存文件（新建/编辑通用逻辑）
+     * 核心：统一调用UniqueFileNameHandler处理文件名查重和格式
+     */
+    private void autoSave() {
+        if (isSaved) return;
+
+        String inputTitle = etFileName.getText().toString().trim();
+        String content = etContent.getText().toString();
+        String rootFolderName = getIntent().getStringExtra("root_folder_name");
+        boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
+        boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
+
+        // 初始化根目录和时间戳
+        if (rootFolderName == null) rootFolderName = "外置大脑";
+        File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
+        String newBaseTimestamp = "";
+        if (needHandleTimestamp) {
+            String randomStr = UniqueFileNameHandler.generateRandomString();
+            String millisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+            newBaseTimestamp = "_" + randomStr + "_" + millisTimestamp;
+        }
+
+        // 新建文件逻辑
+        if (isPreEdit) {
+            if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
+                Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
+                finish();
+                return;
+            }
+
+            // 生成原始标题
+            String rawTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
+
+            // 调用工具类生成全局唯一文件名
+            String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                    rootDir, currentDir, rawTitle, newBaseTimestamp
+            );
+            targetFile = new File(currentDir, uniqueFileName);
+
+            try {
+                if (targetFile.createNewFile()) {
+                    String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
+                    String finalContent = isRootDirectory
+                            ? addContentTimestamp(content)
+                            : "【" + dirPath + "】\n" + addContentTimestamp(content);
+                    writeFileContent(targetFile, finalContent);
+                    isSaved = true;
+                    Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_REFRESH);
+                } else {
+                    Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
+        // 编辑已有文件逻辑
+        else {
+            if (targetFile == null || !targetFile.exists()) {
+                Toast.makeText(this, "文件不存在，无法保存", Toast.LENGTH_SHORT).show();
+                finish();
+                return;
+            }
+
+            // 处理文件名变更
+            String originalFileName = targetFile.getName();
+            String currentFileNameWithoutExt = originalFileName.substring(0, originalFileName.lastIndexOf("."));
+            String cleanedOriginalName = UniqueFileNameHandler.cleanTitle(currentFileNameWithoutExt);
+            String newTitle = etFileName.getText().toString().trim();
+            String cleanedNewTitle = needHandleTimestamp ? UniqueFileNameHandler.cleanTitle(newTitle) : newTitle;
+
+            File newFile = targetFile;
+            // 标题变更：重新生成唯一文件名
+            if (!cleanedNewTitle.equals(cleanedOriginalName)) {
+                String randomStr = UniqueFileNameHandler.extractRandomString(currentFileNameWithoutExt);
+                String newTimestamp = "_" + randomStr + "_" + UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+
+                String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        rootDir, targetFile.getParentFile(), newTitle, newTimestamp
+                );
+                newFile = new File(targetFile.getParentFile(), newFileName);
+
+                if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
+                    if (targetFile.renameTo(newFile)) {
+                        targetFile = newFile;
+                        Log.d("FileEditor", "文件名更新：" + originalFileName + " → " + newFileName);
+                    } else {
+                        Toast.makeText(this, "文件名更新失败，内容已保存", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+            // 标题未变：更新时间戳格式
+            else {
+                String newFileName = UniqueFileNameHandler.TimestampHandler.processTxtFileName(originalFileName);
+                newFile = new File(targetFile.getParentFile(), newFileName);
+                if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath()) && targetFile.renameTo(newFile)) {
+                    targetFile = newFile;
+                    Log.d("FileEditor", "时间戳更新：" + originalFileName + " → " + newFileName);
+                }
+            }
+
+            // 处理文件内容
+            String finalContent;
+            if (isRootDirectory) {
+                finalContent = addContentTimestamp(content);
+            } else {
+                String[] allLines = content.split("\n", -1);
+                ArrayList<String> userLines = new ArrayList<>();
+                for (int i = 0; i < allLines.length; i++) {
+                    String line = allLines[i];
+                    if (i == 0 && FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
+                        continue; // 跳过原路径行
+                    }
+                    userLines.add(line);
+                }
+                String userContent = TextUtils.join("\n", userLines);
+                String contentWithTimestamp = addContentTimestamp(userContent);
+                String currentDirPath = MainActivity.getRelativeDirPath(targetFile.getParentFile(), rootFolderName);
+                finalContent = "【" + currentDirPath + "】\n" + contentWithTimestamp;
+            }
+
+            // 写入内容
+            writeFileContent(targetFile, finalContent);
+            isSaved = true;
+            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
+            setResult(RESULT_REFRESH);
+        }
+
+        // 保存最后编辑状态
+        if (!isPreEdit && targetFile != null && targetFile.exists()) {
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        }
+
+        hideSoftInput();
+        finish();
+    }
+
+    /**
+     * 从内容提取副标题（新建文件无标题时使用）
+     */
+    private String getContentSubtitle(String content) {
+        if (TextUtils.isEmpty(content.trim())) return "无内容文件";
+        String trimmedContent = content.trim();
+        return trimmedContent.length() <= MAX_TITLE_LEN
+                ? trimmedContent
+                : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
+    }
+
+    /**
+     * 写入文件内容（UTF-8编码）
+     */
+    private void writeFileContent(File file, String content) {
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this, "写入内容失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 为内容添加末尾时间戳
+     */
+    private String addContentTimestamp(String originalContent) {
+        String[] allLines = originalContent.split("\n", -1);
+        ArrayList<String> lineList = new ArrayList<>();
+        for (String line : allLines) {
+            lineList.add(line);
+        }
+
+        String todayTimestamp = CONTENT_TIMESTAMP.format(new Date());
+        boolean needAddTimestamp = true;
+
+        // 查找最后一行有效内容
+        int lastValidLineIndex = -1;
+        for (int i = lineList.size() - 1; i >= 0; i--) {
+            if (!TextUtils.isEmpty(lineList.get(i).trim())) {
+                lastValidLineIndex = i;
+                break;
+            }
+        }
+
+        // 检查最后一行是否已有今日时间戳
+        if (lastValidLineIndex != -1) {
+            String lastValidLine = lineList.get(lastValidLineIndex);
+            if (LAST_LINE_TIMESTAMP_PATTERN.matcher(lastValidLine).matches()) {
+                String existingDate = lastValidLine.replace("(", "").replace(")", "");
+                if (existingDate.equals(todayTimestamp)) {
+                    needAddTimestamp = false;
+                }
+            }
+        }
+
+        // 需要则添加今日时间戳
+        if (needAddTimestamp) {
+            lineList.add("(" + todayTimestamp + ")");
+        }
+
+        return TextUtils.join("\n", lineList);
+    }
+
+    /**
+     * 处理压缩和分享意图
+     */
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
@@ -116,6 +429,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 压缩文件夹
+     */
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
@@ -126,6 +442,7 @@ public class FileEditorActivity extends AppCompatActivity {
             String zipFileName = folder.getName() + ".zip";
             File zipFile = new File(folder.getParentFile(), zipFileName);
 
+            // 避免压缩文件重名
             int counter = 1;
             while (zipFile.exists()) {
                 zipFileName = folder.getName() + "(" + counter + ").zip";
@@ -133,6 +450,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 counter++;
             }
 
+            // 执行压缩
             try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile))) {
                 addFolderToZip(folder, folder.getName(), zos);
                 Toast.makeText(this, "压缩成功：" + zipFile.getName(), Toast.LENGTH_SHORT).show();
@@ -144,6 +462,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 递归添加文件到压缩包
+     */
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
         File[] files = folder.listFiles();
         if (files == null) return;
@@ -168,6 +489,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 分享文件
+     */
     private void shareFile(File file) {
         if (!file.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -199,6 +523,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 获取文件MIME类型
+     */
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
 
@@ -212,395 +539,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 return "application/octet-stream";
         }
     }
-    private String generateRandomString() {
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        StringBuilder sb = new StringBuilder(6);
-        java.util.Random random = new java.util.Random(); // 注意导入java.util.Random
-        for (int i = 0; i < 6; i++) {
-            int index = random.nextInt(chars.length());
-            sb.append(chars.charAt(index));
-        }
-        return sb.toString();
-    }
-    private void loadExistingFileData(boolean needHandleTimestamp) {
-        if (targetFile == null || !targetFile.exists()) {
-            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
 
-        if (targetFile.getName().toLowerCase().endsWith(".zip")) {
-            Toast.makeText(this, "ZIP文件不支持编辑", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-
-        String fileName = targetFile.getName();
-        if (fileName.endsWith(".txt")) {
-            fileName = fileName.substring(0, fileName.lastIndexOf("."));
-        }
-
-        if (needHandleTimestamp) {
-            // 移除“随机字符串+时间戳”
-            Matcher timestampMatcher = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
-            if (timestampMatcher.find()) {
-                fileName = timestampMatcher.replaceAll(""); // 替换为空，仅保留标题
-            }
-        }
-        etFileName.setText(fileName); // 显示时不包含随机字符串和时间戳
-
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(targetFile), StandardCharsets.UTF_8))) {
-            StringBuilder content = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                content.append(line).append("\n");
-            }
-            String finalContent = content.toString().endsWith("\n")
-                    ? content.toString().substring(0, content.length() - 1)
-                    : content.toString();
-            etContent.setText(finalContent);
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "加载内容失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void setupTextChangeListeners() {
-        etFileName.addTextChangedListener(new android.text.TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                isSaved = false;
-            }
-            @Override
-            public void afterTextChanged(android.text.Editable s) {
-                String cleaned = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
-                if (!cleaned.equals(s.toString())) {
-                    s.replace(0, s.length(), cleaned);
-                }
-            }
-        });
-
-        etContent.addTextChangedListener(new android.text.TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                isSaved = false;
-            }
-            @Override
-            public void afterTextChanged(android.text.Editable s) {}
-        });
-    }
-
-    private void autoSave() {
-        if (isSaved) return; // 无改动则不执行保存
-
-        String inputTitle = etFileName.getText().toString().trim();
-        String content = etContent.getText().toString();
-        String rootFolderName = getIntent().getStringExtra("root_folder_name");
-        boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
-        boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
-
-        // 初始化根文件夹名称和时间戳（保持原有逻辑）
-        if (rootFolderName == null) rootFolderName = "外置大脑";
-        // 修改后（拼接随机字符串）
-        String newTimestamp = "";
-        if (needHandleTimestamp) {
-            String randomStr = generateRandomString(); // 6位随机字符
-            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 17位时间戳
-            newTimestamp = "_" + randomStr + "_" + millisTimestamp; // 标准格式
-        }
-        File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
-
-        // -------------------------- 1. 新建文件逻辑（isPreEdit=true）：保持不变 --------------------------
-        if (isPreEdit) {
-            if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
-                Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
-                finish();
-                return;
-            }
-
-            // 无标题时用内容片段生成标题，确保无时间戳
-            String finalTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
-            if (needHandleTimestamp) {
-                finalTitle = UniqueFileNameHandler.removeTimestamp(finalTitle);
-            }
-
-            // 全局查重生成唯一文件（含新时间戳）
-            targetFile = getUniqueFile(currentDir, finalTitle, needHandleTimestamp);
-
-            try {
-                if (targetFile.createNewFile()) {
-                    String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
-                    String finalContent = isRootDirectory
-                            ? addContentTimestamp(content)
-                            : "【" + dirPath + "】\n" + addContentTimestamp(content);
-                    writeFileContent(targetFile, finalContent);
-                    isSaved = true;
-                    Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
-                    setResult(RESULT_REFRESH);
-                } else {
-                    Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        }
-        // -------------------------- 2. 编辑已有文件逻辑（isPreEdit=false）：核心修改 --------------------------
-        else {
-            if (targetFile == null || !targetFile.exists()) {
-                Toast.makeText(this, "文件不存在，无法保存", Toast.LENGTH_SHORT).show();
-                finish();
-                return;
-            }
-
-            // 2.1 提取原文件的「纯净标题」（去除原时间戳和扩展名）
-            String originalFileName = targetFile.getName();
-            String originalTitleWithExt = originalFileName.endsWith(".txt")
-                    ? originalFileName
-                    : originalFileName + ".txt"; // 确保含扩展名，避免截取错误
-            String originalTitleWithoutExt = originalTitleWithExt.substring(0, originalTitleWithExt.lastIndexOf("."));
-            String originalPureTitle = needHandleTimestamp
-                    ? UniqueFileNameHandler.removeTimestamp(originalTitleWithoutExt)
-                    : originalTitleWithoutExt;
-
-            // 2.2 处理输入标题（空标题时用原纯净标题，避免重命名为空）
-            String finalInputTitle = TextUtils.isEmpty(inputTitle) ? originalPureTitle : inputTitle;
-
-            // 2.3 判断标题是否变更
-            boolean titleChanged = !finalInputTitle.equals(originalPureTitle);
-
-            // 2.4 生成新文件名（仅在标题变更时才进行全局查重）
-            String newFileName;
-            if (needHandleTimestamp) {
-                if (titleChanged) {
-                    // 标题变更：全局查重确保唯一性
-                    newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDir,                  // 全局范围（外置大脑根目录）
-                            targetFile.getParentFile(),// 当前文件父目录
-                            finalInputTitle,           // 最终标题（输入标题/原纯净标题）
-                            newTimestamp               // 新时间戳（强制更新）
-                    );
-                } else {
-                    // 标题未变更：仅更新时间戳，不查重，不增加序列号
-                    String baseName = finalInputTitle;
-                    // 保留文件扩展名
-                    String extension = originalFileName.contains(".") ?
-                            originalFileName.substring(originalFileName.lastIndexOf(".")) : ".txt";
-                    newFileName = baseName + newTimestamp + extension;
-                }
-            } else {
-                if (titleChanged) {
-                    // 无需时间戳但标题变更：全局查重
-                    newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDir,
-                            targetFile.getParentFile(),
-                            finalInputTitle,
-                            "" // 空时间戳
-                    );
-                } else {
-                    // 无需时间戳且标题未变更：直接使用原文件名
-                    newFileName = originalFileName;
-                }
-            }
-
-            // 2.5 执行重命名（标题未改则仅更新时间戳，不提示；标题已改则静默重命名）
-            File newFile = new File(targetFile.getParentFile(), newFileName);
-            if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
-                // 重命名成功后更新目标文件引用
-                if (targetFile.renameTo(newFile)) {
-                    targetFile = newFile;
-                    // 标题已改时可加提示（可选，需求未要求则注释）
-                    // Toast.makeText(this, "文件名已更新", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(this, "文件名更新失败，内容已保存", Toast.LENGTH_SHORT).show();
-                }
-            }
-            // 标题未改/重命名路径相同：仅更新时间戳，不提示
-
-            // 2.6 处理文件内容（保留原路径修正和时间戳追加逻辑）
-            String finalContent;
-            if (isRootDirectory) {
-                finalContent = addContentTimestamp(content);
-            } else {
-                // 移除原第一行路径标识，重新生成当前路径
-                String[] allLines = content.split("\n", -1);
-                ArrayList<String> userLines = new ArrayList<>();
-                for (int i = 0; i < allLines.length; i++) {
-                    String line = allLines[i];
-                    if (i == 0 && FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
-                        continue; // 跳过原路径行
-                    }
-                    userLines.add(line);
-                }
-                String userContent = TextUtils.join("\n", userLines);
-                String contentWithTimestamp = addContentTimestamp(userContent);
-                String currentDirPath = MainActivity.getRelativeDirPath(targetFile.getParentFile(), rootFolderName);
-                finalContent = "【" + currentDirPath + "】\n" + contentWithTimestamp;
-            }
-
-            // 2.7 写入内容并完成保存
-            writeFileContent(targetFile, finalContent);
-            isSaved = true;
-            // 仅提示内容更新，标题未改时不额外提示
-            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
-            setResult(RESULT_REFRESH);
-        }
-        // 新增：如果是编辑现有文件，保存文件路径
-        if (!isPreEdit && targetFile != null && targetFile.exists()) {
-            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
-            // 同时保存文件所在的文件夹
-            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
-        }
-
-        hideSoftInput();
-        finish(); // 保存后关闭编辑页，返回列表页
-    }
-
-    // 修改onBackPressed，确保返回主页面时状态更新
-    @Override
-    public void onBackPressed() {
-        autoSave();
-        super.onBackPressed();
-    }
-
-    // 重写onDestroy，处理异常关闭情况
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        // 如果是被系统销毁，保存最后状态
-        if (isChangingConfigurations()) {
-            if (!isPreEdit && targetFile != null && targetFile.exists()) {
-                PreferenceUtils.saveLastPageType(this, "editor");
-                PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
-            }
-        }
-    }
-
-    private File getUniqueEditFile(File targetFile, boolean needHandleTimestamp) {
-        if (!targetFile.exists()) return targetFile;
-
-        File parentDir = targetFile.getParentFile();
-        String fileName = targetFile.getName();
-        String extension = "";
-        int dotIndex = fileName.lastIndexOf(".");
-
-        if (dotIndex != -1) {
-            extension = fileName.substring(dotIndex);
-            fileName = fileName.substring(0, dotIndex);
-        }
-
-        String coreTitle = fileName;
-        if (needHandleTimestamp) {
-            coreTitle = UniqueFileNameHandler.removeTimestamp(fileName);
-        }
-
-        // 原代码（仅生成时间戳）
-
-
-// 修改后（拼接随机字符串）
-        String timestamp = "";
-        if (needHandleTimestamp) {
-            String randomStr = generateRandomString(); // 生成随机字符串
-            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 原17位时间戳
-            timestamp = "_" + randomStr + millisTimestamp; // 格式：_随机字符串_时间戳
-        }
-
-        // 使用全局唯一性检查
-        String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME),
-                parentDir,
-                coreTitle,
-                timestamp
-        );
-
-        return new File(parentDir, newFileName);
-    }
-
-    private String addContentTimestamp(String originalContent) {
-        String[] allLines = originalContent.split("\n", -1);
-        ArrayList<String> lineList = new ArrayList<>();
-        for (String line : allLines) {
-            lineList.add(line);
-        }
-
-        String todayTimestamp = CONTENT_TIMESTAMP.format(new Date());
-        boolean needAddTimestamp = true;
-
-        int lastValidLineIndex = -1;
-        for (int i = lineList.size() - 1; i >= 0; i--) {
-            if (!TextUtils.isEmpty(lineList.get(i).trim())) {
-                lastValidLineIndex = i;
-                break;
-            }
-        }
-
-        if (lastValidLineIndex != -1) {
-            String lastValidLine = lineList.get(lastValidLineIndex);
-            if (LAST_LINE_TIMESTAMP_PATTERN.matcher(lastValidLine).matches()) {
-                String existingDate = lastValidLine.replace("(", "").replace(")", "");
-                if (existingDate.equals(todayTimestamp)) {
-                    needAddTimestamp = false;
-                }
-            }
-        }
-
-        if (needAddTimestamp) {
-            lineList.add("(" + todayTimestamp + ")");
-        }
-
-        return TextUtils.join("\n", lineList);
-    }
-
-    private File getUniqueFile(File parentDir, String baseTitle, boolean needHandleTimestamp) {
-        String cleanTitle = needHandleTimestamp ? UniqueFileNameHandler.removeTimestamp(baseTitle) : baseTitle;
-        String timestamp = ""; // 初始化空时间戳
-
-        if (needHandleTimestamp) {
-            // 核心：生成“_随机字符串_时间戳”格式（与隐藏正则匹配）
-            String randomStr = generateRandomString(); // 6位随机字符
-            String millisTimestamp = FILE_NAME_TIMESTAMP.format(new Date()); // 17位时间戳
-            timestamp = "_" + randomStr + "_" + millisTimestamp; // 拼接后：_abc123_20250928153022123
-        }
-
-        // 调用工具类生成全局唯一文件名
-        String fileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME),
-                parentDir,
-                cleanTitle,
-                timestamp
-        );
-
-        return new File(parentDir, fileName);
-    }
-
-    private String getContentSubtitle(String content) {
-        if (TextUtils.isEmpty(content.trim())) return "无内容文件";
-        String trimmedContent = content.trim();
-        return trimmedContent.length() <= MAX_TITLE_LEN
-                ? trimmedContent
-                : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
-    }
-
-    // 修改后
-    private String removeOldTimestamp(String fileName) {
-        // 使用新的毫秒级时间戳模式常量
-        return NEW_MILLIS_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
-    }
-
-    private void writeFileContent(File file, String content) {
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            fos.write(content.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "写入内容失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
+    /**
+     * 聚焦并显示软键盘
+     */
     private void focusAndShowSoftInput(EditText editText) {
         editText.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
@@ -609,6 +551,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 隐藏软键盘
+     */
     private void hideSoftInput() {
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) {
@@ -616,22 +561,33 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void onBackPressed() {
+        autoSave();
+        super.onBackPressed();
+    }
 
-
-    // 修改onPause，确保状态正确记录
     @Override
     protected void onPause() {
         super.onPause();
-
-        // 只有编辑已有文件时才记录状态
         if (!isPreEdit && targetFile != null && targetFile.exists()) {
             PreferenceUtils.saveLastPageType(this, "editor");
             PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
         }
-
         if (!isFinishing() && !isSaved) {
             autoSave();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (isChangingConfigurations()) {
+            if (!isPreEdit && targetFile != null && targetFile.exists()) {
+                PreferenceUtils.saveLastPageType(this, "editor");
+                PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            }
         }
     }
 }

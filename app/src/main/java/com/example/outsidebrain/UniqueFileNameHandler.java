@@ -1,10 +1,15 @@
 package com.example.outsidebrain;
 
+import android.text.TextUtils;
 import android.util.Log;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,51 +18,91 @@ public class UniqueFileNameHandler {
     // 匹配带序列号的文件名模式，如"文件(1)"
     private static final Pattern SUFFIX_PATTERN = Pattern.compile("^(.*?)\\((\\d+)\\)$");
 
+    // 两种时间戳格式的正则（私有，仅内部使用）
+    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
+    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
+
+    // -------------------------- 公开方法：生成6位随机字符串 --------------------------
     /**
-     * 检查并获取全局唯一的文件名（在整个"外置大脑"目录下）
-     * @param rootDir 外置大脑根目录
-     * @param targetDir 目标保存目录
-     * @param baseName 基础文件名（不含时间戳和扩展名）
-     * @param timestamp 要添加的时间戳
-     * @return 唯一的文件名
+     * 生成6位随机字符串（字母+数字）
      */
+    public static String generateRandomString() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(6);
+        Random random = new Random();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+
+    // -------------------------- 公开方法：提取随机字符串 --------------------------
+    /**
+     * 从文件名中提取6位随机字符串（支持基础/增量格式）
+     * @param fileName 不含扩展名的原始文件名（如"笔记_abc123_20250928153022123"）
+     * @return 提取的随机字符串，提取失败则生成新的
+     */
+    public static String extractRandomString(String fileName) {
+        if (TextUtils.isEmpty(fileName)) {
+            return generateRandomString(); // 空文件名时生成新随机串
+        }
+
+        // 1. 先匹配基础格式（_abc123_20250928153022123）
+        Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(fileName);
+        if (singleMatcher.find()) {
+            String[] parts = singleMatcher.group().split("_"); // 分割为 ["", "abc123", "20250928153022123"]
+            if (parts.length >= 2) {
+                return parts[1]; // 返回第2个元素（6位随机串）
+            }
+        }
+
+        // 2. 再匹配增量格式（_abc123_20250928153022123_20250928164033444）
+        Matcher multiMatcher = MULTI_TIMESTAMP_PATTERN.matcher(fileName);
+        if (multiMatcher.find()) {
+            String[] parts = multiMatcher.group().split("_"); // 分割为 ["", "abc123", "20250928153022123", "20250928164033444"]
+            if (parts.length >= 2) {
+                return parts[1]; // 返回第2个元素（6位随机串）
+            }
+        }
+
+        // 3. 两种格式都匹配失败，生成新的随机串
+        return generateRandomString();
+    }
+
+    // -------------------------- 其他已有方法保持不变 --------------------------
     public static String getGlobalUniqueFileName(File rootDir, File targetDir, String baseName, String timestamp) {
-        // 解析基础名称，提取核心名称和现有序列号（如“笔记（2）”→核心名“笔记”，序列号2）
-        NameParts nameParts = parseNameParts(baseName);
+        String cleanedBaseName = cleanTitle(baseName);
+        NameParts nameParts = parseNameParts(cleanedBaseName);
         String coreName = nameParts.coreName;
         int existingSuffix = nameParts.suffix;
-
-        // 收集所有目录中与核心名称相同的TXT文件（全局查重）
         List<File> conflictFiles = findConflictingFiles(rootDir, coreName);
-
-        // 如果没有冲突，直接使用基础名称+时间戳构建文件名
         if (conflictFiles.isEmpty()) {
             return buildFileName(coreName, existingSuffix, timestamp);
         }
-
-        // 找到已存在文件中的最大序列号（用于生成新序列号）
         int maxSuffix = existingSuffix;
         for (File file : conflictFiles) {
-            // 移除文件名中的“随机字符串+时间戳”，提取纯名称
-            String fileName = removeTimestamp(file.getName());
+            String fileName = cleanTitle(file.getName());
             fileName = fileName.replace(".txt", "").trim();
-
-            // 解析该文件的核心名称和序列号
             NameParts parts = parseNameParts(fileName);
-            // 仅更新相同核心名称的最大序列号
             if (parts.coreName.equals(coreName) && parts.suffix > maxSuffix) {
                 maxSuffix = parts.suffix;
             }
         }
-
-        // 使用“最大序列号+1”作为新序列号，确保文件名唯一
         return buildFileName(coreName, maxSuffix + 1, timestamp);
     }
 
+    public static String cleanTitle(String input) {
+        if (TextUtils.isEmpty(input)) {
+            return "";
+        }
+        String cleaned = MULTI_TIMESTAMP_PATTERN.matcher(input).replaceAll("");
+        cleaned = SINGLE_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        if (MainActivity.OLD_TIMESTAMP_PATTERN != null) {
+            cleaned = MainActivity.OLD_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        }
+        return cleaned.trim();
+    }
 
-    /**
-     * 解析文件名，提取核心名称和序列号
-     */
     private static NameParts parseNameParts(String fileName) {
         Matcher matcher = SUFFIX_PATTERN.matcher(fileName);
         if (matcher.matches()) {
@@ -66,16 +111,12 @@ public class UniqueFileNameHandler {
                 int suffix = Integer.parseInt(matcher.group(2));
                 return new NameParts(core, suffix);
             } catch (NumberFormatException e) {
-                // 序列号不是数字，视为无序列号
                 return new NameParts(fileName, 0);
             }
         }
         return new NameParts(fileName, 0);
     }
 
-    /**
-     * 构建文件名
-     */
     private static String buildFileName(String coreName, int suffix, String timestamp) {
         if (suffix <= 0) {
             return coreName + timestamp + ".txt";
@@ -84,48 +125,34 @@ public class UniqueFileNameHandler {
         }
     }
 
-    /**
-     * 从文件名中移除时间戳
-     */
-    // 1. 修改removeTimestamp方法，使用毫秒级时间戳模式
     public static String removeTimestamp(String fileName) {
-        // 匹配格式：_随机字符串_毫秒时间戳（6位字母数字 + 17位时间戳）
-        Matcher matcher = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
-        return matcher.replaceAll("");
+        String cleaned = cleanTitle(fileName);
+        if (MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN != null) {
+            cleaned = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        }
+        return cleaned;
     }
 
-
-    /**
-     * 在整个根目录下查找与核心名称冲突的文件
-     */
     private static List<File> findConflictingFiles(File rootDir, String coreName) {
         List<File> result = new ArrayList<>();
         if (!rootDir.exists() || !rootDir.isDirectory()) {
             return result;
         }
-
-        // 递归搜索所有子目录
         searchFiles(rootDir, coreName, result);
         return result;
     }
 
-    /**
-     * 递归搜索文件
-     */
     private static void searchFiles(File dir, String coreName, List<File> result) {
         File[] files = dir.listFiles();
         if (files == null) {
             return;
         }
-
         for (File file : files) {
             if (file.isDirectory()) {
                 searchFiles(file, coreName, result);
             } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                String fileName = removeTimestamp(file.getName());
+                String fileName = cleanTitle(file.getName());
                 fileName = fileName.replace(".txt", "");
-
-                // 检查是否与核心名称相同（忽略可能的序列号）
                 NameParts parts = parseNameParts(fileName);
                 if (parts.coreName.equals(coreName)) {
                     result.add(file);
@@ -134,16 +161,52 @@ public class UniqueFileNameHandler {
         }
     }
 
-    /**
-     * 内部类：存储文件名解析结果
-     */
     private static class NameParts {
         String coreName;
         int suffix;
-
         NameParts(String coreName, int suffix) {
             this.coreName = coreName;
             this.suffix = suffix;
+        }
+    }
+
+    // 时间戳处理内部类
+    public static class TimestampHandler {
+        public static String generateRandomString() {
+            return UniqueFileNameHandler.generateRandomString(); // 复用外部方法
+        }
+
+        public static String generateMillisTimestamp() {
+            return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
+        }
+
+        public static String processTxtFileName(String originalFileName) {
+            if (!originalFileName.toLowerCase().endsWith(".txt")) {
+                return originalFileName;
+            }
+            String fileNameWithoutExt = originalFileName.substring(0, originalFileName.lastIndexOf("."));
+            String ext = originalFileName.substring(originalFileName.lastIndexOf("."));
+
+            Matcher targetMatcher = MainActivity.TARGET_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+            Matcher incrementMatcher = MainActivity.INCREMENT_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+            Matcher oldMatcher = MainActivity.OLD_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+
+            String newFileNameWithoutExt;
+            String newTimestamp = generateMillisTimestamp();
+
+            if (incrementMatcher.find()) {
+                String targetPart = incrementMatcher.group(1);
+                newFileNameWithoutExt = fileNameWithoutExt.replaceAll("(" + MainActivity.TARGET_TIMESTAMP_PATTERN.pattern() + ")(_\\d{17})+$",
+                        targetPart + "_" + newTimestamp);
+            } else if (targetMatcher.find()) {
+                newFileNameWithoutExt = fileNameWithoutExt + "_" + newTimestamp;
+            } else {
+                String cleanName = oldMatcher.replaceAll("");
+                String randomStr = generateRandomString();
+                newFileNameWithoutExt = cleanName + "_" + randomStr + "_" + newTimestamp;
+            }
+
+            return newFileNameWithoutExt + ext;
         }
     }
 }
