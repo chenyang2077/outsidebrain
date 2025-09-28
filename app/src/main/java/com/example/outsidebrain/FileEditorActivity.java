@@ -67,6 +67,13 @@ public class FileEditorActivity extends AppCompatActivity {
 
         handleZipAndShareIntent();
 
+        // 记录编辑状态（无论是否新建）
+        if (!isPreEdit && targetFile != null) {
+            PreferenceUtils.saveLastPageType(this, "editor");
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+        }
+
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
@@ -433,24 +440,24 @@ public class FileEditorActivity extends AppCompatActivity {
         finish(); // 保存后关闭编辑页，返回列表页
     }
 
+    // 修改onBackPressed，确保返回主页面时状态更新
     @Override
     public void onBackPressed() {
-        // 保存状态（无论是否修改）
-        if (!isPreEdit && targetFile != null && targetFile.exists()) {
-            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
-            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
-        }
         autoSave();
         super.onBackPressed();
     }
 
-    // 重写onDestroy方法，确保保存
+    // 重写onDestroy，处理异常关闭情况
     @Override
     protected void onDestroy() {
-        if (!isSaved) {
-            autoSave();
-        }
         super.onDestroy();
+        // 如果是被系统销毁，保存最后状态
+        if (isChangingConfigurations()) {
+            if (!isPreEdit && targetFile != null && targetFile.exists()) {
+                PreferenceUtils.saveLastPageType(this, "editor");
+                PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            }
+        }
     }
 
     private File getUniqueEditFile(File targetFile, boolean needHandleTimestamp) {
@@ -572,11 +579,14 @@ public class FileEditorActivity extends AppCompatActivity {
 
 
 
+    // 修改onPause，确保状态正确记录
     @Override
     protected void onPause() {
         super.onPause();
-        // 无论是否修改，只要是编辑已有文件，就保存状态
+
+        // 只有编辑已有文件时才记录状态
         if (!isPreEdit && targetFile != null && targetFile.exists()) {
+            PreferenceUtils.saveLastPageType(this, "editor");
             PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
         }

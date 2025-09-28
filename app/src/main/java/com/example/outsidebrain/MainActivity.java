@@ -479,38 +479,113 @@ public class MainActivity extends AppCompatActivity {
         batchCorrectTxtFilepaths(currentDirectory);
         loadFileList();
         updateLevelHint();
-        // 新增：尝试恢复到最后访问的文件夹
-        restoreLastLocation();
+        // 恢复最后状态
+        restoreLastState();
     }
-    // 新增方法：恢复最后访问的位置
-    private void restoreLastLocation() {
-        // 先检查是否有最后编辑的文件
-        String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
-        if (lastEditedFile != null && !lastEditedFile.isEmpty()) {
-            File file = new File(lastEditedFile);
-            if (file.exists() && file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
-                // 如果文件存在，先导航到它所在的文件夹
-                currentDirectory = file.getParentFile();
-                loadFileList();
 
-                // 然后打开编辑页面
-                Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                editIntent.putExtra("file_path", file.getAbsolutePath());
-                editIntent.putExtra("is_pre_edit", false);
-                editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
-                editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
-                startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+    // 恢复最后状态
+    // 新增：按优先级恢复最后状态
+    private void restoreLastState() {
+        String lastPageType = PreferenceUtils.getLastPageType(this);
 
-                // 清除记录，避免下次打开还自动打开
-                PreferenceUtils.clearLastEditedFile(this);
-                return;
-            } else {
-                // 文件不存在，清除记录
-                PreferenceUtils.clearLastEditedFile(this);
+        // 1. 优先恢复图片查看状态 - 修复getLastImageFile方法名
+        if ("image".equals(lastPageType)) {
+            // 将getLastImageFile改为getLastViewedImage
+            String lastImagePath = PreferenceUtils.getLastViewedImage(this);
+            if (lastImagePath != null) {
+                File imageFile = new File(lastImagePath);
+                if (imageFile.exists() && isImageFile(imageFile)) {
+                    currentDirectory = imageFile.getParentFile();
+                    loadFileList();
+                    openImageFile(imageFile);
+                    return;
+                }
             }
         }
 
-        // 如果没有编辑的文件，恢复到最后访问的文件夹
+        // 2. 恢复TXT编辑状态
+        if ("editor".equals(lastPageType)) {
+            String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
+            if (lastEditedFile != null) {
+                File file = new File(lastEditedFile);
+                if (file.exists() && file.getName().toLowerCase().endsWith(".txt")) {
+                    currentDirectory = file.getParentFile();
+                    loadFileList();
+                    openFileEditor(file);
+                    return;
+                }
+            }
+        }
+
+        // 3. 恢复文件夹浏览状态
+        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
+        if (lastFolderPath != null) {
+            File lastFolder = new File(lastFolderPath);
+            if (lastFolder.exists() && lastFolder.isDirectory() &&
+                    lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
+                currentDirectory = lastFolder;
+                loadFileList();
+            }
+        }
+    }
+
+    // 新增：打开文件编辑器的封装方法
+    private void openFileEditor(File file) {
+        Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
+        editIntent.putExtra("file_path", file.getAbsolutePath());
+        editIntent.putExtra("is_pre_edit", false);
+        editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+        editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
+        startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+    }
+    // 新增方法：恢复最后访问的位置
+    // 在restoreLastLocation方法中正确使用变量和方法
+    // 2. 在恢复状态时正确获取图片路径
+    // 2. 状态恢复方法（完全替换原方法）
+    private void restoreLastLocation() {
+        String lastPageType = PreferenceUtils.getLastPageType(this);
+
+        // 优先恢复图片查看状态
+        if ("image".equals(lastPageType)) {
+            // 使用正确的方法名获取图片路径
+            String lastImagePath = PreferenceUtils.getLastViewedImage(this); // 正确方法
+            if (lastImagePath != null && !lastImagePath.isEmpty()) {
+                File imageFile = new File(lastImagePath);
+                if (imageFile.exists() && isImageFile(imageFile)) {
+                    currentDirectory = imageFile.getParentFile();
+                    loadFileList();
+                    openImageFile(imageFile);
+                    return;
+                } else {
+                    PreferenceUtils.clearLastViewedImage(this);
+                }
+            }
+        }
+
+        // 恢复编辑文件状态
+        if ("editor".equals(lastPageType)) {
+            String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
+            if (lastEditedFile != null && !lastEditedFile.isEmpty()) {
+                File file = new File(lastEditedFile);
+                if (file.exists() && file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
+                    currentDirectory = file.getParentFile();
+                    loadFileList();
+
+                    Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
+                    editIntent.putExtra("file_path", file.getAbsolutePath());
+                    editIntent.putExtra("is_pre_edit", false);
+                    editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+                    editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
+                    startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+
+                    return;
+                } else {
+                    PreferenceUtils.clearLastEditedFile(this);
+                }
+            }
+        }
+
+        // 最后恢复文件夹浏览状态
         String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
         if (lastFolderPath != null && !lastFolderPath.isEmpty()) {
             File lastFolder = new File(lastFolderPath);
@@ -522,13 +597,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
     // 重写onPause方法，保存当前文件夹位置
     @Override
     protected void onPause() {
         super.onPause();
-        // 只有在不是搜索模式下才保存当前位置
-        if (!isInSearchMode && currentDirectory != null && currentDirectory.exists()) {
-            PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+        // 当在主页面暂停时，更新状态类型为main
+        String currentPageType = PreferenceUtils.getLastPageType(this);
+        if (!"editor".equals(currentPageType) && !"image".equals(currentPageType)) {
+            PreferenceUtils.saveLastPageType(this, "main");
+            if (!isInSearchMode && currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+            }
         }
     }
 
@@ -1343,9 +1423,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     // 打开图片文件
+    // 在打开图片时正确记录状态
+    // 1. 在打开图片时记录状态
     private void openImageFile(File imageFile) {
         try {
-            // 使用FileProvider确保Android 7.0+兼容性
+            // 记录图片查看状态 - 使用正确的方法名
+            PreferenceUtils.saveLastPageType(this, "image");
+            PreferenceUtils.saveLastViewedImage(this, imageFile.getAbsolutePath()); // 正确方法
+            PreferenceUtils.saveLastFolderPath(this, imageFile.getParentFile().getAbsolutePath());
+
+            // 原有打开图片的代码
             Uri imageUri = FileProvider.getUriForFile(
                     this,
                     getPackageName() + ".fileprovider",
@@ -1356,7 +1443,6 @@ public class MainActivity extends AppCompatActivity {
             intent.setDataAndType(imageUri, "image/*");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            // 检查是否有应用可以打开图片
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
@@ -1540,6 +1626,17 @@ public class MainActivity extends AppCompatActivity {
                 .into(imageView);
     }
 
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        String lastPageType = PreferenceUtils.getLastPageType(this);
+        // 从图片查看返回时更新状态
+        if ("image".equals(lastPageType)) {
+            PreferenceUtils.saveLastPageType(this, "main");
+        }
+    }
+
     // 文件列表适配器
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
@@ -1589,6 +1686,7 @@ public class MainActivity extends AppCompatActivity {
 
             holder.tvName.setText(getDisplayName(file));
 
+            // 2. 在点击事件中修复saveLastImageFile方法名
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -1599,6 +1697,12 @@ public class MainActivity extends AppCompatActivity {
                     etSearch.setText("");
                     currentDirectory = file;
                     loadFileList();
+                    // 记录文件夹浏览状态
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "main");
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
+                    // 清除其他类型状态 - 修复saveLastImageFile方法名
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null); // 改为saveLastViewedImage
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
                     // 新增：在打开文件时就记录文件路径，无论是否会修改
@@ -1619,16 +1723,29 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }).start();
+                    // 记录TXT编辑状态
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+                    // 清除其他类型状态 - 修复saveLastImageFile方法名
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null); // 改为saveLastViewedImage
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
                     openImageFile(file);
+                    // 记录图片查看状态 - 修复saveLastImageFile方法名
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "image");
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath()); // 改为saveLastViewedImage
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+                    // 清除其他类型状态
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
                 } else {
                     hidePasteButton();
                     showUnsupportedFileMessage();
                 }
             });
+
 
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
