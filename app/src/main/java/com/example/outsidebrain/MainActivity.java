@@ -659,6 +659,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
+            // 保持原有的排序逻辑
             Collections.sort(folders, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
@@ -678,6 +679,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (!isInSearchMode) {
+            // 直接使用原File列表，通过getDisplayName方法处理显示名称
             fileAdapter.setData(fileList);
         }
 
@@ -688,6 +690,145 @@ public class MainActivity extends AppCompatActivity {
         // 切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
+        }
+    }
+    /**
+     * 格式化TXT文件名用于显示（隐藏随机字符和所有时间戳）
+     * 处理格式：
+     * - 基础名_随机字符_时间戳.txt → 基础名.txt
+     * - 基础名_随机字符_时间戳1_时间戳2.txt → 基础名.txt
+     */
+
+    private void showRenameDialog(File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("重命名");
+
+        String originalName = file.getName();
+        String displayName = formatFileNameForDisplay(originalName);
+        String editTextContent = displayName;
+
+        EditText input = new EditText(this);
+        input.setText(editTextContent);
+        builder.setView(input);
+
+        builder.setPositiveButton("确定", (dialog, which) -> {
+            String newBaseName = input.getText().toString().trim();
+            if (newBaseName.isEmpty()) {
+                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (originalName.toLowerCase().endsWith(".txt")) {
+                handleTxtRename(file, newBaseName);
+            } else {
+                // 正确调用：仅传递文件名参数
+                renameFile(file, newBaseName + getFileExtension(originalName));
+            }
+        });
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+    private void renameFile(File file, String newFileName) {
+        File parentDir = file.getParentFile();
+        File newFile = new File(parentDir, newFileName);
+
+        if (newFile.exists()) {
+            Toast.makeText(this, "文件名已存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (file.renameTo(newFile)) {
+            Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
+            loadFileList();
+        } else {
+            Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String getFileExtension(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return "";
+        }
+        return fileName.substring(fileName.lastIndexOf("."));
+    }
+    private void handleTxtRename(File file, String newBaseName) {
+        String originalName = file.getName();
+        String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf("."));
+        String newTimestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+        String newFileName;
+
+        // 匹配随机字符和时间戳结构
+        Pattern pattern = Pattern.compile("(_[A-Za-z0-9]+)(_\\d+)+$");
+        Matcher matcher = pattern.matcher(nameWithoutExt);
+
+        if (!matcher.find()) {
+            // 无随机字符和时间戳：添加随机字符+时间戳+.txt后缀
+            String randomStr = generateRandomString();
+            newFileName = newBaseName + "_" + randomStr + "_" + newTimestamp + ".txt";
+        } else {
+            String timestampPart = matcher.group();
+            String[] parts = timestampPart.split("_");
+
+            if (parts.length == 3) {
+                // 随机字符+1个时间戳：增加新时间戳+.txt后缀
+                newFileName = newBaseName + timestampPart + "_" + newTimestamp + ".txt";
+            } else {
+                // 随机字符+2个以上时间戳：刷新最后一个时间戳+.txt后缀
+                String prefix = timestampPart.substring(0, timestampPart.lastIndexOf("_"));
+                newFileName = newBaseName + prefix + "_" + newTimestamp + ".txt";
+            }
+        }
+
+        renameFile(file, newFileName);
+    }
+
+    private String formatFileNameForDisplay(String originalFileName) {
+        // 只处理TXT文件
+        if (!originalFileName.toLowerCase().endsWith(".txt")) {
+            return originalFileName;
+        }
+
+        // 分离文件名和扩展名
+        String ext = "";
+        String nameWithoutExt = originalFileName;
+        if (originalFileName.contains(".")) {
+            int extIndex = originalFileName.lastIndexOf(".");
+            ext = originalFileName.substring(extIndex);
+            nameWithoutExt = originalFileName.substring(0, extIndex);
+        }
+
+        // 正则匹配：_随机字符_时间戳1[_时间戳2..._时间戳N]
+        Pattern pattern = Pattern.compile("_[A-Za-z0-9]+(_\\d+)+$");
+        Matcher matcher = pattern.matcher(nameWithoutExt);
+
+        if (matcher.find()) {
+            // 移除随机字符和所有时间戳，且不拼接后缀
+            return nameWithoutExt.replace(matcher.group(), "");
+        }
+
+        // 无随机字符和时间戳时，直接返回无后缀名称
+        return nameWithoutExt;
+    }
+
+    /**
+     * 内部类：用于存储文件及其显示名称
+     */
+    private class FileDisplayItem {
+        private File file;
+        private String displayName;
+
+        public FileDisplayItem(File file, String displayName) {
+            this.file = file;
+            this.displayName = displayName;
+        }
+
+        public File getFile() {
+            return file;
+        }
+
+        public String getDisplayName() {
+            return displayName;
         }
     }
 
@@ -957,6 +1098,8 @@ public class MainActivity extends AppCompatActivity {
         });
         builder.show();
     }
+
+
 
     // 重命名的删除方法，避免与系统的 deleteFile(String) 冲突
 
@@ -1955,7 +2098,7 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 严格按类型设置样式
+            // 严格按类型设置样式（保持原有逻辑）
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
@@ -1978,9 +2121,10 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            holder.tvName.setText(getDisplayName(file));
+            // 关键修改：使用处理后的显示名称
+            holder.tvName.setText(formatFileNameForDisplay(file.getName()));
 
-            // 2. 在点击事件中修复saveLastImageFile方法名
+            // 保持原有的点击事件逻辑
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -1994,11 +2138,10 @@ public class MainActivity extends AppCompatActivity {
                     // 记录文件夹浏览状态
                     PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
-                    // 清除其他类型状态 - 修复saveLastImageFile方法名
+                    // 清除其他类型状态
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null); // 改为saveLastViewedImage
-                } // 2. 修改TXT文件点击事件中的状态处理
-                else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
                     // 记录文件路径
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
@@ -2022,14 +2165,14 @@ public class MainActivity extends AppCompatActivity {
 
                     // 记录TXT编辑状态（仅在打开编辑页面时）
                     PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
-                }else if (file.getName().toLowerCase().endsWith(".zip")) {
+                } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
                     openImageFile(file);
-                    // 记录图片查看状态 - 修复saveLastImageFile方法名
+                    // 记录图片查看状态
                     PreferenceUtils.saveLastPageType(MainActivity.this, "image");
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath()); // 改为saveLastViewedImage
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
                     // 清除其他类型状态
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
@@ -2039,7 +2182,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-
+            // 保持原有的长按事件逻辑
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
