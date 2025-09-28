@@ -83,8 +83,10 @@ public class UniqueFileNameHandler {
     /**
      * 从文件名中移除时间戳
      */
+    // 1. 修改removeTimestamp方法，使用毫秒级时间戳模式
     public static String removeTimestamp(String fileName) {
-        Matcher matcher = MainActivity.FILE_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
+        // 替换为毫秒级时间戳的正则表达式
+        Matcher matcher = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
         return matcher.replaceAll("");
     }
 

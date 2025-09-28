@@ -41,7 +41,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     // 新秒级时间戳格式（下划线+14位数字：_yyyyMMddHHmmss）
-    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("_yyyyMMddHHmmss", Locale.getDefault());
+    private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("_yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位
     // 正文时间戳（保持原有格式不变）
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
     // 匹配最后一行有效时间戳
@@ -49,7 +49,7 @@ public class FileEditorActivity extends AppCompatActivity {
     // 匹配第一行有效路径标识
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
     // 新秒级时间戳正则（用于隐藏和重名判断）
-    private static final Pattern NEW_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
+    private static final Pattern NEW_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位匹配
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,8 +87,7 @@ public class FileEditorActivity extends AppCompatActivity {
                     public void onTextChanged(CharSequence s, int start, int before, int count) {}
                     @Override
                     public void afterTextChanged(android.text.Editable s) {
-                        // 实时移除用户输入中可能包含的时间戳格式
-                        String cleaned = NEW_SECOND_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
+                        String cleaned = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
                         if (!cleaned.equals(s.toString())) {
                             s.replace(0, s.length(), cleaned);
                         }
@@ -232,7 +231,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
 
         if (needHandleTimestamp) {
-            Matcher timestampMatcher = NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
+            Matcher timestampMatcher = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
             if (timestampMatcher.find()) {
                 fileName = timestampMatcher.replaceAll("");
             }
@@ -265,7 +264,12 @@ public class FileEditorActivity extends AppCompatActivity {
                 isSaved = false;
             }
             @Override
-            public void afterTextChanged(android.text.Editable s) {}
+            public void afterTextChanged(android.text.Editable s) {
+                String cleaned = NEW_MILLIS_TIMESTAMP_PATTERN.matcher(s.toString()).replaceAll("");
+                if (!cleaned.equals(s.toString())) {
+                    s.replace(0, s.length(), cleaned);
+                }
+            }
         });
 
         etContent.addTextChangedListener(new android.text.TextWatcher() {
@@ -549,8 +553,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
     }
 
+    // 修改后
     private String removeOldTimestamp(String fileName) {
-        return NEW_SECOND_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
+        // 使用新的毫秒级时间戳模式常量
+        return NEW_MILLIS_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
     }
 
     private void writeFileContent(File file, String content) {

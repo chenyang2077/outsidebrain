@@ -184,8 +184,8 @@ public class ZipUnzipUtil {
             cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
         }
 
-        // 3. 添加新的秒级时间戳（放在末尾隐藏）
-        String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+        // 2. 修改新时间戳生成逻辑，使用毫秒级格式
+        String newTimestamp = "_" + MainActivity.MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
         // 4. 获取全局唯一文件名
         String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(

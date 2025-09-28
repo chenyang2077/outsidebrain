@@ -80,9 +80,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String ROOT_FOLDER_NAME = "外置大脑";
 
     // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
-    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
-    public static final SimpleDateFormat SECOND_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
-    public static final Pattern FILE_SECOND_TIMESTAMP_PATTERN = Pattern.compile("_\\d{14}");
+    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位毫秒级
+    public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位格式
+    public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_\\d{17}"); // 17位匹配
 
     // 仅匹配整行的路径标识（严格第一行使用）
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
@@ -168,31 +168,28 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 修改TXT文件比较器，使用文件名中的秒级时间戳
+
+    // 毫秒级TXT排序比较器
     private class TxtTimestampComparator implements Comparator<File> {
         @Override
         public int compare(File f1, File f2) {
-            long time1 = getSecondTimestampFromFileName(f1.getName());
-            long time2 = getSecondTimestampFromFileName(f2.getName());
-
-            // 优先按文件名中的秒级时间戳排序（新的在前）
+            long time1 = getMillisTimestampFromFileName(f1.getName());
+            long time2 = getMillisTimestampFromFileName(f2.getName());
             if (time1 != 0 && time2 != 0) {
                 return Long.compare(time2, time1);
             }
-            // 时间戳缺失时用文件修改时间兜底
             return Long.compare(f2.lastModified(), f1.lastModified());
         }
     }
 
-    // 从文件名提取秒级时间戳
-    private long getSecondTimestampFromFileName(String fileName) {
+    // 毫秒级时间戳提取
+    private long getMillisTimestampFromFileName(String fileName) {
         if (!fileName.endsWith(".txt")) return 0;
-
-        Matcher matcher = FILE_SECOND_TIMESTAMP_PATTERN.matcher(fileName);
+        Matcher matcher = FILE_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
         if (matcher.find()) {
             String timestampStr = matcher.group().replaceFirst("_", "");
             try {
-                Date date = SECOND_TIMESTAMP_FORMAT.parse(timestampStr);
+                Date date = MILLIS_TIMESTAMP_FORMAT.parse(timestampStr);
                 return date != null ? date.getTime() : 0;
             } catch (ParseException e) {
                 return 0;
@@ -761,9 +758,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 新建测试文件时添加时间戳（仅新建时）
+    // 新建测试文件（毫秒级时间戳）
     private void createTestFile() {
-        // 使用秒级时间戳格式
-        String timestamp = "_" + SECOND_TIMESTAMP_FORMAT.format(new Date());
+        String timestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
         File testFile = new File(currentDirectory, "使用说明与注意事项" + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
@@ -1052,13 +1049,15 @@ public class MainActivity extends AppCompatActivity {
                         ? newName.substring(0, newName.lastIndexOf("."))
                         : newName;
 
-                String timestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+                // 添加newTimestamp定义（毫秒级时间戳）
+                String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
+                // 生成唯一文件名（使用newTimestamp）
                 String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                         rootDirectory,
                         file.getParentFile(),
                         baseName,
-                        timestamp
+                        newTimestamp
                 );
 
                 File newFile = new File(file.getParentFile(), uniqueName);
@@ -1228,10 +1227,10 @@ public class MainActivity extends AppCompatActivity {
                         cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                     }
 
-                    // 生成新的时间戳
-                    String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+                    // 添加newTimestamp定义（毫秒级时间戳）
+                    String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
-                    // 全局查重
+                    // 生成唯一文件名（使用newTimestamp）
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                             rootDirectory,
                             targetFolder,
@@ -1376,12 +1375,14 @@ public class MainActivity extends AppCompatActivity {
                         cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                     }
 
-                    String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+                    // 定义newTimestamp变量（关键修改）
+                    String newTimestamp = "_" + MainActivity.MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                             rootDirectory,
                             targetFolder,
                             cleanName,
-                            newTimestamp
+                            newTimestamp // 现在可以正确引用了
                     );
 
                     File targetFile = new File(targetFolder, uniqueFileName);
@@ -1491,10 +1492,10 @@ public class MainActivity extends AppCompatActivity {
                 cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
             }
 
-            // 生成新的时间戳
-            String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+            // 添加newTimestamp定义（毫秒级时间戳）
+            String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
-            // 构建新文件名（保留原有序列号）
+            // 构建新文件名（使用newTimestamp）
             String newFileName = cleanName + newTimestamp + ".txt";
             finalTarget = new File(target.getParentFile(), newFileName);
         }
@@ -1506,8 +1507,10 @@ public class MainActivity extends AppCompatActivity {
     // 复制文件并确保唯一文件名（复制操作）
     // 复制文件并确保唯一文件名（复制操作）- 核心修改
     private boolean copyFileWithUniqueName(File source, File target) throws IOException {
-        if (!source.exists()) return false;
 
+
+
+        if (!source.exists()) return false;
         File parent = target.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             return false;
@@ -1521,7 +1524,11 @@ public class MainActivity extends AppCompatActivity {
             if (cleanName.toLowerCase().endsWith(".txt")) {
                 cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
             }
-            String newTimestamp = "_" + MainActivity.SECOND_TIMESTAMP_FORMAT.format(new Date());
+            // 完全合法的写法，保留 MainActivity. 前缀
+            // 添加newTimestamp定义（毫秒级时间戳）
+            String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
+            // 生成唯一文件名（使用newTimestamp）
             String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                     rootDirectory,
                     parent,
