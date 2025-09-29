@@ -173,12 +173,20 @@ public class FileEditorActivity extends AppCompatActivity {
      */
     private String removeAllTimestampFormats(String input) {
         if (TextUtils.isEmpty(input)) return "";
-        // 先处理增量格式，避免被基础格式部分匹配
-        Matcher multiMatcher = MULTI_TIMESTAMP_PATTERN.matcher(input);
-        String tempResult = multiMatcher.replaceAll("");
-        // 再处理基础格式
-        Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(tempResult);
-        return singleMatcher.replaceAll("");
+        String result = input;
+
+        // 先移除增量时间戳格式
+        Matcher multiMatcher = MULTI_TIMESTAMP_PATTERN.matcher(result);
+        result = multiMatcher.replaceAll("");
+
+        // 再移除基础时间戳格式
+        Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(result);
+        result = singleMatcher.replaceAll("");
+
+        // 清理可能的残留下划线
+        result = result.replaceAll("_+$", "");
+
+        return result.trim();
     }
     /**
      * 加载已有文件数据（显示时隐藏时间戳）
@@ -263,6 +271,10 @@ public class FileEditorActivity extends AppCompatActivity {
     /**
      * 自动保存文件（新建/编辑通用逻辑）
      * 核心：统一调用UniqueFileNameHandler处理文件名查重和格式
+     */
+    /**
+     * 自动保存文件（新建/编辑通用逻辑）
+     * 核心：统一调用UniqueFileNameHandler处理文件名查重和格式，仅在核心标题变化时查重
      */
     private void autoSave() {
         if (isSaved) return;
@@ -354,7 +366,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 cleanedNewTitle = cleanedOriginalTitle;
             }
 
-            // 2. 生成新的时间戳后缀（核心分级逻辑）
+            // 2. 判断是否需要查重：核心标题未变则不查重
+            boolean needCheckDuplicate = !cleanedNewTitle.equals(cleanedOriginalTitle);
+
+            // 3. 生成新的时间戳后缀（核心分级逻辑）
             String newTimestampSuffix = "";
             if (needHandleTimestamp && originalFileName.endsWith(".txt")) {  // 仅TXT文件处理时间戳
                 // 解析原始文件名的时间戳结构
@@ -394,13 +409,21 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 3. 生成新文件名
-            String newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDir, targetFile.getParentFile(), cleanedNewTitle, newTimestampSuffix
-            );
+            // 4. 生成新文件名（根据是否需要查重决定）
+            String newFileName;
+            if (needCheckDuplicate) {
+                // 核心标题变化，执行全域查重
+                newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        rootDir, targetFile.getParentFile(), cleanedNewTitle, newTimestampSuffix
+                );
+            } else {
+                // 核心标题未变，直接构建文件名（不查重）
+                newFileName = cleanedNewTitle + newTimestampSuffix + ".txt";
+            }
+
             File newFile = new File(targetFile.getParentFile(), newFileName);
 
-            // 4. 执行文件重命名（仅当路径变化时）
+            // 5. 执行文件重命名（仅当路径变化时）
             if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
                 if (!targetFile.renameTo(newFile)) {
                     Toast.makeText(this, "文件名更新失败，内容已保存", Toast.LENGTH_SHORT).show();
@@ -410,7 +433,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 5. 处理文件内容
+            // 6. 处理文件内容
             String finalContent;
             if (isRootDirectory) {
                 finalContent = addContentTimestamp(content);
@@ -430,7 +453,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 finalContent = "【" + currentDirPath + "】\n" + contentWithTimestamp;
             }
 
-            // 6. 写入内容
+            // 7. 写入内容
             writeFileContent(targetFile, finalContent);
             isSaved = true;
             Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
@@ -446,6 +469,7 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
         finish();
     }
+
 
     /**
      * 从内容提取副标题（新建文件无标题时使用）
