@@ -822,6 +822,12 @@ public class MainActivity extends AppCompatActivity {
         renameFile(file, newFileName);
     }
 
+    /**
+     * 格式化TXT文件名用于显示（隐藏随机字符和所有时间戳）
+     * 处理格式：
+     * - 基础名_随机字符_时间戳.txt → 基础名
+     * - 基础名_随机字符_时间戳1_时间戳2.txt → 基础名
+     */
     private String formatFileNameForDisplay(String originalFileName) {
         // 只处理TXT文件
         if (!originalFileName.toLowerCase().endsWith(".txt")) {
@@ -829,26 +835,23 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 分离文件名和扩展名
-        String ext = "";
         String nameWithoutExt = originalFileName;
         if (originalFileName.contains(".")) {
             int extIndex = originalFileName.lastIndexOf(".");
-            ext = originalFileName.substring(extIndex);
             nameWithoutExt = originalFileName.substring(0, extIndex);
         }
 
-        // 正则匹配：_随机字符_时间戳1[_时间戳2..._时间戳N]
-        Pattern pattern = Pattern.compile("_[A-Za-z0-9]+(_\\d+)+$");
-        Matcher matcher = pattern.matcher(nameWithoutExt);
+        // 关键修复：使用已定义的正则常量，确保匹配所有时间戳格式
+        // 先移除增量格式（随机字符+多个时间戳）
+        String processedName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
+        // 再移除基础格式（随机字符+单个时间戳）
+        processedName = TARGET_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
+        // 最后处理旧格式（仅时间戳）
+        processedName = OLD_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
 
-        if (matcher.find()) {
-            // 移除随机字符和所有时间戳，且不拼接后缀
-            return nameWithoutExt.replace(matcher.group(), "");
-        }
-
-        // 无随机字符和时间戳时，直接返回无后缀名称
-        return nameWithoutExt;
+        return processedName;
     }
+
 
     /**
      * 内部类：用于存储文件及其显示名称
@@ -1502,6 +1505,9 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
 
+        // 初始化本次复制的序列号（每次复制操作从0000开始）
+        int sequenceNumber = 0;
+
         File[] files = sourceFolder.listFiles();
         if (files == null) {
             return true; // 空文件夹复制成功
@@ -1509,33 +1515,65 @@ public class MainActivity extends AppCompatActivity {
 
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 递归复制子文件夹
-                if (!copyFolderWithTxtGlobalCheck(sourceFile, targetFolder)) {
-                    return false;
-                }
+                // 递归复制子文件夹，传递当前序列号并接收更新后的值
+                sequenceNumber = copySubFolderWithTxtCheck(sourceFile, targetFolder, sequenceNumber);
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                // 复制操作：保持原有逻辑，生成新的随机字符+时间戳
+                // 处理TXT文件：使用序列号替代时间戳中的小时和分钟
                 String originalName = sourceFile.getName();
                 String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
                 if (cleanName.toLowerCase().endsWith(".txt")) {
                     cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
 
-                // 生成全新的随机字符和时间戳（复制操作特有）
+                // 生成随机字符（6位）
                 String randomStr = UniqueFileNameHandler.generateRandomString();
-                String timestamp = "_" + randomStr + "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
-                // 生成全局唯一文件名
-                String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                        rootDirectory,
-                        targetFolder,
-                        cleanName,
-                        timestamp
-                );
+                // 生成基础时间戳（yyyyMMddHHmmssSSS）
+                String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
-                File targetFile = new File(targetFolder, uniqueFileName);
-                if (!copyFileContent(sourceFile, targetFile)) {
-                    return false;
+                // 替换时间戳中的小时和分钟部分（第9-13位：HHmm）为4位序列号
+                // 格式说明：yyyyMMddHHmmssSSS → 前8位是日期，9-12位是小时分钟，后续是秒和毫秒
+                if (baseTimestamp.length() >= 12) {
+                    // 保留前8位（日期）+ 替换9-12位为序列号 + 保留剩余部分（秒和毫秒）
+                    String datePart = baseTimestamp.substring(0, 8);
+                    String timeRemaining = baseTimestamp.substring(12);
+                    // 格式化序列号为4位数字（0000-9999循环）
+                    String sequenceStr = String.format(Locale.getDefault(), "%04d", sequenceNumber % 10000);
+                    // 拼接新时间戳
+                    String newTimestamp = datePart + sequenceStr + timeRemaining;
+
+                    // 生成时间戳后缀
+                    String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
+
+                    // 生成全局唯一文件名
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    if (!copyFileContent(sourceFile, targetFile)) {
+                        return false;
+                    }
+
+                    // 序列号自增（超过9999自动循环）
+                    sequenceNumber++;
+                } else {
+                    // 时间戳格式异常时使用默认逻辑
+                    Log.w("CopyFolder", "时间戳格式异常，使用默认命名");
+                    String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    if (!copyFileContent(sourceFile, targetFile)) {
+                        return false;
+                    }
                 }
             } else {
                 // 非TXT文件：当前目录内查重
@@ -1548,7 +1586,84 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
+    /**
+     * 递归复制子文件夹，保持序列号连续
+     * @param sourceFolder 源文件夹
+     * @param targetParent 目标父文件夹
+     * @param startSequence 起始序列号
+     * @return 更新后的序列号
+     */
+    private int copySubFolderWithTxtCheck(File sourceFolder, File targetParent, int startSequence) throws IOException {
+        int currentSequence = startSequence;
 
+        // 创建子文件夹
+        String uniqueFolderName = getUniqueFolderName(targetParent, sourceFolder.getName());
+        File targetFolder = new File(targetParent, uniqueFolderName);
+        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
+            Log.e("CopySubFolder", "创建子文件夹失败: " + targetFolder.getAbsolutePath());
+            return currentSequence;
+        }
+
+        File[] files = sourceFolder.listFiles();
+        if (files == null) {
+            return currentSequence;
+        }
+
+        for (File sourceFile : files) {
+            if (sourceFile.isDirectory()) {
+                // 递归处理子文件夹，更新序列号
+                currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
+            } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
+                // 处理TXT文件，逻辑与父文件夹一致
+                String originalName = sourceFile.getName();
+                String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+                if (cleanName.toLowerCase().endsWith(".txt")) {
+                    cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
+                }
+
+                String randomStr = UniqueFileNameHandler.generateRandomString();
+                String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
+                if (baseTimestamp.length() >= 12) {
+                    String datePart = baseTimestamp.substring(0, 8);
+                    String timeRemaining = baseTimestamp.substring(12);
+                    String sequenceStr = String.format(Locale.getDefault(), "%04d", currentSequence % 10000);
+                    String newTimestamp = datePart + sequenceStr + timeRemaining;
+
+                    String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    if (copyFileContent(sourceFile, targetFile)) {
+                        currentSequence++; // 仅在复制成功时自增序列号
+                    }
+                } else {
+                    Log.w("CopySubFolder", "时间戳格式异常，使用默认命名");
+                    String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    copyFileContent(sourceFile, targetFile);
+                }
+            } else {
+                // 处理非TXT文件
+                File targetFile = new File(targetFolder, sourceFile.getName());
+                File uniqueTargetFile = getNonConflictFile(targetFile);
+                copyFileContent(sourceFile, uniqueTargetFile);
+            }
+        }
+
+        return currentSequence;
+    }
 
 
     // 修改performPaste方法，处理剪切和复制的不同逻辑
