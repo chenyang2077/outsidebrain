@@ -1,26 +1,32 @@
-package com.example.outsidebrain; // 添加包声明
+package com.example.outsidebrain;
 
 import android.os.Environment;
 import android.util.Log;
 
 import java.io.*;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-// 假设的时间戳格式常量，避免直接依赖MainActivity
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
     private static final String ROOT_FOLDER_NAME = "外置大脑";
-    // 定义自己的时间戳格式，不依赖MainActivity
     private static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT =
             new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
+
+    // 正则表达式模式定义
+    // 匹配：_随机字符_时间戳1_时间戳2... (随机字符为6位字母数字，时间戳为13-17位数字)
+    private static final Pattern INCREMENT_TIMESTAMP_PATTERN =
+            Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}(_\\d{13,17})*");
+    // 匹配：_随机字符_时间戳 (随机字符为6位字母数字，时间戳为13-17位数字)
+    private static final Pattern TARGET_TIMESTAMP_PATTERN =
+            Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}");
+    // 匹配：_时间戳 (仅时间戳，13-17位数字)
+    private static final Pattern OLD_TIMESTAMP_PATTERN =
+            Pattern.compile("_\\d{13,17}");
 
     /**
      * 解压到当前文件夹，处理所有文件夹重名
@@ -31,9 +37,6 @@ public class ZipUnzipUtil {
             Log.e(TAG, "压缩文件不存在: " + zipFilePath);
             return false;
         }
-
-        // 初始化本次解压的序列号（每次解压从0000开始）
-        int sequenceNumber = 0;
 
         try (ZipFile zf = new ZipFile(zipFile)) {
             RootDirInfo rootDirInfo = analyzeRootDirectory(zf);
@@ -59,12 +62,19 @@ public class ZipUnzipUtil {
                 }
             }
 
+            // 先创建目录
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
             }
 
+            // 收集所有已存在的TXT文件的"清洁名称"用于查重
+            File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
+            Set<String> existingTxtCleanNames = new HashSet<>();
+            collectAllCleanTxtNames(rootDir, existingTxtCleanNames);
+
+            // 处理文件
             for (ZipEntry entry : fileEntries) {
-                sequenceNumber = processFileEntry(zf, entry, rootDirInfo, rootTargetDir, sequenceNumber);
+                processFileEntry(zf, entry, rootDirInfo, rootTargetDir, existingTxtCleanNames);
             }
 
             Log.d(TAG, "解压成功，目标路径: " + finalTargetPath);
@@ -108,8 +118,9 @@ public class ZipUnzipUtil {
         }
     }
 
-    private static int processFileEntry(ZipFile zipFile, ZipEntry entry,
-                                        RootDirInfo rootDirInfo, File rootTargetDir, int sequenceNumber) throws IOException {
+    private static void processFileEntry(ZipFile zipFile, ZipEntry entry,
+                                         RootDirInfo rootDirInfo, File rootTargetDir,
+                                         Set<String> existingTxtCleanNames) throws IOException {
         String entryName = entry.getName().replace("\\", "/");
         String relativePath;
 
@@ -130,12 +141,13 @@ public class ZipUnzipUtil {
 
             if (!parentDir.mkdirs()) {
                 Log.e(TAG, "创建父文件夹失败: " + parentDir.getAbsolutePath());
-                return sequenceNumber;
+                return;
             }
 
             targetFile = new File(parentDir, targetFile.getName());
         }
 
+        // 写入文件内容
         try (InputStream is = zipFile.getInputStream(entry);
              OutputStream os = new FileOutputStream(targetFile)) {
             byte[] buffer = new byte[1024 * 4];
@@ -145,14 +157,71 @@ public class ZipUnzipUtil {
             }
         }
 
+        // 处理TXT文件
         if (targetFile.getName().toLowerCase().endsWith(".txt")) {
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-            return processTxtFileTimestamp(targetFile, rootDir, sequenceNumber);
+            processTxtFile(targetFile, rootDir, existingTxtCleanNames);
         }
-
-        return sequenceNumber;
     }
 
+    /**
+     * 处理TXT文件：移除旧随机字符和时间戳，查重，添加新的随机字符和时间戳
+     */
+    private static void processTxtFile(File txtFile, File rootDir, Set<String> existingTxtCleanNames) {
+        if (txtFile == null || !txtFile.exists() || !txtFile.getName().toLowerCase().endsWith(".txt")) {
+            return;
+        }
+
+        try {
+            // 1. 移除原有随机字符和时间戳
+            String originalName = txtFile.getName();
+            String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf("."));
+
+            // 先移除增量格式（随机字符+多个时间戳）
+            String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
+            // 再移除基础格式（随机字符+单个时间戳）
+            cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+            // 最后处理旧格式（仅时间戳）
+            cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+
+            // 确保清理后的名称不为空
+            if (cleanName.trim().isEmpty()) {
+                cleanName = "未命名文件";
+            }
+
+            // 2. 进行全域查重（使用已收集的现有名称）
+            String uniqueBaseName = findUniqueBaseName(cleanName, existingTxtCleanNames);
+
+            // 将新名称添加到集合中，防止后续文件重名
+            existingTxtCleanNames.add(uniqueBaseName);
+
+            // 3. 生成新的随机字符和时间戳
+            String randomStr = generateRandomString();
+            String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+            String newFileName = uniqueBaseName + "_" + randomStr + "_" + newTimestamp + ".txt";
+
+            // 4. 重命名文件
+            File targetFile = new File(txtFile.getParentFile(), newFileName);
+            if (txtFile.renameTo(targetFile)) {
+                Log.d(TAG, "TXT文件处理成功: " + originalName + " → " + newFileName);
+                return;
+            }
+
+            // 如果重命名失败，尝试复制后删除原文件
+            if (copyFileContent(txtFile, targetFile)) {
+                txtFile.delete();
+                Log.d(TAG, "TXT文件复制并重命名成功: " + originalName + " → " + newFileName);
+            } else {
+                Log.w(TAG, "TXT文件重命名失败: " + originalName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "处理TXT文件失败", e);
+        }
+    }
+
+    /**
+     * 生成6位随机字符串
+     */
     private static String generateRandomString() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         StringBuilder sb = new StringBuilder(6);
@@ -165,96 +234,74 @@ public class ZipUnzipUtil {
     }
 
     /**
-     * 处理TXT文件时间戳，使用序列号替代小时和分钟部分
-     * 不依赖外部的UniqueFileNameHandler，内置基本实现
+     * 查找唯一的基础名称，如果已存在则添加序列号
      */
-    private static int processTxtFileTimestamp(File txtFile, File rootDir, int sequenceNumber) {
-        if (txtFile == null || !txtFile.getName().toLowerCase().endsWith(".txt")) {
-            return sequenceNumber;
+    private static String findUniqueBaseName(String baseName, Set<String> existingNames) {
+        if (!existingNames.contains(baseName)) {
+            return baseName;
         }
 
-        try {
-            // 1. 移除旧时间戳（内置简单实现）
-            String originalName = txtFile.getName();
-            String cleanName = removeTimestamp(originalName);
-
-            // 2. 去除.txt扩展名
-            if (cleanName.toLowerCase().endsWith(".txt")) {
-                cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-            }
-            cleanName = cleanName.trim();
-
-            // 3. 生成随机字符串和基础时间戳
-            String randomStr = generateRandomString();
-            String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-            // 4. 替换时间戳中的小时和分钟部分为4位序列号
-            String modifiedTimestamp = baseTimestamp;
-            if (baseTimestamp.length() >= 12) {
-                String datePart = baseTimestamp.substring(0, 8); // yyyyMMdd
-                String timeRemaining = baseTimestamp.substring(12); // ssSSS
-                String sequenceStr = String.format("%04d", sequenceNumber % 10000);
-                modifiedTimestamp = datePart + sequenceStr + timeRemaining;
-            }
-
-            // 5. 生成时间戳后缀
-            String timestampSuffix = "_" + randomStr + "_" + modifiedTimestamp;
-
-            // 6. 生成唯一文件名（内置简单实现）
-            String newFileName = getGlobalUniqueFileName(
-                    rootDir,
-                    txtFile.getParentFile(),
-                    cleanName,
-                    timestampSuffix
-            );
-
-            // 7. 重命名文件
-            File newFile = new File(txtFile.getParentFile(), newFileName);
-            if (txtFile.renameTo(newFile)) {
-                Log.d(TAG, "TXT文件添加时间戳成功: " + originalName + " → " + newFileName);
-                return sequenceNumber + 1;
-            } else {
-                Log.w(TAG, "无法为TXT文件添加时间戳: " + originalName);
-                return sequenceNumber;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "处理TXT文件时间戳失败", e);
-            return sequenceNumber;
-        }
-    }
-
-    /**
-     * 内置的移除时间戳方法，不依赖外部类
-     */
-    private static String removeTimestamp(String fileName) {
-        // 简单实现：移除最后一个下划线开始的时间戳部分
-        int lastUnderlineIndex = fileName.lastIndexOf("_");
-        if (lastUnderlineIndex > 0) {
-            String potentialTimestamp = fileName.substring(lastUnderlineIndex + 1);
-            // 判断是否是时间戳格式
-            if (potentialTimestamp.matches("\\d{13,17}")) {
-                return fileName.substring(0, lastUnderlineIndex);
-            }
-        }
-        return fileName;
-    }
-
-    /**
-     * 内置的生成唯一文件名方法，不依赖外部类
-     */
-    private static String getGlobalUniqueFileName(File rootDir, File parentDir,
-                                                  String baseName, String suffix) {
-        String fileName = baseName + suffix + ".txt";
-        File testFile = new File(parentDir, fileName);
-
-        // 如果文件名已存在，添加序号
+        // 如果已存在，添加序列号
         int counter = 1;
-        while (testFile.exists()) {
-            fileName = baseName + suffix + "(" + counter + ").txt";
-            testFile = new File(parentDir, fileName);
+        while (true) {
+            String candidate = baseName + "(" + counter + ")";
+            if (!existingNames.contains(candidate)) {
+                return candidate;
+            }
             counter++;
         }
-        return fileName;
+    }
+
+    /**
+     * 收集所有TXT文件去除随机字符和时间戳后的名称
+     */
+    private static void collectAllCleanTxtNames(File dir, Set<String> namesSet) {
+        if (dir == null || !dir.isDirectory() || !dir.exists()) {
+            return;
+        }
+
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                collectAllCleanTxtNames(file, namesSet); // 递归处理子目录
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                String fileName = file.getName();
+                String nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
+
+                // 移除所有时间戳格式
+                String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
+                cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+                cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+
+                // 确保清理后的名称不为空
+                if (!cleanName.trim().isEmpty()) {
+                    namesSet.add(cleanName);
+                }
+            }
+        }
+    }
+
+    /**
+     * 复制文件内容
+     */
+    private static boolean copyFileContent(File source, File dest) throws IOException {
+        if (!dest.exists() && !dest.createNewFile()) {
+            return false;
+        }
+
+        try (InputStream in = new FileInputStream(source);
+             OutputStream out = new FileOutputStream(dest)) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = in.read(buffer)) > 0) {
+                out.write(buffer, 0, length);
+            }
+        }
+        return true;
     }
 
     private static RootDirInfo analyzeRootDirectory(ZipFile zipFile) {
@@ -321,4 +368,3 @@ public class ZipUnzipUtil {
         }
     }
 }
-    

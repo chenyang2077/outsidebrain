@@ -1208,7 +1208,9 @@ public class MainActivity extends AppCompatActivity {
 
         isFolder = file.isDirectory();
         isTxtFile = !isFolder && originalFileName.toLowerCase().endsWith(".txt");
-        originalTxtCoreName = isTxtFile ? getDisplayName(file) : "";
+
+        // 关键改进：准确提取TXT文件的核心名称
+        originalTxtCoreName = isTxtFile ? extractCoreName(originalFileName) : "";
 
         // 处理非TXT文件的扩展名
         if (!isTxtFile && !isFolder) {
@@ -1350,7 +1352,33 @@ public class MainActivity extends AppCompatActivity {
         builder.setNegativeButton("取消", null);
         builder.show();
     }
+    /**
+     * 提取TXT文件的核心名称
+     * 规则：以下横线+随机字符为界，之前的部分是核心名称
+     * 随机字符定义为6位字母数字组合
+     */
+    private String extractCoreName(String fileName) {
+        // 先去除文件扩展名
+        String nameWithoutExt = fileName;
+        if (fileName.toLowerCase().endsWith(".txt")) {
+            nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
+        }
 
+        // 定义下划线+随机字符的模式（6位字母数字）
+        Pattern pattern = Pattern.compile("_[A-Za-z0-9]{6}");
+        Matcher matcher = pattern.matcher(nameWithoutExt);
+
+        // 查找第一个匹配的下划线+随机字符模式
+        if (matcher.find()) {
+            // 提取模式之前的部分作为核心名称
+            String coreName = nameWithoutExt.substring(0, matcher.start());
+            // 处理可能的空值
+            return coreName.trim().isEmpty() ? "未命名文件" : coreName;
+        } else {
+            // 如果没有找到模式，整个名称都是核心名称
+            return nameWithoutExt.trim().isEmpty() ? "未命名文件" : nameWithoutExt;
+        }
+    }
 
 
     // 在 FileUtils 类中
