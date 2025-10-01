@@ -17,6 +17,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -289,6 +290,13 @@ public class FileEditorActivity extends AppCompatActivity {
         if (rootFolderName == null) rootFolderName = ROOT_FOLDER_NAME;
         File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
 
+        // 确保根目录存在
+        if (!rootDir.exists() && !rootDir.mkdirs()) {
+            Toast.makeText(this, "无法创建根目录", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
         // 新建文件逻辑（规则1：添加随机字符+1个时间戳）
         if (isPreEdit) {
             // 空内容+空标题：放弃创建
@@ -302,6 +310,8 @@ public class FileEditorActivity extends AppCompatActivity {
             String rawTitle = TextUtils.isEmpty(inputTitle)
                     ? getContentSubtitle(content)
                     : inputTitle;
+            // 清理标题中的特殊字符
+            rawTitle = cleanFileName(rawTitle);
             String timestampSuffix = "";
 
             // 处理时间戳后缀
@@ -312,19 +322,32 @@ public class FileEditorActivity extends AppCompatActivity {
                 timestampSuffix = "_" + randomStr + "_" + millisTimestamp;
             }
 
-            // 生成全局唯一文件名（调用工具类查重）
+            // 新文件始终保存在当前文件夹
+            File targetDirectory = currentDir;
+
+            // 生成全局唯一文件名
             String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDir, currentDir, rawTitle, timestampSuffix
+                    rootDir, targetDirectory, rawTitle, timestampSuffix
             );
-            targetFile = new File(currentDir, uniqueFileName);
+            targetFile = new File(targetDirectory, uniqueFileName);
 
             try {
+                // 确保目标目录存在
+                if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
+                    Toast.makeText(this, "无法创建目标目录", Toast.LENGTH_SHORT).show();
+                    finish();
+                    return;
+                }
+
                 if (targetFile.createNewFile()) {
-                    // 构建最终内容（根目录无路径行，子目录添加路径标识）
-                    String dirPath = MainActivity.getRelativeDirPath(currentDir, rootFolderName);
-                    String finalContent = isRootDirectory
-                            ? addContentTimestamp(content)
-                            : "【" + dirPath + "】\n" + addContentTimestamp(content);
+                    // 构建最终内容（始终使用当前文件夹路径）
+                    String finalContent = processContentForSaving(
+                            content,
+                            targetDirectory,  // 强制使用当前目录
+                            rootFolderName,
+                            isRootDirectory
+                    );
+
                     // 写入内容
                     writeFileContent(targetFile, finalContent);
                     isSaved = true;
@@ -338,7 +361,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         }
-        // 编辑已有文件逻辑（分级处理时间戳）
+        // 编辑已有文件逻辑
         else {
             if (targetFile == null || !targetFile.exists()) {
                 Toast.makeText(this, "文件不存在，无法保存", Toast.LENGTH_SHORT).show();
@@ -346,60 +369,56 @@ public class FileEditorActivity extends AppCompatActivity {
                 return;
             }
 
-            // 1. 处理文件名核心数据
+            // 文件实际存储的目录（不可通过内容修改）
+            File actualDirectory = targetFile.getParentFile();
+
+            // 1. 处理文件名核心数据（不依赖内容中的路径）
             String originalFileName = targetFile.getName();
-            // 移除扩展名（仅TXT文件）
             String originalFileNameWithoutExt = originalFileName.endsWith(".txt")
                     ? originalFileName.substring(0, originalFileName.lastIndexOf("."))
                     : originalFileName;
-            // 清理原始标题（移除时间戳）
             String cleanedOriginalTitle = needHandleTimestamp
                     ? removeAllTimestampFormats(originalFileNameWithoutExt)
                     : originalFileNameWithoutExt;
-            // 清理新标题（移除用户输入的时间戳格式）
+
             String newTitleInput = etFileName.getText().toString().trim();
+            newTitleInput = cleanFileName(newTitleInput);
             String cleanedNewTitle = needHandleTimestamp
                     ? removeAllTimestampFormats(newTitleInput)
                     : newTitleInput;
-            // 空标题处理：使用原始核心标题
+
             if (TextUtils.isEmpty(cleanedNewTitle)) {
                 cleanedNewTitle = cleanedOriginalTitle;
             }
 
-            // 2. 判断是否需要查重：核心标题未变则不查重
+            // 2. 判断是否需要查重
             boolean needCheckDuplicate = !cleanedNewTitle.equals(cleanedOriginalTitle);
 
-            // 3. 生成新的时间戳后缀（核心分级逻辑）
+            // 3. 生成新的时间戳后缀
             String newTimestampSuffix = "";
-            if (needHandleTimestamp && originalFileName.endsWith(".txt")) {  // 仅TXT文件处理时间戳
-                // 解析原始文件名的时间戳结构
+            if (needHandleTimestamp && originalFileName.endsWith(".txt")) {
                 String[] timestampStruct = parseTimestampStructure(originalFileNameWithoutExt);
                 String newRandomStr = "";
                 ArrayList<String> newTimestamps = new ArrayList<>();
                 String newMillisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
 
-                // 情况1：无随机字符+时间戳（规则1：添加随机字符+1个时间戳）
                 if (timestampStruct.length == 0) {
                     newRandomStr = UniqueFileNameHandler.generateRandomString();
                     newTimestamps.add(newMillisTimestamp);
                 }
-                // 情况2：有随机字符+1个时间戳（规则2：追加新时间戳）
                 else if (timestampStruct.length == 2) {
-                    newRandomStr = timestampStruct[0];  // 保留原随机字符
-                    newTimestamps.add(timestampStruct[1]);  // 保留原时间戳
-                    newTimestamps.add(newMillisTimestamp);  // 追加新时间戳
+                    newRandomStr = timestampStruct[0];
+                    newTimestamps.add(timestampStruct[1]);
+                    newTimestamps.add(newMillisTimestamp);
                 }
-                // 情况3：有随机字符+2个及以上时间戳（规则3：更新最后一个时间戳）
                 else if (timestampStruct.length >= 3) {
-                    newRandomStr = timestampStruct[0];  // 保留原随机字符
-                    // 保留前n-1个时间戳
+                    newRandomStr = timestampStruct[0];
                     for (int i = 1; i < timestampStruct.length - 1; i++) {
                         newTimestamps.add(timestampStruct[i]);
                     }
-                    newTimestamps.add(newMillisTimestamp);  // 更新最后一个时间戳
+                    newTimestamps.add(newMillisTimestamp);
                 }
 
-                // 构建时间戳后缀
                 if (!TextUtils.isEmpty(newRandomStr) && !newTimestamps.isEmpty()) {
                     StringBuilder suffixBuilder = new StringBuilder("_").append(newRandomStr);
                     for (String ts : newTimestamps) {
@@ -409,55 +428,56 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // 4. 生成新文件名（根据是否需要查重决定）
+            // 4. 生成新文件名（始终在实际存储目录下）
             String newFileName;
             if (needCheckDuplicate) {
-                // 核心标题变化，执行全域查重
                 newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                        rootDir, targetFile.getParentFile(), cleanedNewTitle, newTimestampSuffix
+                        rootDir, actualDirectory, cleanedNewTitle, newTimestampSuffix
                 );
             } else {
-                // 核心标题未变，直接构建文件名（不查重）
                 newFileName = cleanedNewTitle + newTimestampSuffix + ".txt";
             }
 
-            File newFile = new File(targetFile.getParentFile(), newFileName);
+            File newFile = new File(actualDirectory, newFileName);
 
-            // 5. 执行文件重命名（仅当路径变化时）
+            // 5. 执行文件重命名（仅文件名变化，目录不变）
+            boolean fileOperationSuccess = true;
             if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
                 if (!targetFile.renameTo(newFile)) {
-                    Toast.makeText(this, "文件名更新失败，内容已保存", Toast.LENGTH_SHORT).show();
-                } else {
-                    targetFile = newFile;  // 更新目标文件引用
-                    Log.d("FileEditor", "文件名更新：" + originalFileName + " → " + newFileName);
-                }
-            }
-
-            // 6. 处理文件内容
-            String finalContent;
-            if (isRootDirectory) {
-                finalContent = addContentTimestamp(content);
-            } else {
-                String[] allLines = content.split("\n", -1);
-                ArrayList<String> userLines = new ArrayList<>();
-                for (int i = 0; i < allLines.length; i++) {
-                    String line = allLines[i];
-                    if (i == 0 && FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
-                        continue; // 跳过原路径行
+                    try {
+                        writeFileContent(newFile, readFileContent(targetFile));
+                        if (!targetFile.delete()) {
+                            Log.w("FileEditor", "无法删除原文件");
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        fileOperationSuccess = false;
+                        Toast.makeText(this, "文件名更新失败，内容已保存", Toast.LENGTH_SHORT).show();
                     }
-                    userLines.add(line);
                 }
-                String userContent = TextUtils.join("\n", userLines);
-                String contentWithTimestamp = addContentTimestamp(userContent);
-                String currentDirPath = MainActivity.getRelativeDirPath(targetFile.getParentFile(), rootFolderName);
-                finalContent = "【" + currentDirPath + "】\n" + contentWithTimestamp;
+                targetFile = newFile;
+                Log.d("FileEditor", "文件名更新：" + originalFileName + " → " + newFileName);
             }
 
-            // 7. 写入内容
-            writeFileContent(targetFile, finalContent);
-            isSaved = true;
-            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
-            setResult(RESULT_REFRESH);
+            if (fileOperationSuccess) {
+                // 6. 检查内容中的路径标识是否与实际存储目录一致
+                File parsedDirectory = parseFirstLinePath(content, rootDir, isRootDirectory);
+                boolean pathMismatch = !parsedDirectory.getAbsolutePath().equals(actualDirectory.getAbsolutePath());
+
+                // 7. 处理文件内容（路径不匹配时自动纠正为实际路径）
+                String finalContent = processContentForSaving(
+                        content,
+                        pathMismatch ? actualDirectory : parsedDirectory,  // 不匹配则纠正
+                        rootFolderName,
+                        isRootDirectory
+                );
+
+                // 8. 写入内容
+                writeFileContent(targetFile, finalContent);
+                isSaved = true;
+                Toast.makeText(this, pathMismatch ? "文件路径标识已纠正并保存" : "文件更新成功", Toast.LENGTH_SHORT).show();
+                setResult(RESULT_REFRESH);
+            }
         }
 
         // 保存最后编辑状态
@@ -470,6 +490,87 @@ public class FileEditorActivity extends AppCompatActivity {
         finish();
     }
 
+    /**
+     * 清理文件名中的特殊字符
+     */
+    private String cleanFileName(String fileName) {
+        if (TextUtils.isEmpty(fileName)) return "";
+        return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    /**
+     * 解析第一行的【】路径信息
+     */
+    private File parseFirstLinePath(String content, File rootDir, boolean isRootDirectory) {
+        if (isRootDirectory || TextUtils.isEmpty(content)) {
+            return rootDir;
+        }
+
+        String[] lines = content.split("\n", 2);
+        String firstLine = lines[0];
+
+        if (FIRST_LINE_PATH_PATTERN.matcher(firstLine).matches()) {
+            try {
+                String pathContent = firstLine.substring(1, firstLine.length() - 1);
+                String decodedPath = pathContent.replace("_slash_", "/");
+                return new File(rootDir, decodedPath);
+            } catch (Exception e) {
+                Log.w("FileEditor", "解析第一行路径失败，使用根目录", e);
+                return rootDir;
+            }
+        }
+
+        return rootDir;
+    }
+
+    /**
+     * 处理保存的内容，确保路径标识正确
+     * 关键修改：如果第一行没有路径标识，在前面添加而不删除原有内容
+     */
+    private String processContentForSaving(String content, File targetDir, String rootFolderName, boolean isRootDirectory) {
+        if (isRootDirectory) {
+            return addContentTimestamp(content);
+        }
+
+        String dirPath = MainActivity.getRelativeDirPath(targetDir, rootFolderName);
+        String safeDirPath = dirPath.replace("/", "_slash_");
+        String pathLine = "【" + safeDirPath + "】";
+
+        // 检查第一行是否已有路径标识
+        boolean hasPathIdentifier = false;
+        String[] lines = content.split("\n", 2);
+        if (lines.length > 0 && !TextUtils.isEmpty(lines[0])) {
+            hasPathIdentifier = FIRST_LINE_PATH_PATTERN.matcher(lines[0]).matches();
+        }
+
+        // 处理内容：
+        // 1. 已有路径标识：替换第一行，保留其余内容
+        // 2. 无路径标识：在内容前添加路径标识，然后换行，保留所有原有内容
+        String restContent;
+        if (hasPathIdentifier) {
+            restContent = lines.length > 1 ? lines[1] : "";
+        } else {
+            // 没有路径标识时，将所有内容作为后续内容
+            restContent = content;
+        }
+
+        String contentWithTimestamp = addContentTimestamp(restContent);
+        return pathLine + "\n" + contentWithTimestamp;
+    }
+
+    /**
+     * 读取文件内容
+     */
+    private String readFileContent(File file) throws IOException {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        }
+        return content.toString();
+    }
 
     /**
      * 从内容提取副标题（新建文件无标题时使用）
