@@ -1294,35 +1294,85 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 将文件/文件夹移动到回收站
+    // 移动文件/文件夹到回收站（主方法）
     private boolean moveToRecycleBin(File file) {
         if (file == null || !file.exists()) {
             return false;
         }
 
         try {
-            // 创建回收站中的唯一目录（基于当前时间）
-            String timestamp = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date());
-            String fileName = file.getName();
+            // 确保回收站目录存在
+            if (!recycleBinDirectory.exists()) {
+                recycleBinDirectory.mkdirs();
+            }
 
-            // 生成在回收站中的目标路径
-            File targetFile = new File(recycleBinDirectory, fileName + "_" + timestamp);
+            // 1. 生成初始目标文件（使用原文件名）
+            File initialTargetFile = new File(recycleBinDirectory, file.getName());
 
-            // 对于TXT文件，使用原有的剪切逻辑（更新时间戳）
+            // 2. 处理重名情况（生成无冲突的文件名）
+            File targetFile = getNonConflictFile(initialTargetFile);
+
+            // 3. 根据文件类型执行对应移动逻辑
             if (file.getName().toLowerCase().endsWith(".txt")) {
+                // TXT文件：使用原有时间戳更新逻辑
                 return moveFileWithTimestampUpdate(file, targetFile);
-            }
-            // 对于文件夹，使用原有的移动逻辑
-            else if (file.isDirectory()) {
-                return moveFolderWithTxtUpdate(file, recycleBinDirectory);
-            }
-            // 对于其他文件，直接移动
-            else {
+            } else if (file.isDirectory()) {
+                // 文件夹：使用原有移动逻辑
+                return moveFolderWithTxtUpdate(file, targetFile);
+            } else {
+                // 其他文件（如ZIP）：直接移动
                 return file.renameTo(targetFile);
             }
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         }
+    }
+    // 复用并扩展查重逻辑，支持文件和文件夹，保留扩展名
+    private String getUniqueFileName(File parentDir, String baseName) {
+        if (parentDir == null || !parentDir.exists() || !parentDir.isDirectory()) {
+            return baseName;
+        }
+
+        // 检查基础名称是否已存在
+        File baseFile = new File(parentDir, baseName);
+        if (!baseFile.exists()) {
+            return baseName;
+        }
+
+        // 分离文件名和扩展名
+        String nameWithoutExt = baseName;
+        String extension = "";
+        int dotIndex = baseName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            nameWithoutExt = baseName.substring(0, dotIndex);
+            extension = baseName.substring(dotIndex);
+        }
+
+        // 查找最大序列号
+        int maxSerial = 0;
+        // 匹配格式：名称(数字).扩展名 或 名称(数字)
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(nameWithoutExt) + "\\((\\d+)\\)" + Pattern.quote(extension) + "$");
+        File[] files = parentDir.listFiles();
+
+        if (files != null) {
+            for (File file : files) {
+                Matcher matcher = pattern.matcher(file.getName());
+                if (matcher.matches()) {
+                    try {
+                        int serial = Integer.parseInt(matcher.group(1));
+                        if (serial > maxSerial) {
+                            maxSerial = serial;
+                        }
+                    } catch (NumberFormatException e) {
+                        // 忽略非数字序列号的文件
+                    }
+                }
+            }
+        }
+
+        // 返回下一个序列号的名称（如"文件(1).zip"）
+        return nameWithoutExt + "(" + (maxSerial + 1) + ")" + extension;
     }
     private boolean performRecursiveDeletion(File file) {
         if (file.isDirectory()) {
@@ -2205,6 +2255,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 辅助方法：非TXT文件的当前文件夹内查重（复用已有逻辑，确保一致性）
      */
+    // 处理重名文件，生成无冲突的文件名（如"文件(1).zip"）
     private File getNonConflictFile(File targetFile) {
         if (!targetFile.exists()) {
             return targetFile;
