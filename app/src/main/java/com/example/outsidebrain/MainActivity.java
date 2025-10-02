@@ -13,6 +13,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -25,6 +26,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -121,7 +123,10 @@ public class MainActivity extends AppCompatActivity {
         btnSearch = findViewById(R.id.btn_search);
         fileRecyclerView = findViewById(R.id.file_list);
         preEditFileBtn = findViewById(R.id.add_button);
-        folderCreateBtn = findViewById(R.id.icon2_btn);
+
+        // 在onCreate方法中添加
+        ImageButton menuButton = findViewById(R.id.menu_btn);
+        menuButton.setOnClickListener(v -> showPopupMenu(v));
 
         fileList = new ArrayList<>();
         searchResultList = new ArrayList<>();
@@ -175,10 +180,7 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             startFilePreEdit();
         });
-        folderCreateBtn.setOnClickListener(v -> {
-            hidePasteButton();
-            showFolderCreateDialog();
-        });
+
     }
 
     private long getLastTimestampFromFileName(String fileName) {
@@ -308,7 +310,30 @@ public class MainActivity extends AppCompatActivity {
         preEditIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
+    // 弹出菜单方法
+    private void showPopupMenu(View view) {
+        // 创建弹出菜单，指定在左上角显示
+        PopupMenu popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
+        // 加载菜单资源
+        popupMenu.getMenuInflater().inflate(R.menu.menu_popup, popupMenu.getMenu());
 
+        // 设置菜单点击监听器
+        popupMenu.setOnMenuItemClickListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.action_home) {
+                // 处理返回主页逻辑（暂未实现）
+                return true;
+            } else if (itemId == R.id.action_new_folder) {
+                // 复用原有的新建文件夹逻辑
+                showFolderCreateDialog();  // 原icon2_btn的点击逻辑方法
+                return true;
+            }
+            return false;
+        });
+
+        // 显示菜单
+        popupMenu.show();
+    }
 
 
     private boolean isContentContainKeyword(File file, String keyword) {

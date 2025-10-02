@@ -23,17 +23,18 @@
         android:gravity="center_vertical"
         android:paddingVertical="4dp">
 
+        <!-- 将原按钮ID修改为新名称，用于弹出菜单 -->
         <ImageButton
-            android:id="@+id/icon2_btn"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="4dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_folder2"
-            android:background="@drawable/btn_round_background"
-            android:contentDescription="新建文件夹"
-            android:clickable="true"
-            android:focusable="true"/>
+            android:id="@+id/menu_btn"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="4dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_folder2"
+        android:background="@drawable/btn_round_background"
+        android:contentDescription="菜单按钮"
+        android:clickable="true"
+        android:focusable="true"/>
 
         <LinearLayout
             android:id="@+id/search_bar"
