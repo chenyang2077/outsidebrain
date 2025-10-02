@@ -377,7 +377,7 @@ public class MainActivity extends AppCompatActivity {
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-            // 根据当前目录添加/修改菜单选项
+            // 根据当前目录修改"返回"选项标题
             if (isInRecycleBin) {
                 // 在回收站中，显示"返回文件列表"选项
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回文件列表");
@@ -386,9 +386,14 @@ public class MainActivity extends AppCompatActivity {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
             }
 
-            // 添加回收站选项
-            popupMenu.getMenu().add(Menu.NONE, R.id.action_recycle_bin, 2, "回收站")
-                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+            // 控制"回收站"菜单项的显示/隐藏
+            if (isInRecycleBin) {
+                // 在回收站中隐藏"回收站"选项
+                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
+            } else {
+                // 在正常目录中显示"回收站"选项
+                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
+            }
 
             popupMenu.setOnMenuItemClickListener(item -> {
                 int itemId = item.getItemId();
@@ -418,6 +423,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
+
     // 打开回收站
     private void openRecycleBin() {
         if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
