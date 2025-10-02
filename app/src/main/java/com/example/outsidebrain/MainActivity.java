@@ -16,6 +16,9 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -87,6 +90,9 @@ public class MainActivity extends AppCompatActivity {
     public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     // 定义时间戳正则（17位数字：yyyyMMddHHmmssSSS）
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");
+    // 首先在类中添加回收站相关变量
+    private File recycleBinDirectory;  // 回收站目录
+    private boolean isInRecycleBin = false;  // 是否在回收站中
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位格式
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
 
@@ -136,6 +142,9 @@ public class MainActivity extends AppCompatActivity {
         fileRecyclerView.setAdapter(fileAdapter);
 
         checkPermission();
+
+        // 初始化回收站
+        initRecycleBin();
 
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
@@ -233,6 +242,22 @@ public class MainActivity extends AppCompatActivity {
 
         return lastTimestamp;
     }
+    // 初始化回收站目录
+    private void initRecycleBin() {
+        // 回收站位于应用内部存储
+        recycleBinDirectory = new File(getFilesDir(), "回收站");
+
+        // 检查并创建回收站目录
+        if (!recycleBinDirectory.exists()) {
+            boolean created = recycleBinDirectory.mkdirs();
+            if (created) {
+                Log.d("RecycleBin", "回收站创建成功: " + recycleBinDirectory.getAbsolutePath());
+            } else {
+                Log.e("RecycleBin", "回收站创建失败");
+                Toast.makeText(this, "无法创建回收站，请检查存储权限", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
     // 毫秒级TXT排序比较器
     private class TxtTimestampComparator implements Comparator<File> {
         @Override
@@ -262,7 +287,14 @@ public class MainActivity extends AppCompatActivity {
         return 0;
     }
 
+    // 修改路径提示，区分回收站和正常目录
     private void updateLevelHint() {
+        if (isInRecycleBin) {
+            etSearch.setHint("回收站");
+            return;
+        }
+
+        // 原有的路径提示逻辑...
         if (currentDirectory == null) return;
 
         List<Integer> levelPath = getLevelPath(currentDirectory);
@@ -336,30 +368,83 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
     // 弹出菜单方法
+
+
+    // 修改弹出菜单方法，添加回收站选项
     private void showPopupMenu(View view) {
-        // 创建弹出菜单，指定在左上角显示
-        PopupMenu popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
-        // 加载菜单资源
-        popupMenu.getMenuInflater().inflate(R.menu.menu_popup, popupMenu.getMenu());
+        try {
+            PopupMenu popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
+            MenuInflater inflater = popupMenu.getMenuInflater();
+            inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-        // 修改showPopupMenu()方法中的菜单点击监听：
-        popupMenu.setOnMenuItemClickListener(item -> {
-            int itemId = item.getItemId();
-            if (itemId == R.id.action_home) {
-                // 调用返回根目录方法
-                navigateToRootDirectory();
-                return true;
-            } else if (itemId == R.id.action_new_folder) {
-                showFolderCreateDialog();
-                return true;
+            // 根据当前目录添加/修改菜单选项
+            if (isInRecycleBin) {
+                // 在回收站中，显示"返回文件列表"选项
+                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回文件列表");
+            } else {
+                // 在正常目录中，显示"返回主页"选项
+                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
             }
-            return false;
-        });
 
-        // 显示菜单
-        popupMenu.show();
+            // 添加回收站选项
+            popupMenu.getMenu().add(Menu.NONE, R.id.action_recycle_bin, 2, "回收站")
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+
+            popupMenu.setOnMenuItemClickListener(item -> {
+                int itemId = item.getItemId();
+                if (itemId == R.id.action_home) {
+                    if (isInRecycleBin) {
+                        // 从回收站返回文件列表
+                        exitRecycleBin();
+                    } else {
+                        // 正常返回根目录
+                        navigateToRootDirectory();
+                    }
+                    return true;
+                } else if (itemId == R.id.action_new_folder) {
+                    showFolderCreateDialog();
+                    return true;
+                } else if (itemId == R.id.action_recycle_bin) {
+                    // 打开回收站
+                    openRecycleBin();
+                    return true;
+                }
+                return false;
+            });
+
+            popupMenu.show();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
+        }
     }
+    // 打开回收站
+    private void openRecycleBin() {
+        if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
+            Toast.makeText(this, "回收站不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
+        // 保存当前目录状态
+        File previousDirectory = currentDirectory;
+
+        // 切换到回收站目录
+        currentDirectory = recycleBinDirectory;
+        isInRecycleBin = true;
+        loadFileList();
+        updateLevelHint();
+
+        Toast.makeText(this, "已打开回收站", Toast.LENGTH_SHORT).show();
+    }
+    // 退出回收站，返回之前的目录
+    private void exitRecycleBin() {
+        isInRecycleBin = false;
+        // 恢复到根目录
+        currentDirectory = rootDirectory;
+        loadFileList();
+        updateLevelHint();
+        Toast.makeText(this, "已返回文件列表", Toast.LENGTH_SHORT).show();
+    }
 
     private boolean isContentContainKeyword(File file, String keyword) {
         if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
@@ -567,14 +652,23 @@ public class MainActivity extends AppCompatActivity {
         restoreLastState();
     }
 
-    // 恢复最后状态
-    // 新增：按优先级恢复最后状态
+    // 修改状态恢复逻辑，支持恢复回收站状态
     private void restoreLastState() {
         String lastPageType = PreferenceUtils.getLastPageType(this);
 
-        // 1. 优先恢复图片查看状态 - 修复getLastImageFile方法名
+        // 恢复回收站状态
+        if ("recycle_bin".equals(lastPageType)) {
+            String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
+            if (lastFolderPath != null && recycleBinDirectory != null &&
+                    lastFolderPath.equals(recycleBinDirectory.getAbsolutePath())) {
+                openRecycleBin();
+                return;
+            }
+        }
+
+        // 原有的状态恢复逻辑...
+        // 1. 优先恢复图片查看状态
         if ("image".equals(lastPageType)) {
-            // 将getLastImageFile改为getLastViewedImage
             String lastImagePath = PreferenceUtils.getLastViewedImage(this);
             if (lastImagePath != null) {
                 File imageFile = new File(lastImagePath);
@@ -682,14 +776,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    // 重写onPause方法，保存当前文件夹位置
+    // 修改保存状态逻辑，区分回收站和正常目录
     @Override
     protected void onPause() {
         super.onPause();
         // 当在主页面暂停时，更新状态类型为main
         String currentPageType = PreferenceUtils.getLastPageType(this);
         if (!"editor".equals(currentPageType) && !"image".equals(currentPageType)) {
-            PreferenceUtils.saveLastPageType(this, "main");
+            PreferenceUtils.saveLastPageType(this, isInRecycleBin ? "recycle_bin" : "main");
             if (!isInSearchMode && currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
@@ -924,37 +1018,35 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 修改返回键逻辑，在回收站中按返回键退出回收站
     @Override
     public void onBackPressed() {
+        if (isInRecycleBin) {
+            exitRecycleBin();
+            return;
+        }
+
+        // 原有的返回键逻辑...
         if (isInSearchMode) {
-            // 原有：退出搜索模式逻辑
             isInSearchMode = false;
             etSearch.setText("");
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
             hidePasteButton();
-
-            // 新增：退出搜索后，记录当前文件夹状态（确保状态正确）
             PreferenceUtils.saveLastPageType(this, "main");
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
-
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
-            // 原有：返回上一级文件夹逻辑
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
             loadFileList();
-
-            // 新增：返回上一级文件夹后，记录当前文件夹状态
             PreferenceUtils.saveLastPageType(this, "main");
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
-
         } else {
-            // 原有：根目录下按返回键，执行系统默认退出逻辑
             super.onBackPressed();
         }
     }
@@ -1161,20 +1253,70 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
     // 3. 全新的删除确认方法（确保只定义一次）
+    // 修改删除确认方法，根据当前目录决定是移动到回收站还是彻底删除
     private void confirmFileDeletion(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("确认删除")
-                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
-                .setPositiveButton("删除", (dialog, which) -> {
-                    if (performRecursiveDeletion(file)) { // 使用全新的执行方法名
-                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
-                        loadFileList();
-                    } else {
-                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
+
+        if (isInRecycleBin) {
+            // 在回收站中，删除是彻底删除
+            builder.setTitle("确认彻底删除")
+                    .setMessage("确定要永久删除 " + getDisplayName(file) + " 吗？此操作不可恢复。")
+                    .setPositiveButton("删除", (dialog, which) -> {
+                        if (performRecursiveDeletion(file)) {
+                            Toast.makeText(this, "已永久删除", Toast.LENGTH_SHORT).show();
+                            loadFileList();
+                        } else {
+                            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+        } else {
+            // 在正常目录中，删除是移动到回收站
+            builder.setTitle("确认删除")
+                    .setMessage("确定要将 " + getDisplayName(file) + " 移至回收站吗？")
+                    .setPositiveButton("删除", (dialog, which) -> {
+                        if (moveToRecycleBin(file)) {
+                            Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show();
+                            loadFileList();
+                        } else {
+                            Toast.makeText(this, "操作失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+        }
+
+        builder.setNegativeButton("取消", null)
                 .show();
+    }
+
+    // 将文件/文件夹移动到回收站
+    private boolean moveToRecycleBin(File file) {
+        if (file == null || !file.exists()) {
+            return false;
+        }
+
+        try {
+            // 创建回收站中的唯一目录（基于当前时间）
+            String timestamp = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date());
+            String fileName = file.getName();
+
+            // 生成在回收站中的目标路径
+            File targetFile = new File(recycleBinDirectory, fileName + "_" + timestamp);
+
+            // 对于TXT文件，使用原有的剪切逻辑（更新时间戳）
+            if (file.getName().toLowerCase().endsWith(".txt")) {
+                return moveFileWithTimestampUpdate(file, targetFile);
+            }
+            // 对于文件夹，使用原有的移动逻辑
+            else if (file.isDirectory()) {
+                return moveFolderWithTxtUpdate(file, recycleBinDirectory);
+            }
+            // 对于其他文件，直接移动
+            else {
+                return file.renameTo(targetFile);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
     private boolean performRecursiveDeletion(File file) {
         if (file.isDirectory()) {
