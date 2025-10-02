@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_home"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:title="返回主页"/>
+    <item
+        android:id="@+id/action_new_folder"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:title="新建文件夹"/>
+</menu>
