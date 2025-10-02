@@ -183,6 +183,31 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    // 在MainActivity类中添加返回根目录的方法
+    private void navigateToRootDirectory() {
+        // 检查根目录是否存在
+        if (rootDirectory != null && rootDirectory.exists() && rootDirectory.isDirectory()) {
+            // 退出搜索模式（如果处于搜索中）
+            if (isInSearchMode) {
+                isInSearchMode = false;
+                etSearch.setText("");
+            }
+
+            // 切换到根目录
+            currentDirectory = rootDirectory;
+            loadFileList(); // 刷新文件列表
+            updateLevelHint(); // 更新路径提示
+
+            // 保存状态
+            PreferenceUtils.saveLastPageType(this, "main");
+            PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
+
+            Toast.makeText(this, "已返回根目录", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private long getLastTimestampFromFileName(String fileName) {
         // 移除文件后缀
         String nameWithoutExt = fileName;
@@ -317,15 +342,15 @@ public class MainActivity extends AppCompatActivity {
         // 加载菜单资源
         popupMenu.getMenuInflater().inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-        // 设置菜单点击监听器
+        // 修改showPopupMenu()方法中的菜单点击监听：
         popupMenu.setOnMenuItemClickListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.action_home) {
-                // 处理返回主页逻辑（暂未实现）
+                // 调用返回根目录方法
+                navigateToRootDirectory();
                 return true;
             } else if (itemId == R.id.action_new_folder) {
-                // 复用原有的新建文件夹逻辑
-                showFolderCreateDialog();  // 原icon2_btn的点击逻辑方法
+                showFolderCreateDialog();
                 return true;
             }
             return false;
