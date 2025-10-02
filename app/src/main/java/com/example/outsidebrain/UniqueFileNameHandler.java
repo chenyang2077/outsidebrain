@@ -74,21 +74,28 @@ public class UniqueFileNameHandler {
         String cleanedBaseName = cleanTitle(baseName);
         NameParts nameParts = parseNameParts(cleanedBaseName);
         String coreName = nameParts.coreName;
-        int existingSuffix = nameParts.suffix;
+
+        // 获取所有冲突文件
         List<File> conflictFiles = findConflictingFiles(rootDir, coreName);
-        if (conflictFiles.isEmpty()) {
-            return buildFileName(coreName, existingSuffix, timestamp);
-        }
-        int maxSuffix = existingSuffix;
+
+        // 收集已使用的序列号
+        List<Integer> usedSuffixes = new ArrayList<>();
         for (File file : conflictFiles) {
             String fileName = cleanTitle(file.getName());
             fileName = fileName.replace(".txt", "").trim();
             NameParts parts = parseNameParts(fileName);
-            if (parts.coreName.equals(coreName) && parts.suffix > maxSuffix) {
-                maxSuffix = parts.suffix;
+            if (parts.coreName.equals(coreName)) {
+                usedSuffixes.add(parts.suffix);
             }
         }
-        return buildFileName(coreName, maxSuffix + 1, timestamp);
+
+        // 从0开始查找第一个未被使用的序列号
+        int suffix = 0;
+        while (usedSuffixes.contains(suffix)) {
+            suffix++;
+        }
+
+        return buildFileName(coreName, suffix, timestamp);
     }
 
     public static String cleanTitle(String input) {
