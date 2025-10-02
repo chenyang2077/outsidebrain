@@ -390,9 +390,20 @@ public class MainActivity extends AppCompatActivity {
             if (isInRecycleBin) {
                 // 在回收站中隐藏"回收站"选项
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
+                // 在回收站中显示"清空回收站"选项
+                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
             } else {
                 // 在正常目录中显示"回收站"选项
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
+                // 在正常目录中隐藏"清空回收站"选项
+                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
+            }
+
+            // 控制"新建文件夹"在回收站中隐藏（可选，根据需求决定）
+            if (isInRecycleBin) {
+                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
+            } else {
+                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
             }
 
             popupMenu.setOnMenuItemClickListener(item -> {
@@ -413,6 +424,10 @@ public class MainActivity extends AppCompatActivity {
                     // 打开回收站
                     openRecycleBin();
                     return true;
+                } else if (itemId == R.id.action_clear_recycle_bin) {
+                    // 清空回收站确认
+                    confirmClearRecycleBin();
+                    return true;
                 }
                 return false;
             });
@@ -422,6 +437,55 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    // 新增：清空回收站确认对话框
+    private void confirmClearRecycleBin() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("确认清空回收站")
+                .setMessage("此操作将永久删除回收站中所有文件，不可恢复，是否继续？")
+                .setPositiveButton("清空", (dialog, which) -> {
+                    if (clearRecycleBin()) {
+                        Toast.makeText(this, "回收站已清空", Toast.LENGTH_SHORT).show();
+                        loadFileList();
+                    } else {
+                        Toast.makeText(this, "清空失败，请重试", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // 新增：执行清空回收站操作
+    private boolean clearRecycleBin() {
+        if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
+            return true; // 回收站不存在视为已清空
+        }
+
+        File[] files = recycleBinDirectory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (!deleteFileOrDirectory(file)) {
+                    return false; // 有文件删除失败则返回false
+                }
+            }
+        }
+        return true;
+    }
+
+    // 新增：递归删除文件或目录
+    private boolean deleteFileOrDirectory(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (!deleteFileOrDirectory(child)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return file.delete();
     }
 
     // 打开回收站
