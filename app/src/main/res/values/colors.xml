@@ -37,4 +37,9 @@
     <color name="item_other_rounded_bg">#FFF5F5F5</color>
 
 
+
+    <!-- 新增：点击反馈颜色 -->
+    <color name="colorPrimaryLight">#FFE0B2</color> <!-- 浅色调的黄色，用于点击状态 -->
+
+
 </resources>

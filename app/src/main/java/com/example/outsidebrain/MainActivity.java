@@ -69,6 +69,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import android.content.Context;
+import android.view.ContextThemeWrapper;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -379,50 +381,43 @@ public class MainActivity extends AppCompatActivity {
     // 弹出菜单方法
 
 
-    // 修改弹出菜单方法，添加回收站选项
     private void showPopupMenu(View view) {
         try {
-            PopupMenu popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
+            // 修正：使用兼容的方式实例化PopupMenu
+            PopupMenu popupMenu;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                // 高版本直接使用主题包装器
+                ContextThemeWrapper themeWrapper = new ContextThemeWrapper(this, R.style.CustomPopupMenu);
+                popupMenu = new PopupMenu(themeWrapper, view, Gravity.TOP | Gravity.START);
+            } else {
+                // 低版本兼容处理
+                popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
+                // 低版本通过反射应用主题（可选）
+            }
+
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-            // 根据当前目录修改"返回"选项标题
+            // （以下保持原有逻辑不变）
             if (isInRecycleBin) {
-                // 在回收站中，显示"返回文件列表"选项
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
-            } else {
-                // 在正常目录中，显示"返回主页"选项
-                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
-            }
-
-            // 控制"回收站"菜单项的显示/隐藏
-            if (isInRecycleBin) {
-                // 在回收站中隐藏"回收站"选项
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
-                // 在回收站中显示"清空回收站"选项
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
-            } else {
-                // 在正常目录中显示"回收站"选项
-                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
-                // 在正常目录中隐藏"清空回收站"选项
-                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
-            }
-
-            // 控制"新建文件夹"在回收站中隐藏（可选，根据需求决定）
-            if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
             } else {
+                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
+                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
+                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
             }
 
             popupMenu.setOnMenuItemClickListener(item -> {
+                // （点击事件逻辑保持不变）
                 int itemId = item.getItemId();
                 if (itemId == R.id.action_home) {
                     if (isInRecycleBin) {
-                        // 从回收站返回文件列表
                         exitRecycleBin();
                     } else {
-                        // 正常返回根目录
                         navigateToRootDirectory();
                     }
                     return true;
@@ -430,11 +425,9 @@ public class MainActivity extends AppCompatActivity {
                     showFolderCreateDialog();
                     return true;
                 } else if (itemId == R.id.action_recycle_bin) {
-                    // 打开回收站
                     openRecycleBin();
                     return true;
                 } else if (itemId == R.id.action_clear_recycle_bin) {
-                    // 清空回收站确认
                     confirmClearRecycleBin();
                     return true;
                 }
@@ -447,6 +440,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
+
+
 
     // 新增：清空回收站确认对话框
     private void confirmClearRecycleBin() {

@@ -1,0 +1,17 @@
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="1dp"> <!-- 这就是菜单项的外边距 -->
+    <selector>
+        <!-- 正常状态 -->
+        <item android:state_pressed="false">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/white" />
+            </shape>
+        </item>
+        <!-- 点击状态 -->
+        <item android:state_pressed="true">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/colorPrimaryLight" />
+            </shape>
+        </item>
+    </selector>
+</inset>

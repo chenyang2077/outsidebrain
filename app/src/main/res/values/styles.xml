@@ -15,4 +15,18 @@
         <!-- 可选：设置编辑页面的状态栏颜色，与深灰背景协调 -->
         <item name="android:statusBarColor">@color/editorBgColor</item>
     </style>
+
+
+
+    <!-- 自定义PopupMenu样式 -->
+    <style name="CustomPopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@color/white</item>
+        <item name="android:itemBackground">@drawable/menu_item_bg</item>
+        <item name="android:itemTextAppearance">@style/MenuTextStyle</item>
+    </style>
+
+    <style name="MenuTextStyle" parent="TextAppearance.AppCompat.Menu">
+        <item name="android:textColor">@color/black</item>
+        <item name="android:textSize">16sp</item>
+    </style>
 </resources>
