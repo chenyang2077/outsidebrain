@@ -2,6 +2,8 @@ package com.example.outsidebrain;
 
 import android.Manifest;
 import android.content.DialogInterface;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import java.util.Random;
 import android.content.Intent;
@@ -210,7 +212,14 @@ public class MainActivity extends AppCompatActivity {
             // 保存状态
             PreferenceUtils.saveLastPageType(this, "main");
             PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-
+// 关键修改：根目录显示后，延迟1秒在后台执行批量核验
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                new Thread(() -> {
+                    batchCorrectTxtFilepaths(rootDirectory);
+                    // 核验完成后刷新列表（可选）
+                    runOnUiThread(() -> loadFileList());
+                }).start();
+            }, 1000); // 1秒延迟，确保UI已稳定显示
 
         } else {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
@@ -742,7 +751,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        batchCorrectTxtFilepaths(currentDirectory);
+
         loadFileList();
         updateLevelHint();
         // 恢复最后状态
