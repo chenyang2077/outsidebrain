@@ -13,7 +13,7 @@ import java.util.zip.ZipFile;
 
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
-    private static final String ROOT_FOLDER_NAME = "外置大脑";
+    private static final String ROOT_FOLDER_NAME = "流动信息";
     // 基础时间戳格式（不含序列号部分）
     private static final SimpleDateFormat BASE_TIMESTAMP_FORMAT =
             new SimpleDateFormat("yyyyMMdd", Locale.getDefault());

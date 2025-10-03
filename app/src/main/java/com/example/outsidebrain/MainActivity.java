@@ -83,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInSearchMode = false;
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
-    private static final String ROOT_FOLDER_NAME = "外置大脑";
+    private static final String ROOT_FOLDER_NAME = "流动信息";
 
     // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
     // 新正则（匹配“_随机字符串_时间戳”，其中随机字符串是6位字母数字）
@@ -211,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
             PreferenceUtils.saveLastPageType(this, "main");
             PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
 
-            Toast.makeText(this, "已返回根目录", Toast.LENGTH_SHORT).show();
+
         } else {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
         }
@@ -380,7 +380,7 @@ public class MainActivity extends AppCompatActivity {
             // 根据当前目录修改"返回"选项标题
             if (isInRecycleBin) {
                 // 在回收站中，显示"返回文件列表"选项
-                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回文件列表");
+                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
             } else {
                 // 在正常目录中，显示"返回主页"选项
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
@@ -489,31 +489,58 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 打开回收站
+    // 2. 打开回收站（优化版）
     private void openRecycleBin() {
+        // 校验回收站有效性
         if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
             Toast.makeText(this, "回收站不存在", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 保存当前目录状态
-        File previousDirectory = currentDirectory;
+        // 退出搜索模式
+        if (isInSearchMode) {
+            isInSearchMode = false;
+            etSearch.setText("");
+        }
 
-        // 切换到回收站目录
-        currentDirectory = recycleBinDirectory;
+        // 切换到回收站
         isInRecycleBin = true;
+        currentDirectory = recycleBinDirectory;
         loadFileList();
         updateLevelHint();
 
-        Toast.makeText(this, "已打开回收站", Toast.LENGTH_SHORT).show();
+        // 保存状态
+        PreferenceUtils.saveLastPageType(this, "recycle_bin");
+        PreferenceUtils.saveLastFolderPath(this, recycleBinDirectory.getAbsolutePath());
+
+
     }
     // 退出回收站，返回之前的目录
+    // 1. 优化从回收站返回文件列表（优化版）
     private void exitRecycleBin() {
+        // 退出搜索模式
+        if (isInSearchMode) {
+            isInSearchMode = false;
+            etSearch.setText("");
+        }
+
+        // 校验根目录有效性
+        if (rootDirectory == null || !rootDirectory.exists() || !rootDirectory.isDirectory()) {
+            Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 切换到根目录
         isInRecycleBin = false;
-        // 恢复到根目录
         currentDirectory = rootDirectory;
         loadFileList();
         updateLevelHint();
-        Toast.makeText(this, "已返回文件列表", Toast.LENGTH_SHORT).show();
+
+        // 保存状态
+        PreferenceUtils.saveLastPageType(this, "main");
+        PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
+
+
     }
 
     private boolean isContentContainKeyword(File file, String keyword) {
@@ -725,24 +752,32 @@ public class MainActivity extends AppCompatActivity {
     // 修改状态恢复逻辑，支持恢复回收站状态
     private void restoreLastState() {
         String lastPageType = PreferenceUtils.getLastPageType(this);
+        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
 
-        // 恢复回收站状态
-        if ("recycle_bin".equals(lastPageType)) {
-            String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
-            if (lastFolderPath != null && recycleBinDirectory != null &&
-                    lastFolderPath.equals(recycleBinDirectory.getAbsolutePath())) {
-                openRecycleBin();
+        // 关键校验：如果最后路径不在公共存储根目录下，直接恢复到根目录
+        if (lastFolderPath != null) {
+            File lastFolder = new File(lastFolderPath);
+            // 检查路径是否以根目录为前缀（不在根目录体系中则强制跳转）
+            if (!lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
+                navigateToRootDirectory();
                 return;
             }
         }
 
-        // 原有的状态恢复逻辑...
-        // 1. 优先恢复图片查看状态
+        // 完全跳过回收站相关的状态恢复
+        if ("recycle_bin".equals(lastPageType)) {
+            navigateToRootDirectory();
+            return;
+        }
+
+        // 1. 优先恢复图片查看状态（仅当路径在根目录下）
         if ("image".equals(lastPageType)) {
             String lastImagePath = PreferenceUtils.getLastViewedImage(this);
             if (lastImagePath != null) {
                 File imageFile = new File(lastImagePath);
-                if (imageFile.exists() && isImageFile(imageFile)) {
+                // 额外校验图片文件是否在根目录体系中
+                if (imageFile.exists() && isImageFile(imageFile) &&
+                        imageFile.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                     currentDirectory = imageFile.getParentFile();
                     loadFileList();
                     openImageFile(imageFile);
@@ -751,12 +786,14 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 2. 恢复TXT编辑状态
+        // 2. 恢复TXT编辑状态（仅当路径在根目录下）
         if ("editor".equals(lastPageType)) {
             String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
             if (lastEditedFile != null) {
                 File file = new File(lastEditedFile);
-                if (file.exists() && file.getName().toLowerCase().endsWith(".txt")) {
+                // 额外校验TXT文件是否在根目录体系中
+                if (file.exists() && file.getName().toLowerCase().endsWith(".txt") &&
+                        file.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                     currentDirectory = file.getParentFile();
                     loadFileList();
                     openFileEditor(file);
@@ -765,16 +802,19 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 3. 恢复文件夹浏览状态
-        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
+        // 3. 恢复文件夹浏览状态（仅当路径在根目录下）
         if (lastFolderPath != null) {
             File lastFolder = new File(lastFolderPath);
             if (lastFolder.exists() && lastFolder.isDirectory() &&
                     lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                 currentDirectory = lastFolder;
                 loadFileList();
+                return;
             }
         }
+
+        // 所有情况不匹配时，默认打开根目录
+        navigateToRootDirectory();
     }
 
     // 新增：打开文件编辑器的封装方法
@@ -2445,7 +2485,7 @@ public class MainActivity extends AppCompatActivity {
 
             // 4. 全局查重生成唯一文件名
             String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDirectory,  // 全局根目录（外置大脑）
+                    rootDirectory,  // 全局根目录（流动信息）
                     parentDir,      // 目标父目录
                     coreTitle,      // 核心标题（无时间戳）
                     timestampSuffix // 时间戳后缀（含随机字符串）
@@ -2483,9 +2523,10 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+
     // 在MainActivity中添加批量升级方法（可在onCreate或按钮点击时调用）
     public void batchUpgradeOldTxtFiles() {
-        File rootDir = new File(Environment.getExternalStorageDirectory(), "外置大脑");
+        File rootDir = new File(Environment.getExternalStorageDirectory(), "流动信息");
         if (!rootDir.exists() || !rootDir.isDirectory()) {
             Log.d("MainActivity", "根目录不存在，无需升级");
             return;

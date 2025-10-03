@@ -46,7 +46,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private File targetFile;         // 目标文件（编辑时使用）
     private boolean isSaved = true;  // 是否已保存
     private static final int MAX_TITLE_LEN = 31;  // 标题最大长度
-    private static final String ROOT_FOLDER_NAME = "外置大脑";  // 默认根目录名称
+    private static final String ROOT_FOLDER_NAME = "流动信息";  // 默认根目录名称
 
     private static final Pattern RANDOM_STR_PATTERN = Pattern.compile("[A-Za-z0-9]{6}");  // 6位随机字符（字母+数字）
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");  // 17位时间戳（yyyyMMddHHmmssSSS）
@@ -286,7 +286,7 @@ public class FileEditorActivity extends AppCompatActivity {
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
-        // 初始化根目录（默认"外置大脑"）
+        // 初始化根目录（默认"流动信息"）
         if (rootFolderName == null) rootFolderName = ROOT_FOLDER_NAME;
         File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
 

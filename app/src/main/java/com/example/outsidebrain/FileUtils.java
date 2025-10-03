@@ -15,17 +15,17 @@ import java.util.List;
 public class FileUtils {
     private static final String TAG = "FileUtils";
     // 应用根目录名称
-    private static final String APP_ROOT_FOLDER = "外置大脑";
+    private static final String APP_ROOT_FOLDER = "流动信息";
 
     /**
-     * 获取"外置大脑"根目录
+     * 获取"流动信息"根目录
      */
     public static File getAppRootDirectory() {
         return new File(Environment.getExternalStorageDirectory(), APP_ROOT_FOLDER);
     }
 
     /**
-     * 递归收集"外置大脑"根目录下所有文件夹名称（包括所有子文件夹）
+     * 递归收集"流动信息"根目录下所有文件夹名称（包括所有子文件夹）
      * 用于全局查重，确保根目录及所有子目录中没有重名文件夹
      */
     private static List<String> getAllGlobalFolderNames() {
@@ -63,7 +63,7 @@ public class FileUtils {
     }
 
     /**
-     * 生成全局唯一的文件夹名称（检查"外置大脑"下所有文件夹，包括子文件夹）
+     * 生成全局唯一的文件夹名称（检查"流动信息"下所有文件夹，包括子文件夹）
      */
     public static String generateUniqueFolderName(File parentDir, String baseName) {
         // 处理空名称
@@ -95,9 +95,9 @@ public class FileUtils {
      * 新建全局唯一的文件夹
      */
     public static File createUniqueFolder(File parentDir, String baseName) {
-        // 校验父目录是否在"外置大脑"根目录下
+        // 校验父目录是否在"流动信息"根目录下
         if (!isUnderAppRoot(parentDir)) {
-            Log.e(TAG, "父目录不在外置大脑根目录下");
+            Log.e(TAG, "父目录不在流动信息根目录下");
             return null;
         }
 
@@ -122,9 +122,9 @@ public class FileUtils {
             return false;
         }
 
-        // 校验目标目录是否在"外置大脑"根目录下
+        // 校验目标目录是否在"流动信息"根目录下
         if (!isUnderAppRoot(targetParentDir)) {
-            Log.e(TAG, "目标目录不在外置大脑根目录下");
+            Log.e(TAG, "目标目录不在流动信息根目录下");
             return false;
         }
 
@@ -173,9 +173,9 @@ public class FileUtils {
             return false;
         }
 
-        // 校验源目录和目标目录是否都在"外置大脑"根目录下
+        // 校验源目录和目标目录是否都在"流动信息"根目录下
         if (!isUnderAppRoot(sourceFolder) || !isUnderAppRoot(targetParentDir)) {
-            Log.e(TAG, "源目录或目标目录不在外置大脑根目录下");
+            Log.e(TAG, "源目录或目标目录不在流动信息根目录下");
             return false;
         }
 
@@ -264,7 +264,7 @@ public class FileUtils {
     }
 
     /**
-     * 检查目录是否在"外置大脑"根目录下
+     * 检查目录是否在"流动信息"根目录下
      */
     private static boolean isUnderAppRoot(File dir) {
         if (dir == null) {
