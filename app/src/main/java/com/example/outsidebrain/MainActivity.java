@@ -1430,8 +1430,9 @@ public class MainActivity extends AppCompatActivity {
                 // TXT文件：使用原有时间戳更新逻辑
                 return moveFileWithTimestampUpdate(file, targetFile);
             } else if (file.isDirectory()) {
-                // 文件夹：使用原有移动逻辑
-                return moveFolderWithTxtUpdate(file, targetFile);
+                // 关键修改：文件夹移动到回收站时，直接移动到回收站根目录
+                // 不使用moveFolderWithTxtUpdate避免创建嵌套结构，改用专用的回收站移动方法
+                return moveFolderToRecycleBin(file, targetFile);
             } else {
                 // 其他文件（如ZIP）：直接移动
                 return file.renameTo(targetFile);
@@ -1441,6 +1442,58 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
+
+    // 新增：专门用于将文件夹移动到回收站的方法
+    private boolean moveFolderToRecycleBin(File sourceFolder, File targetFolder) throws IOException {
+        // 确保目标文件夹不存在（getNonConflictFile已保证）
+        if (!targetFolder.mkdirs()) {
+            Log.e("MoveToRecycle", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
+            return false;
+        }
+
+        // 处理内部文件
+        File[] files = sourceFolder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    // 递归处理子文件夹 - 使用目标文件夹作为父目录，保持原有相对结构
+                    File subTargetFolder = new File(targetFolder, file.getName());
+                    if (!moveFolderToRecycleBin(file, subTargetFolder)) {
+                        return false;
+                    }
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    // TXT文件：按规则更新文件名
+                    String originalName = file.getName();
+                    String newFileName = processTxtForCutOperation(originalName);
+
+                    File targetFile = new File(targetFolder, newFileName);
+                    if (!file.renameTo(targetFile)) {
+                        if (copyFileContent(file, targetFile)) {
+                            file.delete();
+                        } else {
+                            Log.e("MoveToRecycle", "处理TXT文件失败: " + originalName);
+                            return false;
+                        }
+                    }
+                } else {
+                    // 非TXT文件直接移动
+                    File targetFile = new File(targetFolder, file.getName());
+                    if (!file.renameTo(targetFile)) {
+                        if (copyFileContent(file, targetFile)) {
+                            file.delete();
+                        } else {
+                            Log.e("MoveToRecycle", "处理文件失败: " + file.getName());
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 删除原文件夹（确保为空）
+        return deleteEmptyDirectory(sourceFolder);
+    }
+
     // 复用并扩展查重逻辑，支持文件和文件夹，保留扩展名
     private String getUniqueFileName(File parentDir, String baseName) {
         if (parentDir == null || !parentDir.exists() || !parentDir.isDirectory()) {
