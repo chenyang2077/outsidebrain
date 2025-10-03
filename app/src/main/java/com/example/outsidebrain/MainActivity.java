@@ -26,17 +26,20 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.ListAdapter;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -1342,16 +1345,51 @@ public class MainActivity extends AppCompatActivity {
     }
     private void showFolderOptions(File folder) {
         hidePasteButton();
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
 
-        builder.setItems(options, (dialog, which) -> {
+        // 复用相同的Material风格对话框样式
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
+        builder.setTitle(folder.getName()); // 显示文件夹名作为标题
+
+        // 文件夹选项文本与对应图标（复用已有的图标资源）
+        String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
+        int[] icons = new int[]{
+                R.drawable.ic_rename,    // 重命名图标（复用）
+                R.drawable.ic_delete,    // 删除图标（复用）
+                R.drawable.ic_image_error,       // 新增ZIP压缩图标
+                R.drawable.ic_copy,      // 复制图标（复用）
+                R.drawable.ic_cut        // 剪切图标（复用）
+        };
+
+        // 复用相同的自定义适配器和布局文件
+        ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
+            @NonNull
+            @Override
+            public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(parent.getContext())
+                            .inflate(R.layout.file_option_item, parent, false);
+                }
+
+                // 设置文本和图标（与文件选项对话框使用相同的布局控件）
+                TextView textView = convertView.findViewById(R.id.option_text);
+                ImageView imageView = convertView.findViewById(R.id.option_icon);
+
+                textView.setText(options[position]);
+                imageView.setImageResource(icons[position]);
+
+
+
+                return convertView;
+            }
+        };
+
+        builder.setAdapter(adapter, (dialog, which) -> {
             switch (which) {
                 case 0:
                     renameFile(folder);
                     break;
                 case 1:
-                    confirmFileDeletion(folder); // 同样使用新的删除确认方法
+                    confirmFileDeletion(folder);
                     break;
                 case 2:
                     zipFolder(folder);
@@ -1364,6 +1402,7 @@ public class MainActivity extends AppCompatActivity {
                     break;
             }
         });
+
         builder.show();
     }
     // 3. 全新的删除确认方法（确保只定义一次）
@@ -1549,19 +1588,54 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
+
     private void showFileOptions(File file) {
         hidePasteButton();
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        String[] options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
 
-        builder.setItems(options, (dialog, which) -> {
+        // 使用Material风格的对话框构建器
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
+        builder.setTitle(file.getName()); // 显示文件名作为标题
+
+        // 选项文本与对应图标
+        String[] options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
+        int[] icons = new int[]{
+                R.drawable.ic_rename,    // 重命名图标
+                R.drawable.ic_delete,    // 删除图标
+                R.drawable.ic_share,     // 分享图标
+                R.drawable.ic_copy,      // 复制图标
+                R.drawable.ic_cut        // 剪切图标
+        };
+
+        // 创建自定义适配器显示带图标的选项
+        ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
+            @NonNull
+            @Override
+            public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(parent.getContext())
+                            .inflate(R.layout.file_option_item, parent, false);
+                }
+
+                // 设置文本和图标
+                TextView textView = convertView.findViewById(R.id.option_text);
+                ImageView imageView = convertView.findViewById(R.id.option_icon);
+
+                textView.setText(options[position]);
+                imageView.setImageResource(icons[position]);
+
+
+
+                return convertView;
+            }
+        };
+
+        builder.setAdapter(adapter, (dialog, which) -> {
             switch (which) {
                 case 0:
                     renameFile(file);
                     break;
                 case 1:
-                    // 调用唯一的删除确认方法
-                    confirmFileDeletion(file); // 使用全新的方法名，彻底避免冲突
+                    confirmFileDeletion(file);
                     break;
                 case 2:
                     shareFile(file);
@@ -1574,8 +1648,11 @@ public class MainActivity extends AppCompatActivity {
                     break;
             }
         });
+
         builder.show();
     }
+
+
 
 
 

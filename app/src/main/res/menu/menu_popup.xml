@@ -1,24 +1,38 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/action_home"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:title="返回主页"/>
+        android:title="返回主页"
+        android:background="@drawable/menu_item_selector"
+    android:textColor="@color/zipColor"
+    android:padding="12dp"/>
+
     <item
         android:id="@+id/action_new_folder"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:title="新建文件夹"/>
+        android:title="新建文件夹"
+        android:background="@drawable/menu_item_selector"
+        android:textColor="@color/zipColor"
+        android:padding="12dp"/>
+
     <item
         android:id="@+id/action_recycle_bin"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:title="回收站"/>
-    <!-- 新增清空回收站选项，默认隐藏 -->
+        android:title="回收站"
+        android:background="@drawable/menu_item_selector"
+        android:textColor="@color/zipColor"
+        android:padding="12dp"/>
+
     <item
         android:id="@+id/action_clear_recycle_bin"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:title="清空回收站"
-        android:visible="false"/>
+        android:visible="false"
+        android:background="@drawable/menu_item_selector"
+        android:textColor="@color/zipColor"
+        android:padding="12dp"/>
 </menu>
