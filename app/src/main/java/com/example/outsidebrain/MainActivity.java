@@ -2762,7 +2762,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_folder);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                holder.ivIcon.setImageResource(R.drawable.ic_folder2);
+                holder.ivIcon.setImageResource(R.drawable.ic_image_error);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
             } else if (file.getName().toLowerCase().endsWith(".txt")) {
