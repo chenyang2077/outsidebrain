@@ -81,6 +81,10 @@ import android.view.ContextThemeWrapper;
 
 public class MainActivity extends AppCompatActivity {
 
+    // 1. 定义全局变量存储剪切状态（确保在Activity中全局可访问）
+    private File copiedFile;          // 记录待粘贴的文件/文件夹
+    private boolean isCutOperation;   // 标记是否为剪切操作
+    private boolean isPasteAvailable = false; // 粘贴功能是否可用
     private static final int REQUEST_PERMISSION = 1001;
     private static final int REQUEST_EDIT_FILE = 101;
     private RecyclerView fileRecyclerView;
@@ -126,8 +130,7 @@ public class MainActivity extends AppCompatActivity {
     // 3. 旧格式正则（兼容历史文件：可能是纯时间戳，如_20250928153022）
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$"); // 14位秒级/17位毫秒级旧格式
 
-    private File copiedFile;
-    private boolean isCutOperation;
+
     private View pasteButton;
 
     // 图片文件扩展名
@@ -2592,7 +2595,7 @@ public class MainActivity extends AppCompatActivity {
      * 2. 有随机字符+2个以上时间戳 → 刷新最后一个时间戳
      */
     private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent) throws IOException {
-        // 生成带序列号的唯一文件夹名
+        // 生成带序列号的唯一文件夹名（顶层文件夹处理保持不变）
         String baseName = sourceFolder.getName();
         String uniqueFolderName = getUniqueFolderName(targetParent, baseName);
         File targetFolder = new File(targetParent, uniqueFolderName);
@@ -2608,19 +2611,18 @@ public class MainActivity extends AppCompatActivity {
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
-                    // 递归处理子文件夹
-                    if (!moveFolderWithTxtUpdate(file, new File(targetFolder, file.getName()))) {
+                    // 关键修复：子文件夹不再使用file.getName()，而是直接使用当前targetFolder
+                    // 避免在原有名称基础上重复创建
+                    if (!moveFolderWithTxtUpdate(file, targetFolder)) {
                         return false;
                     }
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // 剪切操作：按规则更新TXT文件名
+                    // TXT文件处理保持不变
                     String originalName = file.getName();
                     String newFileName = processTxtForCutOperation(originalName);
 
-                    // 执行重命名
                     File targetFile = new File(targetFolder, newFileName);
                     if (!file.renameTo(targetFile)) {
-                        // 重命名失败时尝试复制后删除原文件
                         if (copyFileContent(file, targetFile)) {
                             file.delete();
                         } else {
@@ -2629,7 +2631,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    // 非TXT文件直接移动
+                    // 非TXT文件处理保持不变
                     File targetFile = new File(targetFolder, file.getName());
                     if (!file.renameTo(targetFile)) {
                         if (copyFileContent(file, targetFile)) {
@@ -2643,9 +2645,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 删除原文件夹（确保为空）
+        // 删除原文件夹
         return deleteEmptyDirectory(sourceFolder);
     }
+
 
     private boolean deleteEmptyDirectory(File dir) {
         if (dir == null || !dir.isDirectory()) {
