@@ -1377,7 +1377,7 @@ public class MainActivity extends AppCompatActivity {
             isCreatingFolderInTransfer = false; // 重置状态
         });
 
-        // 修复取消按钮：使用匿名内部类替代lambda，解决低版本兼容问题
+        // 取消按钮（保持不变）
         builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
@@ -1386,7 +1386,17 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        builder.show();
+        // 显示对话框并获取AlertDialog实例
+        AlertDialog dialog = builder.show();
+
+        // 关键：强制弹出软键盘
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        // 延迟100ms确保对话框已完全显示
+        input.postDelayed(() -> {
+            // 强制获取焦点并弹出键盘
+            input.requestFocus();
+            imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+        }, 100);
     }
 
     private void createFolder(String name) {
