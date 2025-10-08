@@ -5,5 +5,5 @@
     android:padding="16dp"
     android:layout_margin="1dp"
     android:textAppearance="?android:attr/textAppearanceLarge"
-    android:background="@drawable/btn_round_background"
+    android:background="@drawable/editor_border2"
     android:id="@android:id/text1"/>
