@@ -321,12 +321,19 @@ public class MainActivity extends AppCompatActivity {
 
     // 修改路径提示，区分回收站和正常目录
     private void updateLevelHint() {
+        // 1. 优先判断回收站
         if (isInRecycleBin) {
             etSearch.setHint("回收站");
             return;
         }
 
-        // 原有的路径提示逻辑...
+        // 2. 新增：判断是否在中转站（及其子目录）
+        if (isInTransferStation) {  // 假设已定义isInTransferStation变量
+            etSearch.setHint("中转站");
+            return;
+        }
+
+        // 3. 原有路径提示逻辑（保持不变）
         if (currentDirectory == null) return;
 
         List<Integer> levelPath = getLevelPath(currentDirectory);
@@ -339,6 +346,7 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
+
 
     private List<Integer> getLevelPath(File file) {
         List<Integer> levelPath = new ArrayList<>();
@@ -404,46 +412,39 @@ public class MainActivity extends AppCompatActivity {
 
     private void showPopupMenu(View view) {
         try {
-            // 修正：使用兼容的方式实例化PopupMenu
-            PopupMenu popupMenu;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                // 高版本直接使用主题包装器
-                ContextThemeWrapper themeWrapper = new ContextThemeWrapper(this, R.style.CustomPopupMenu);
-                popupMenu = new PopupMenu(themeWrapper, view, Gravity.TOP | Gravity.START);
-            } else {
-                // 低版本兼容处理
-                popupMenu = new PopupMenu(this, view, Gravity.TOP | Gravity.START);
-                // 低版本通过反射应用主题（可选）
+            // 关键：使用统一的主题包装器，确保所有版本生效
+            ContextThemeWrapper themeWrapper = new ContextThemeWrapper(this, R.style.CustomPopupMenu);
+            PopupMenu popupMenu = new PopupMenu(themeWrapper, view);
+
+            // 修复：设置弹出位置（避免受Gravity参数影响样式）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                popupMenu.setGravity(Gravity.TOP | Gravity.START);
             }
 
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-            // 强制获取当前状态（避免缓存问题）
+            // 状态判断逻辑保持不变
             boolean currentInRecycle = isInRecycleBin;
             boolean currentInTransfer = isInTransferStation;
 
-            // （以下保持原有逻辑不变）
             if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-            }else if (isInTransferStation) {
-                // 中转站状态：隐藏自身，显示回收站
+            } else if (isInTransferStation) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
             } else {
-                // 主页状态：确保显示中转站选项（核心修复点）
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                // 确保主页状态下显示中转站选项
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
                 if (currentDirectory.equals(rootDirectory)) {
                     popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
@@ -451,7 +452,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             popupMenu.setOnMenuItemClickListener(item -> {
-                // （点击事件逻辑保持不变）
+                // 点击事件逻辑保持不变
                 int itemId = item.getItemId();
                 if (itemId == R.id.action_home) {
                     if (isInRecycleBin) {
@@ -469,9 +470,7 @@ public class MainActivity extends AppCompatActivity {
                 } else if (itemId == R.id.action_clear_recycle_bin) {
                     confirmClearRecycleBin();
                     return true;
-                }
-                // 新增中转站点击处理
-                if (itemId == R.id.action_transfer_station) {
+                } else if (itemId == R.id.action_transfer_station) {
                     if (checkTransferPermission()) {
                         openTransferStation();
                     }
@@ -480,12 +479,17 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             });
 
+            // 强制刷新菜单样式（解决部分机型缓存问题）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                popupMenu.setOnDismissListener(menu -> {});
+            }
             popupMenu.show();
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
+
     // 8. 中转站权限检查
     // 2. 增强权限检查方法（确保中转站写入权限）
     // 2. 增强权限检查方法（确保中转站写入权限）

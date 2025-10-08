@@ -18,12 +18,15 @@
 
 
 
-    <!-- 自定义PopupMenu样式 -->
     <style name="CustomPopupMenu" parent="Widget.AppCompat.PopupMenu">
-        <item name="android:popupBackground">@color/zipColor</item>
-        <item name="android:itemBackground">@drawable/menu_item_bg</item>
-        <item name="android:itemTextAppearance">@style/MenuTextStyle</item>
-
+        <!-- 弹出菜单背景色（深灰色） -->
+        <item name="android:popupBackground">#333333</item>
+        <!-- 文字颜色 -->
+        <item name="android:textColor">@color/zipColor</item>
+        <!-- 文字大小 -->
+        <item name="android:textSize">14sp</item>
+        <!-- 菜单项高度 -->
+        <item name="android:listPreferredItemHeightSmall">48dp</item>
     </style>
 
     <style name="MenuTextStyle" parent="TextAppearance.AppCompat.Menu">
