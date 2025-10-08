@@ -2988,7 +2988,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 路径修正：仅处理第一行，不干扰中间内容
-    // 提取TXT文件首行的路径信息
+    // 提取TXT文件首行的路径信息（保持不变）
     private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
 
@@ -3008,18 +3008,46 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 修正TXT文件中的路径标识
+    // 修正TXT文件中的路径标识（整合逻辑，减少新增方法）
     private boolean correctFilepathInTxt(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return false;
 
-        // 关键修改：判断文件是否位于根目录、中转站一级目录（这两种情况都不需要路径标识）
         File parentDir = file.getParentFile();
         boolean isInRootDir = parentDir.equals(rootDirectory);
-        boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory); // 假设中转站目录变量为transferStationDirectory
-        // 无需路径标识的目录：根目录 或 中转站一级目录
+        boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory);
         boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot;
 
-        List<String> allLines = new ArrayList<>();
+        // 判断是否在中转站的子目录中（不包含一级目录）
+        boolean isInTransferStationSubDir = false;
+        String actualPath = "";
 
+        try {
+            // 获取标准化路径（处理符号链接等特殊情况）
+            String parentPath = parentDir.getCanonicalPath() + File.separator;
+            String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
+
+            // 判定是否为中转站子目录
+            isInTransferStationSubDir = parentPath.startsWith(transferPath) && !isInTransferStationRoot;
+
+            // 计算实际路径（核心逻辑整合）
+            if (isInTransferStationSubDir) {
+                // 中转站子目录：仅显示中转站下级路径
+                actualPath = parentPath.substring(transferPath.length())
+                        .replace(File.separator, "/")
+                        .replaceAll("/$", ""); // 移除末尾斜杠
+            } else if (!isInNoPathRequiredDir) {
+                // 其他需要显示路径的目录：从根目录计算
+                String rootPath = rootDirectory.getCanonicalPath() + File.separator;
+                actualPath = parentPath.substring(rootPath.length())
+                        .replace(File.separator, "/")
+                        .replaceAll("/$", ""); // 移除末尾斜杠
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            actualPath = parentDir.getName(); // 异常时使用目录名作为 fallback
+        }
+
+        List<String> allLines = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
@@ -3032,13 +3060,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         StringBuilder newContent = new StringBuilder();
-        String actualPath = getRelativeDirPath(parentDir, ROOT_FOLDER_NAME);
         boolean pathProcessed = false;
 
         for (int i = 0; i < allLines.size(); i++) {
             String line = allLines.get(i);
             if (i == 0 && !isInNoPathRequiredDir) {
-                // 非根目录且非中转站一级目录：需要添加/更新路径标识
+                // 非根目录且非中转站一级目录：添加/更新路径标识
                 if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
                     newContent.append("【").append(actualPath).append("】\n");
                 } else {
@@ -3056,7 +3083,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 空文件处理：非根目录且非中转站一级目录才添加路径标识
+        // 空文件处理
         if (!isInNoPathRequiredDir && allLines.isEmpty()) {
             newContent.append("【").append(actualPath).append("】\n");
         }
