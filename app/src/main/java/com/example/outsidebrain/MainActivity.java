@@ -1883,11 +1883,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 【核心】用户手动重命名文件
+    // 【核心】用户手动重命名文件
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
 
         final EditText input = new EditText(this);
+        // 设置输入框获取焦点
+        input.requestFocus();
         final String originalFileName = file.getName();
         String displayName = originalFileName;
         final String fileExtension;
@@ -1920,6 +1923,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         input.setText(displayName);
+        // 选中输入框内容，方便用户直接修改
+        input.setSelection(0, displayName.length());
         builder.setView(input);
 
         builder.setPositiveButton("确认", (dialog, which) -> {
@@ -2038,9 +2043,21 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        builder.setNegativeButton("取消", null);
-        builder.show();
+        builder.setNegativeButton("取消", (dialog, which) -> {
+            // 取消时隐藏键盘
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        });
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        // 显示对话框后自动弹出键盘
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        // 延迟一小段时间确保对话框已显示
+        input.postDelayed(() -> imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT), 100);
     }
+
     /**
      * 提取TXT文件的核心名称
      * 规则：以下横线+随机字符为界，之前的部分是核心名称
