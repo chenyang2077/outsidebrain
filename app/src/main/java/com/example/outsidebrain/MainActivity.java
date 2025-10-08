@@ -1270,17 +1270,37 @@ public class MainActivity extends AppCompatActivity {
     // 修改返回键逻辑，在回收站中按返回键退出回收站
     @Override
     public void onBackPressed() {
-        // 优先处理中转站的返回逻辑
+        // 处理中转站的返回逻辑（修改部分）
         if (isInTransferStation) {
-            handleTransferStationBack();
-            return;
-        }
-        if (isInRecycleBin) {
-            exitRecycleBin();
+            // 检查是否在中转站子文件夹
+            if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
+                // 在子文件夹，返回上一级
+                currentDirectory = currentDirectory.getParentFile();
+                loadFileList();
+                updateLevelHint();
+            } else {
+                // 在中转站根目录，直接返回主页
+                exitTransferStationToHome();
+            }
             return;
         }
 
-        // 原有的返回键逻辑...
+        // 处理回收站的返回逻辑（保持之前的修改）
+        if (isInRecycleBin) {
+            // 检查是否在回收站子文件夹
+            if (currentDirectory != null && !currentDirectory.equals(recycleBinDirectory)) {
+                // 在子文件夹，返回上一级
+                currentDirectory = currentDirectory.getParentFile();
+                loadFileList();
+                updateLevelHint();
+            } else {
+                // 在回收站根目录，直接返回主页
+                exitRecycleBinToHome();
+            }
+            return;
+        }
+
+        // 原有的返回键逻辑（保持不变）
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
@@ -1303,6 +1323,34 @@ public class MainActivity extends AppCompatActivity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    // 新增：从中转站根目录直接返回主页
+    private void exitTransferStationToHome() {
+        isInTransferStation = false;
+        // 直接切换到主页根目录
+        currentDirectory = rootDirectory; // 主页根目录
+        loadFileList();
+        updateLevelHint();
+
+        // 保存状态为首页
+        PreferenceUtils.saveLastPageType(this, "main");
+        PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
+
+        Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
+    }
+
+    // 从回收站根目录直接返回主页（保持不变）
+    private void exitRecycleBinToHome() {
+        isInRecycleBin = false;
+        currentDirectory = rootDirectory; // 主页根目录
+        loadFileList();
+        updateLevelHint();
+
+        PreferenceUtils.saveLastPageType(this, "main");
+        PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
+
+        Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
 
     // 2. 新增中转站返回处理方法
