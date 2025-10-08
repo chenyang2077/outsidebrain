@@ -5,6 +5,9 @@ import android.content.DialogInterface;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import java.util.Random;
 import android.content.Intent;
@@ -1561,7 +1564,19 @@ public class MainActivity extends AppCompatActivity {
 
         // 复用相同的Material风格对话框样式
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
-        builder.setTitle(folder.getName()); // 显示文件夹名作为标题
+
+// 显示文件夹名作为标题，并设置为白色
+        String folderName = folder.getName();
+        SpannableString whiteTitle = new SpannableString(folderName);
+// 设置文字颜色为白色
+        whiteTitle.setSpan(
+                new ForegroundColorSpan(ContextCompat.getColor(this, android.R.color.white)),
+                0,
+                folderName.length(),
+                Spannable.SPAN_INCLUSIVE_INCLUSIVE
+        );
+        builder.setTitle(whiteTitle); // 应用白色标题
+
 
         // 定义完整的选项和图标数组
         String[] allOptions = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
@@ -1832,8 +1847,20 @@ public class MainActivity extends AppCompatActivity {
         hidePasteButton();
 
         // 使用Material风格的对话框构建器
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
-        builder.setTitle(file.getName()); // 显示文件名作为标题
+
+// 将标题文字设置为白色
+        String fileName = file.getName();
+        SpannableString whiteTitle = new SpannableString(fileName);
+// 设置文字颜色为白色
+        whiteTitle.setSpan(
+                new ForegroundColorSpan(ContextCompat.getColor(this, android.R.color.white)),
+                0,
+                fileName.length(),
+                Spannable.SPAN_INCLUSIVE_INCLUSIVE
+        );
+        builder.setTitle(whiteTitle); // 显示文件名作为标题（白色）
 
         // 判断当前是否在主页或回收站
         boolean isInHome = currentDirectory.equals(rootDirectory);
