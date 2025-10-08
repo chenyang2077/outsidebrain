@@ -34,7 +34,7 @@ import java.util.zip.ZipOutputStream;
 /**
  * V1版本 - 文件编辑活动
  * 功能：创建新文件、编辑已有文件、自动保存、文件压缩、文件分享
- * 特点：统一使用UniqueFileNameHandler处理文件名查重和时间戳
+ * 特点：统一使用UniqueFileNameHandler处理文件名查重和时间戳，存储在应用私有目录
  */
 public class FileEditorActivity extends AppCompatActivity {
 
@@ -46,21 +46,22 @@ public class FileEditorActivity extends AppCompatActivity {
     private File targetFile;         // 目标文件（编辑时使用）
     private boolean isSaved = true;  // 是否已保存
     private static final int MAX_TITLE_LEN = 31;  // 标题最大长度
-    private static final String ROOT_FOLDER_NAME = "流动信息";  // 默认根目录名称
+    private static final String ROOT_FOLDER_NAME = "流动信息";  // 根目录名称（私有存储中）
 
-    private static final Pattern RANDOM_STR_PATTERN = Pattern.compile("[A-Za-z0-9]{6}");  // 6位随机字符（字母+数字）
-    private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");  // 17位时间戳（yyyyMMddHHmmssSSS）
-    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");  // 基础时间戳格式
-    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");  // 增量时间戳格式
-    private static final Pattern FULL_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})*$");  // 合并格式（无命名分组）
+    // 正则表达式模式（保持不变）
+    private static final Pattern RANDOM_STR_PATTERN = Pattern.compile("[A-Za-z0-9]{6}");
+    private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");
+    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
+    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
+    private static final Pattern FULL_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})*$");
 
-    // 时间戳格式定义
+    // 时间戳格式定义（保持不变）
     private static final SimpleDateFormat FILE_NAME_TIMESTAMP = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
 
-    // 正则表达式
-    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");  // 内容末尾时间戳
-    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");  // 内容首行路径标识
+    // 正则表达式（保持不变）
+    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
+    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
 
 
     @Override
@@ -124,6 +125,7 @@ public class FileEditorActivity extends AppCompatActivity {
         setupTextChangeListeners();
     }
 
+    // 以下方法保持不变：parseTimestampStructure、removeAllTimestampFormats、loadExistingFileData、setupTextChangeListeners
     private String[] parseTimestampStructure(String fileNameWithoutExt) {
         if (TextUtils.isEmpty(fileNameWithoutExt)) return new String[0];
 
@@ -169,9 +171,6 @@ public class FileEditorActivity extends AppCompatActivity {
         return result;
     }
 
-    /**
-     * 移除文件名中所有时间戳格式（基础+增量）
-     */
     private String removeAllTimestampFormats(String input) {
         if (TextUtils.isEmpty(input)) return "";
         String result = input;
@@ -189,9 +188,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
         return result.trim();
     }
-    /**
-     * 加载已有文件数据（显示时隐藏时间戳）
-     */
+
     private void loadExistingFileData(boolean needHandleTimestamp) {
         if (targetFile == null || !targetFile.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -237,9 +234,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 设置文本变化监听（编辑时标记未保存状态）
-     */
     private void setupTextChangeListeners() {
         etFileName.addTextChangedListener(new android.text.TextWatcher() {
             @Override
@@ -270,12 +264,7 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     /**
-     * 自动保存文件（新建/编辑通用逻辑）
-     * 核心：统一调用UniqueFileNameHandler处理文件名查重和格式
-     */
-    /**
-     * 自动保存文件（新建/编辑通用逻辑）
-     * 核心：统一调用UniqueFileNameHandler处理文件名查重和格式，仅在核心标题变化时查重
+     * 自动保存文件（核心修改：使用应用私有存储）
      */
     private void autoSave() {
         if (isSaved) return;
@@ -286,9 +275,10 @@ public class FileEditorActivity extends AppCompatActivity {
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
-        // 初始化根目录（默认"流动信息"）
+        // 初始化根目录（修改为应用私有存储中的"流动信息"）
         if (rootFolderName == null) rootFolderName = ROOT_FOLDER_NAME;
-        File rootDir = new File(Environment.getExternalStorageDirectory(), rootFolderName);
+        // 关键修改：使用应用私有存储目录(getFilesDir())而非外部存储
+        File rootDir = new File(getFilesDir(), rootFolderName);
 
         // 确保根目录存在
         if (!rootDir.exists() && !rootDir.mkdirs()) {
@@ -297,7 +287,7 @@ public class FileEditorActivity extends AppCompatActivity {
             return;
         }
 
-        // 新建文件逻辑（规则1：添加随机字符+1个时间戳）
+        // 新建文件逻辑
         if (isPreEdit) {
             // 空内容+空标题：放弃创建
             if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
@@ -490,17 +480,14 @@ public class FileEditorActivity extends AppCompatActivity {
         finish();
     }
 
-    /**
-     * 清理文件名中的特殊字符
-     */
+    // 以下方法保持不变：cleanFileName、parseFirstLinePath、processContentForSaving、readFileContent
+    // getContentSubtitle、writeFileContent、addContentTimestamp、handleZipAndShareIntent
+    // zipFolder、addFolderToZip、shareFile、getMimeType、focusAndShowSoftInput、hideSoftInput
     private String cleanFileName(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "";
         return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
-    /**
-     * 解析第一行的【】路径信息
-     */
     private File parseFirstLinePath(String content, File rootDir, boolean isRootDirectory) {
         if (isRootDirectory || TextUtils.isEmpty(content)) {
             return rootDir;
@@ -523,10 +510,6 @@ public class FileEditorActivity extends AppCompatActivity {
         return rootDir;
     }
 
-    /**
-     * 处理保存的内容，确保路径标识正确
-     * 关键修改：如果第一行没有路径标识，在前面添加而不删除原有内容
-     */
     private String processContentForSaving(String content, File targetDir, String rootFolderName, boolean isRootDirectory) {
         if (isRootDirectory) {
             return addContentTimestamp(content);
@@ -543,14 +526,11 @@ public class FileEditorActivity extends AppCompatActivity {
             hasPathIdentifier = FIRST_LINE_PATH_PATTERN.matcher(lines[0]).matches();
         }
 
-        // 处理内容：
-        // 1. 已有路径标识：替换第一行，保留其余内容
-        // 2. 无路径标识：在内容前添加路径标识，然后换行，保留所有原有内容
+        // 处理内容
         String restContent;
         if (hasPathIdentifier) {
             restContent = lines.length > 1 ? lines[1] : "";
         } else {
-            // 没有路径标识时，将所有内容作为后续内容
             restContent = content;
         }
 
@@ -558,9 +538,6 @@ public class FileEditorActivity extends AppCompatActivity {
         return pathLine + "\n" + contentWithTimestamp;
     }
 
-    /**
-     * 读取文件内容
-     */
     private String readFileContent(File file) throws IOException {
         StringBuilder content = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
@@ -572,9 +549,6 @@ public class FileEditorActivity extends AppCompatActivity {
         return content.toString();
     }
 
-    /**
-     * 从内容提取副标题（新建文件无标题时使用）
-     */
     private String getContentSubtitle(String content) {
         if (TextUtils.isEmpty(content.trim())) return "无内容文件";
         String trimmedContent = content.trim();
@@ -583,9 +557,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
     }
 
-    /**
-     * 写入文件内容（UTF-8编码）
-     */
     private void writeFileContent(File file, String content) {
         try (FileOutputStream fos = new FileOutputStream(file)) {
             fos.write(content.getBytes(StandardCharsets.UTF_8));
@@ -595,9 +566,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 为内容添加末尾时间戳
-     */
     private String addContentTimestamp(String originalContent) {
         String[] allLines = originalContent.split("\n", -1);
         ArrayList<String> lineList = new ArrayList<>();
@@ -636,9 +604,6 @@ public class FileEditorActivity extends AppCompatActivity {
         return TextUtils.join("\n", lineList);
     }
 
-    /**
-     * 处理压缩和分享意图
-     */
     private void handleZipAndShareIntent() {
         Intent intent = getIntent();
         if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
@@ -652,9 +617,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 压缩文件夹
-     */
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
@@ -685,9 +647,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 递归添加文件到压缩包
-     */
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
         File[] files = folder.listFiles();
         if (files == null) return;
@@ -712,9 +671,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 分享文件
-     */
     private void shareFile(File file) {
         if (!file.exists()) {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
@@ -746,9 +702,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 获取文件MIME类型
-     */
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
 
@@ -763,9 +716,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 聚焦并显示软键盘
-     */
     private void focusAndShowSoftInput(EditText editText) {
         editText.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
@@ -774,9 +724,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 隐藏软键盘
-     */
     private void hideSoftInput() {
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) {

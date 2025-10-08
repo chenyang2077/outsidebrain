@@ -2988,6 +2988,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 路径修正：仅处理第一行，不干扰中间内容
+    // 提取TXT文件首行的路径信息
     private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
 
@@ -3006,10 +3007,17 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
+    // 修正TXT文件中的路径标识
     private boolean correctFilepathInTxt(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return false;
 
-        boolean isInRootDir = file.getParentFile().equals(rootDirectory);
+        // 关键修改：判断文件是否位于根目录、中转站一级目录（这两种情况都不需要路径标识）
+        File parentDir = file.getParentFile();
+        boolean isInRootDir = parentDir.equals(rootDirectory);
+        boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory); // 假设中转站目录变量为transferStationDirectory
+        // 无需路径标识的目录：根目录 或 中转站一级目录
+        boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot;
+
         List<String> allLines = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(
@@ -3024,32 +3032,37 @@ public class MainActivity extends AppCompatActivity {
         }
 
         StringBuilder newContent = new StringBuilder();
-        String actualPath = getRelativeDirPath(file.getParentFile(), ROOT_FOLDER_NAME);
+        String actualPath = getRelativeDirPath(parentDir, ROOT_FOLDER_NAME);
         boolean pathProcessed = false;
 
         for (int i = 0; i < allLines.size(); i++) {
             String line = allLines.get(i);
-            if (i == 0 && !isInRootDir) {
+            if (i == 0 && !isInNoPathRequiredDir) {
+                // 非根目录且非中转站一级目录：需要添加/更新路径标识
                 if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
                     newContent.append("【").append(actualPath).append("】\n");
                 } else {
                     newContent.append("【").append(actualPath).append("】\n").append(line).append("\n");
                 }
                 pathProcessed = true;
-            } else if (i == 0 && isInRootDir) {
+            } else if (i == 0 && isInNoPathRequiredDir) {
+                // 根目录或中转站一级目录：移除路径标识
                 String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
                 newContent.append(processedLine).append("\n");
                 pathProcessed = true;
             } else {
+                // 其他行保持不变
                 newContent.append(line).append("\n");
             }
         }
 
-        if (!isInRootDir && allLines.isEmpty()) {
+        // 空文件处理：非根目录且非中转站一级目录才添加路径标识
+        if (!isInNoPathRequiredDir && allLines.isEmpty()) {
             newContent.append("【").append(actualPath).append("】\n");
         }
 
         try (FileOutputStream fos = new FileOutputStream(file)) {
+            // 去除末尾多余的换行符
             String finalContent = newContent.toString().endsWith("\n")
                     ? newContent.toString().substring(0, newContent.length() - 1)
                     : newContent.toString();
