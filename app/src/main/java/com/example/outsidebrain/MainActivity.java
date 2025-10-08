@@ -2988,7 +2988,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 路径修正：仅处理第一行，不干扰中间内容
-    // 提取TXT文件首行的路径信息（保持不变）
+    // 提取TXT文件首行的路径信息（保持不变，无需修改）
     private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
 
@@ -3013,40 +3013,65 @@ public class MainActivity extends AppCompatActivity {
         if (!file.getName().toLowerCase().endsWith(".txt")) return false;
 
         File parentDir = file.getParentFile();
+        // 增加父目录空值判断，避免闪退
+        if (parentDir == null) {
+            return false;
+        }
+
+        // 原有根目录和中转站判断
         boolean isInRootDir = parentDir.equals(rootDirectory);
         boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory);
-        boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot;
 
-        // 判断是否在中转站的子目录中（不包含一级目录）
+        // 新增：回收站相关判断
+        boolean isInRecycleBinRoot = parentDir.equals(recycleBinDirectory);
+
+        // 无需路径标识的目录：根目录、中转站一级目录、回收站一级目录
+        boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot || isInRecycleBinRoot;
+
+        // 判断是否在中转站和回收站的子目录中（不包含一级目录）
         boolean isInTransferStationSubDir = false;
+        boolean isInRecycleBinSubDir = false; // 新增
         String actualPath = "";
 
         try {
-            // 获取标准化路径（处理符号链接等特殊情况）
+            // 获取标准化路径
             String parentPath = parentDir.getCanonicalPath() + File.separator;
-            String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
 
-            // 判定是否为中转站子目录
+            // 中转站路径判断（原有逻辑）
+            String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
             isInTransferStationSubDir = parentPath.startsWith(transferPath) && !isInTransferStationRoot;
 
-            // 计算实际路径（核心逻辑整合）
+            // 新增：回收站路径判断
+            String recyclePath = recycleBinDirectory.getCanonicalPath() + File.separator;
+            isInRecycleBinSubDir = parentPath.startsWith(recyclePath) && !isInRecycleBinRoot;
+
+            // 计算实际路径（核心逻辑）
             if (isInTransferStationSubDir) {
                 // 中转站子目录：仅显示中转站下级路径
                 actualPath = parentPath.substring(transferPath.length())
                         .replace(File.separator, "/")
-                        .replaceAll("/$", ""); // 移除末尾斜杠
-            } else if (!isInNoPathRequiredDir) {
-                // 其他需要显示路径的目录：从根目录计算
+                        .replaceAll("/$", "");
+            }
+            // 新增：回收站子目录处理
+            else if (isInRecycleBinSubDir) {
+                // 回收站子目录：仅显示回收站下级路径
+                actualPath = parentPath.substring(recyclePath.length())
+                        .replace(File.separator, "/")
+                        .replaceAll("/$", "");
+            }
+            // 其他目录：从根目录计算
+            else if (!isInNoPathRequiredDir) {
                 String rootPath = rootDirectory.getCanonicalPath() + File.separator;
                 actualPath = parentPath.substring(rootPath.length())
                         .replace(File.separator, "/")
-                        .replaceAll("/$", ""); // 移除末尾斜杠
+                        .replaceAll("/$", "");
             }
         } catch (IOException e) {
             e.printStackTrace();
             actualPath = parentDir.getName(); // 异常时使用目录名作为 fallback
         }
 
+        // 以下文件内容处理逻辑保持不变
         List<String> allLines = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
@@ -3065,7 +3090,7 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < allLines.size(); i++) {
             String line = allLines.get(i);
             if (i == 0 && !isInNoPathRequiredDir) {
-                // 非根目录且非中转站一级目录：添加/更新路径标识
+                // 非根目录：添加/更新路径标识
                 if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
                     newContent.append("【").append(actualPath).append("】\n");
                 } else {
@@ -3073,12 +3098,11 @@ public class MainActivity extends AppCompatActivity {
                 }
                 pathProcessed = true;
             } else if (i == 0 && isInNoPathRequiredDir) {
-                // 根目录或中转站一级目录：移除路径标识
+                // 根目录/中转站一级/回收站一级：移除路径标识
                 String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
                 newContent.append(processedLine).append("\n");
                 pathProcessed = true;
             } else {
-                // 其他行保持不变
                 newContent.append(line).append("\n");
             }
         }
@@ -3089,7 +3113,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try (FileOutputStream fos = new FileOutputStream(file)) {
-            // 去除末尾多余的换行符
             String finalContent = newContent.toString().endsWith("\n")
                     ? newContent.toString().substring(0, newContent.length() - 1)
                     : newContent.toString();
@@ -3100,6 +3123,22 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
+
+    // 辅助方法：判断文件是否在指定目录或其子目录下（通用方法）
+    private boolean isFileInDirectory(File file, File directory) {
+        if (file == null || directory == null) {
+            return false;
+        }
+        try {
+            String filePath = file.getCanonicalPath() + File.separator;
+            String dirPath = directory.getCanonicalPath() + File.separator;
+            return filePath.startsWith(dirPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
 
     private void batchCorrectTxtFilepaths(File folder) {
         if (!folder.isDirectory()) return;
