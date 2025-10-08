@@ -1373,7 +1373,8 @@ public class MainActivity extends AppCompatActivity {
                 // 设置文本和图标（与文件选项对话框使用相同的布局控件）
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
-
+// 设置文字为白色
+                textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
                 textView.setText(options[position]);
                 imageView.setImageResource(icons[position]);
 
@@ -1619,6 +1620,8 @@ public class MainActivity extends AppCompatActivity {
                 // 设置文本和图标
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
+                // 设置文字为白色
+                textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
 
                 textView.setText(options[position]);
                 imageView.setImageResource(icons[position]);
