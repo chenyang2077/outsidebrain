@@ -4,7 +4,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:title="返回主页"
-        android:background="@drawable/menu_item_selector"
+        android:background="@drawable/editor_border2"
     android:textColor="@color/zipColor"
     android:padding="12dp"/>
 
@@ -13,7 +13,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:title="新建文件夹"
-        android:background="@drawable/menu_item_selector"
+        android:background="@drawable/editor_border2"
         android:textColor="@color/zipColor"
         android:padding="12dp"/>
 
@@ -22,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:title="回收站"
-        android:background="@drawable/menu_item_selector"
+        android:background="@drawable/editor_border2"
         android:textColor="@color/zipColor"
         android:padding="12dp"/>
 
@@ -32,7 +32,17 @@
         android:layout_height="wrap_content"
         android:title="清空回收站"
         android:visible="false"
-        android:background="@drawable/menu_item_selector"
+        android:background="@drawable/editor_border2"
+
+        android:textColor="@color/zipColor"
+        android:padding="12dp"/>
+
+    <item
+        android:id="@+id/action_transfer_station"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:title="中转站"
+        android:background="@drawable/editor_border2"
         android:textColor="@color/zipColor"
         android:padding="12dp"/>
 </menu>

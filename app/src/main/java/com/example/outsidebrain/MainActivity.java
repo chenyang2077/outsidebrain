@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.DialogInterface;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import java.util.Random;
 import android.content.Intent;
@@ -91,6 +92,10 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
     private static final String ROOT_FOLDER_NAME = "流动信息";
+    // 1. 新增中转站目录变量
+    private File transferStationDirectory;
+    private static final int REQUEST_TRANSFER_PERMISSION = 101;
+    private boolean isInTransferStation = false;
 
     // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
     // 新正则（匹配“_随机字符串_时间戳”，其中随机字符串是6位字母数字）
@@ -152,6 +157,10 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化回收站
         initRecycleBin();
+        transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
+        if (!transferStationDirectory.exists()) {
+            transferStationDirectory.mkdirs();
+        }
 
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
@@ -200,31 +209,38 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 在MainActivity类中添加返回根目录的方法
+    // 1. 增强navigateToRootDirectory方法的状态同步
     private void navigateToRootDirectory() {
-        // 检查根目录是否存在
         if (rootDirectory != null && rootDirectory.exists() && rootDirectory.isDirectory()) {
-            // 退出搜索模式（如果处于搜索中）
             if (isInSearchMode) {
                 isInSearchMode = false;
                 etSearch.setText("");
             }
 
-            // 切换到根目录
-            currentDirectory = rootDirectory;
-            loadFileList(); // 刷新文件列表
-            updateLevelHint(); // 更新路径提示
+            // 强制重置所有目录状态标识（核心）
+            isInRecycleBin = false;
+            isInTransferStation = false;
+            // 保留粘贴相关状态
+            // copiedFile和isCutOperation不重置
 
-            // 保存状态
+            currentDirectory = rootDirectory;
+            loadFileList();
+            updateLevelHint();
+
+            // 保存状态时明确标记为主页
             PreferenceUtils.saveLastPageType(this, "main");
             PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-// 关键修改：根目录显示后，延迟1秒在后台执行批量核验
+
+            // 触发菜单状态刷新（新增）
+            invalidateOptionsMenu();
+
+            // 原有延迟核验逻辑
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 new Thread(() -> {
                     batchCorrectTxtFilepaths(rootDirectory);
-                    // 核验完成后刷新列表（可选）
                     runOnUiThread(() -> loadFileList());
                 }).start();
-            }, 1000); // 1秒延迟，确保UI已稳定显示
+            }, 1000);
 
         } else {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
@@ -401,17 +417,35 @@ public class MainActivity extends AppCompatActivity {
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
+            // 强制获取当前状态（避免缓存问题）
+            boolean currentInRecycle = isInRecycleBin;
+            boolean currentInTransfer = isInTransferStation;
+
             // （以下保持原有逻辑不变）
             if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
+            }else if (isInTransferStation) {
+                // 中转站状态：隐藏自身，显示回收站
+                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
+                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
+                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
+                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
             } else {
+                // 主页状态：确保显示中转站选项（核心修复点）
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
+                // 确保主页状态下显示中转站选项
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
+                if (currentDirectory.equals(rootDirectory)) {
+                    popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
+                }
             }
 
             popupMenu.setOnMenuItemClickListener(item -> {
@@ -434,6 +468,13 @@ public class MainActivity extends AppCompatActivity {
                     confirmClearRecycleBin();
                     return true;
                 }
+                // 新增中转站点击处理
+                if (itemId == R.id.action_transfer_station) {
+                    if (checkTransferPermission()) {
+                        openTransferStation();
+                    }
+                    return true;
+                }
                 return false;
             });
 
@@ -443,9 +484,81 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
+    // 8. 中转站权限检查
+    // 2. 增强权限检查方法（确保中转站写入权限）
+    // 2. 增强权限检查方法（确保中转站写入权限）
+    private boolean checkTransferPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+：检查所有文件访问权限
+            if (!Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivityForResult(intent, REQUEST_TRANSFER_PERMISSION);
+                return false;
+            }
+        } else {
+            // Android 10及以下：检查读写权限
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        REQUEST_TRANSFER_PERMISSION);
+                return false;
+            }
+        }
 
+        // 额外检查中转站目录是否可写
+        if (transferStationDirectory != null && !transferStationDirectory.canWrite()) {
+            Toast.makeText(this, "中转站目录不可写", Toast.LENGTH_SHORT).show();
+            return false;
+        }
 
+        return true;
+    }
+    // 5. 中转站核心操作方法
+    private void openTransferStation() {
+        isInTransferStation = true;
+        isInRecycleBin = false;
+        currentDirectory = transferStationDirectory;
+        loadFileList(); // 复用现有文件列表加载
+        updateLevelHint();
+    }
 
+    // 同步修改exitTransferStation方法，统一使用上述导航方法
+    private void exitTransferStation() {
+        // 直接调用导航到根目录的方法，确保状态一致
+        navigateToRootDirectory();
+    }
+    // 6. 移动文件到中转站（复用现有逻辑）
+    private boolean moveToTransferStation(File file) {
+        if (file == null || !file.exists()) {
+            return false;
+        }
+
+        try {
+            // 确保中转站目录存在
+            if (!transferStationDirectory.exists()) {
+                transferStationDirectory.mkdirs();
+            }
+
+            // 处理文件名冲突（复用现有方法）
+            File initialTarget = new File(transferStationDirectory, file.getName());
+            File targetFile = getNonConflictFile(initialTarget);
+
+            // 复用现有移动逻辑
+            if (file.isDirectory()) {
+                return moveFolderToRecycleBin(file, targetFile); // 复用文件夹移动
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                return moveFileWithTimestampUpdate(file, targetFile); // 复用TXT处理
+            } else {
+                return file.renameTo(targetFile); // 普通文件直接移动
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
     // 新增：清空回收站确认对话框
     private void confirmClearRecycleBin() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -1138,6 +1251,11 @@ public class MainActivity extends AppCompatActivity {
     // 修改返回键逻辑，在回收站中按返回键退出回收站
     @Override
     public void onBackPressed() {
+        // 优先处理中转站的返回逻辑
+        if (isInTransferStation) {
+            handleTransferStationBack();
+            return;
+        }
         if (isInRecycleBin) {
             exitRecycleBin();
             return;
@@ -1168,35 +1286,107 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 2. 新增中转站返回处理方法
+    // 2. 完善滑动返回触发的handleTransferStationBack方法
+    private void handleTransferStationBack() {
+        if (currentDirectory.equals(transferStationDirectory)) {
+            // 从中转站根目录滑动返回主页时，强制刷新菜单
+            navigateToRootDirectory();
+            // 额外确保状态已重置（防御性处理）
+            if (isInTransferStation) {
+                isInTransferStation = false;
+            }
+            // 立即刷新菜单
+            invalidateOptionsMenu();
+        } else {
+            // 中转站子目录返回，不影响菜单显示
+            File parentDir = currentDirectory.getParentFile();
+            if (parentDir != null && parentDir.exists() &&
+                    transferStationDirectory.getAbsolutePath().startsWith(parentDir.getAbsolutePath())) {
+                currentDirectory = parentDir;
+                loadFileList();
+                updateLevelHint();
+            } else {
+                currentDirectory = transferStationDirectory;
+                loadFileList();
+                updateLevelHint();
+            }
+        }
+    }
+
+    // 3. 重写onPrepareOptionsMenu确保菜单状态实时更新
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        // 每次菜单显示前强制更新状态
+        if (menu != null) {
+            // 主页状态：显示中转站
+            boolean isHome = !isInRecycleBin && !isInTransferStation &&
+                    currentDirectory.equals(rootDirectory);
+            menu.findItem(R.id.action_transfer_station).setVisible(isHome);
+
+            // 其他菜单状态处理（保持与showPopupMenu一致）
+            menu.findItem(R.id.action_recycle_bin).setVisible(!isInRecycleBin);
+            menu.findItem(R.id.action_clear_recycle_bin).setVisible(isInRecycleBin);
+            menu.findItem(R.id.action_new_folder).setVisible(!isInRecycleBin);
+        }
+        return super.onPrepareOptionsMenu(menu);
+    }
+
+    // 1. 检查showFolderCreateDialog()方法，确保使用当前目录（中转站）
+    // 修改新建文件夹方法，标记创建状态
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("新建文件夹");
 
         final EditText input = new EditText(this);
-        input.setHint("请输入文件夹名称");
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         builder.setView(input);
 
-        AlertDialog dialog = builder.setPositiveButton("确认", (dialogInterface, which) -> {
-            String name = input.getText().toString().trim();
-            if (name.isEmpty()) {
+        // 确定按钮（保持不变）
+        builder.setPositiveButton("创建", (dialog, which) -> {
+            String folderName = input.getText().toString().trim();
+            if (folderName.isEmpty()) {
                 Toast.makeText(this, "文件夹名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-            createFolder(name);
-        }).setNegativeButton("取消", null).create();
 
-        dialog.setOnShowListener(dialogInterface -> {
-            input.requestFocus();
-            input.postDelayed(() -> {
-                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                if (imm != null) {
-                    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+            File newFolder = new File(currentDirectory, folderName);
+
+            // 中转站中创建文件夹时标记状态
+            if (isInTransferStation) {
+                isCreatingFolderInTransfer = true;
+                if (!checkTransferPermission()) {
+                    // 权限不足时会触发权限请求，后续由权限回调处理
+                    return;
                 }
-            }, 200);
+            }
+
+            // 执行创建逻辑（原有代码）
+            if (newFolder.exists()) {
+                Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show();
+                isCreatingFolderInTransfer = false; // 重置状态
+                return;
+            }
+
+            if (newFolder.mkdirs()) {
+                Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
+                loadFileList();
+            } else {
+                Toast.makeText(this, "创建失败，请检查权限", Toast.LENGTH_SHORT).show();
+            }
+            isCreatingFolderInTransfer = false; // 重置状态
         });
 
-        dialog.show();
+        // 修复取消按钮：使用匿名内部类替代lambda，解决低版本兼容问题
+        builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                isCreatingFolderInTransfer = false; // 取消时重置状态
+                dialog.dismiss(); // 显式关闭对话框
+            }
+        });
+
+        builder.show();
     }
 
     private void createFolder(String name) {
@@ -1905,6 +2095,28 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // 处理中转站权限回调
+        if (requestCode == REQUEST_TRANSFER_PERMISSION) {
+            // 检查Android 11+的特殊权限（MANAGE_EXTERNAL_STORAGE）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11+通过Environment.isExternalStorageManager()判断权限是否授予
+                if (Environment.isExternalStorageManager()) {
+                    handleTransferPermissionGranted();
+                } else {
+                    Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                // 旧版本通过grantResults判断
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    handleTransferPermissionGranted();
+                } else {
+                    Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
+
+        // 原有其他权限处理
         if (requestCode == REQUEST_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 initExternalBrain();
@@ -1915,6 +2127,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 新增：处理中转站权限授予后的逻辑
+    private void handleTransferPermissionGranted() {
+        // 如果是在创建文件夹时触发的权限请求，重新执行创建
+        if (isCreatingFolderInTransfer) {
+            showFolderCreateDialog(); // 重新打开创建对话框
+        } else {
+            // 否则打开中转站
+            openTransferStation();
+        }
+        isCreatingFolderInTransfer = false; // 重置状态
+    }
+    // 添加一个临时变量记录是否正在创建文件夹
+    private boolean isCreatingFolderInTransfer = false;
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
@@ -1935,11 +2160,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 修改copyFileOrFolder方法，明确区分复制和剪切
+    // 6. 修改复制/剪切/粘贴逻辑，支持中转站
     private void copyFileOrFolder(File target, boolean isCut) {
         if (target == null || !target.exists()) {
             Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // 允许从任何位置复制/剪切到中转站，或从中转站复制/剪切到其他位置
         copiedFile = target;
         isCutOperation = isCut;
         showPasteButton();
@@ -2188,6 +2416,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 执行粘贴操作（处理复制/剪切逻辑）
      */
+    // 7. 修改粘贴操作的路径校验（允许与中转站之间的操作）
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -2200,51 +2429,38 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 路径校验
+        // 路径校验：允许在三个区域（主目录/回收站/中转站）之间进行操作
         String originalParentPath = copiedFile.getParentFile().getAbsolutePath();
         String targetPath = currentDirectory.getAbsolutePath();
 
-        // 剪切操作的子目录校验
-        if (isCutOperation) {
-            if (originalParentPath.equals(targetPath)) {
-                Toast.makeText(this, "剪切目标与原位置相同，无需操作", Toast.LENGTH_SHORT).show();
-                hidePasteButton();
-                return;
-            }
-            if (copiedFile.isDirectory() && targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
-                Toast.makeText(this, "无法剪切到子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
-                hidePasteButton();
-                return;
-            }
-        } else {
-            // 复制操作的子目录校验
-            if (copiedFile.isDirectory() && targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
-                Toast.makeText(this, "无法复制到子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
-                hidePasteButton();
-                return;
-            }
+        // 仅禁止剪切到自身子目录
+        if (isCutOperation && copiedFile.isDirectory() &&
+                targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
+            Toast.makeText(this, "无法剪切到子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            return;
         }
 
-        // 执行实际操作
+        // 执行实际操作（复用原有逻辑，支持跨存储操作）
         new Thread(() -> {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
-                        // 剪切文件夹：使用剪切专用的TXT处理逻辑
+                        // 剪切文件夹（支持跨存储）
                         threadSuccess = moveFolderWithTxtUpdate(copiedFile, currentDirectory);
                     } else {
-                        // 复制文件夹：使用复制专用的TXT处理逻辑
+                        // 复制文件夹（支持跨存储）
                         threadSuccess = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
-                    // 单个文件操作
+                    // 单个文件操作（支持跨存储）
                     if (isCutOperation) {
-                        // 单个TXT文件剪切
-                        threadSuccess = moveFileWithTimestampUpdate(copiedFile, new File(currentDirectory, copiedFile.getName()));
+                        threadSuccess = moveFileWithTimestampUpdate(copiedFile,
+                                new File(currentDirectory, copiedFile.getName()));
                     } else {
-                        // 单个TXT文件复制（保持原有逻辑）
-                        threadSuccess = copyFileWithUniqueName(copiedFile, new File(currentDirectory, copiedFile.getName()));
+                        threadSuccess = copyFileWithUniqueName(copiedFile,
+                                new File(currentDirectory, copiedFile.getName()));
                     }
                 }
             } catch (Exception e) {
@@ -2255,8 +2471,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (successResult) {
                     String operation = isCutOperation ? "移动" : "复制";
-                    String targetName = getUniqueFolderName(currentDirectory, copiedFile.getName());
-                    Toast.makeText(this, operation + "成功：" + targetName, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, operation + "成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 } else {
                     Toast.makeText(this, "操作失败，请重试", Toast.LENGTH_SHORT).show();
@@ -2800,11 +3015,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        String lastPageType = PreferenceUtils.getLastPageType(this);
-        // 从任何子页面返回都更新为main状态
-        if ("image".equals(lastPageType) || "editor".equals(lastPageType)) {
-            PreferenceUtils.saveLastPageType(this, "main");
+        // 校验状态与当前目录是否匹配
+        if (currentDirectory.equals(transferStationDirectory) && !isInTransferStation) {
+            isInTransferStation = true;
+        } else if (currentDirectory.equals(rootDirectory) && (isInTransferStation || isInRecycleBin)) {
+            // 当前目录是主页，但状态标识错误，强制重置
+            isInTransferStation = false;
+            isInRecycleBin = false;
         }
+        // 刷新菜单相关UI
+        invalidateOptionsMenu();
     }
 
     // 文件列表适配器
