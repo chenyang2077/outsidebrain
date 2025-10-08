@@ -823,21 +823,16 @@ public class MainActivity extends AppCompatActivity {
 
     // 修改初始化外部存储的方法
     private void initExternalBrain() {
-        // 关键修改：使用应用私有存储目录替代公共存储
-        // getExternalFilesDir(null) 会返回应用在外部存储的私有目录
-        // 例如: /storage/emulated/0/Android/data/包名/files/
-        File privateStorageDir = getExternalFilesDir(null);
+        // 关键修改：使用内部私有存储（与回收站保持一致）
+        File privateStorageDir = getFilesDir();
 
-        if (privateStorageDir == null || !privateStorageDir.exists()) {
-            // 如果外部私有存储不可用，使用内部私有存储作为备选
-            privateStorageDir = getFilesDir();
-            if (!privateStorageDir.exists()) {
-                Toast.makeText(this, "存储不可用，无法初始化应用", Toast.LENGTH_SHORT).show();
-                return;
-            }
+        // 检查内部存储是否可用
+        if (!privateStorageDir.exists()) {
+            Toast.makeText(this, "存储不可用，无法初始化应用", Toast.LENGTH_SHORT).show();
+            return;
         }
 
-        // 构建根文件夹路径（应用私有存储下的"流动信息"目录）
+        // 构建根文件夹路径（内部私有存储下的"流动信息"目录）
         rootDirectory = new File(privateStorageDir, ROOT_FOLDER_NAME);
         currentDirectory = rootDirectory;
 
@@ -849,17 +844,17 @@ public class MainActivity extends AppCompatActivity {
             // 如果创建失败，尝试使用兼容模式创建唯一文件夹
             if (!created) {
                 File createdDir = FileUtils.createUniqueFolder(
-                        privateStorageDir,  // 使用应用私有存储作为父目录
+                        privateStorageDir,  // 使用内部私有存储作为父目录
                         ROOT_FOLDER_NAME
                 );
 
                 if (createdDir != null) {
                     currentDirectory = createdDir;
                     rootDirectory = createdDir;
-                    Toast.makeText(this, "在私有存储中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "在内部存储中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
                     createTestFile();
                 } else {
-                    // 最后尝试使用应用专属目录作为备选方案
+                    // 最后尝试使用应用专属目录作为备选方案（仍为内部存储）
                     File fallbackDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
                     if (fallbackDir.mkdirs()) {
                         currentDirectory = fallbackDir;
@@ -887,6 +882,9 @@ public class MainActivity extends AppCompatActivity {
         // 恢复最后状态
         restoreLastState();
     }
+
+
+
 
     // 修改状态恢复逻辑，支持恢复回收站状态
     private void restoreLastState() {
