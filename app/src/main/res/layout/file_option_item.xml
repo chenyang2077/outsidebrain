@@ -4,7 +4,7 @@
     android:layout_height="56dp"
     android:gravity="center_vertical"
     android:paddingHorizontal="16dp"
-    android:background="@drawable/option_item_bg"
+    android:background="@drawable/editor_border2"
     android:layout_margin="1dp">
 
 <ImageView
