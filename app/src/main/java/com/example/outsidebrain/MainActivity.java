@@ -91,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInSearchMode = false;
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
+    // 修改ROOT_FOLDER_NAME常量定义位置
     private static final String ROOT_FOLDER_NAME = "流动信息";
     // 1. 新增中转站目录变量
     private File transferStationDirectory;
@@ -273,8 +274,9 @@ public class MainActivity extends AppCompatActivity {
         return lastTimestamp;
     }
     // 初始化回收站目录
+    // 修改回收站初始化路径（也使用应用私有存储）
     private void initRecycleBin() {
-        // 回收站位于应用内部存储
+        // 回收站位于应用内部存储的私有目录
         recycleBinDirectory = new File(getFilesDir(), "回收站");
 
         // 检查并创建回收站目录
@@ -809,16 +811,24 @@ public class MainActivity extends AppCompatActivity {
         searchResultList.addAll(otherFiles);
     }
 
+    // 修改初始化外部存储的方法
     private void initExternalBrain() {
-        // 明确指定SD卡根目录作为基础路径
-        File sdCardRoot = Environment.getExternalStorageDirectory();
-        if (sdCardRoot == null || !sdCardRoot.exists()) {
-            Toast.makeText(this, "未找到SD卡存储", Toast.LENGTH_SHORT).show();
-            return;
+        // 关键修改：使用应用私有存储目录替代公共存储
+        // getExternalFilesDir(null) 会返回应用在外部存储的私有目录
+        // 例如: /storage/emulated/0/Android/data/包名/files/
+        File privateStorageDir = getExternalFilesDir(null);
+
+        if (privateStorageDir == null || !privateStorageDir.exists()) {
+            // 如果外部私有存储不可用，使用内部私有存储作为备选
+            privateStorageDir = getFilesDir();
+            if (!privateStorageDir.exists()) {
+                Toast.makeText(this, "存储不可用，无法初始化应用", Toast.LENGTH_SHORT).show();
+                return;
+            }
         }
 
-        // 构建根文件夹路径
-        rootDirectory = new File(sdCardRoot, ROOT_FOLDER_NAME);
+        // 构建根文件夹路径（应用私有存储下的"流动信息"目录）
+        rootDirectory = new File(privateStorageDir, ROOT_FOLDER_NAME);
         currentDirectory = rootDirectory;
 
         // 检查文件夹是否存在
@@ -829,18 +839,18 @@ public class MainActivity extends AppCompatActivity {
             // 如果创建失败，尝试使用兼容模式创建唯一文件夹
             if (!created) {
                 File createdDir = FileUtils.createUniqueFolder(
-                        sdCardRoot,  // 直接使用SD卡根目录作为父目录
+                        privateStorageDir,  // 使用应用私有存储作为父目录
                         ROOT_FOLDER_NAME
                 );
 
                 if (createdDir != null) {
                     currentDirectory = createdDir;
                     rootDirectory = createdDir;
-                    Toast.makeText(this, "在SD卡中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "在私有存储中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
                     createTestFile();
                 } else {
                     // 最后尝试使用应用专属目录作为备选方案
-                    File fallbackDir = new File(getExternalFilesDir(null), ROOT_FOLDER_NAME);
+                    File fallbackDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
                     if (fallbackDir.mkdirs()) {
                         currentDirectory = fallbackDir;
                         rootDirectory = fallbackDir;
@@ -861,7 +871,6 @@ public class MainActivity extends AppCompatActivity {
                 createTestFile();
             }
         }
-
 
         loadFileList();
         updateLevelHint();
@@ -1550,15 +1559,32 @@ public class MainActivity extends AppCompatActivity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
         builder.setTitle(folder.getName()); // 显示文件夹名作为标题
 
-        // 文件夹选项文本与对应图标（复用已有的图标资源）
-        String[] options = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
-        int[] icons = new int[]{
+        // 定义完整的选项和图标数组
+        String[] allOptions = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
+        int[] allIcons = new int[]{
                 R.drawable.ic_rename,    // 重命名图标（复用）
                 R.drawable.ic_delete,    // 删除图标（复用）
                 R.drawable.ic_image_error,       // 新增ZIP压缩图标
                 R.drawable.ic_copy,      // 复制图标（复用）
                 R.drawable.ic_cut        // 剪切图标（复用）
         };
+
+        // 使用列表存储最终需要显示的选项
+        List<String> optionsList = new ArrayList<>();
+        List<Integer> iconsList = new ArrayList<>();
+
+        // 添加所有选项（当前没有需要隐藏的选项，保持扩展性）
+        for (int i = 0; i < allOptions.length; i++) {
+            optionsList.add(allOptions[i]);
+            iconsList.add(allIcons[i]);
+        }
+
+        // 转换为数组
+        String[] options = optionsList.toArray(new String[0]);
+        int[] icons = new int[iconsList.size()];
+        for (int i = 0; i < iconsList.size(); i++) {
+            icons[i] = iconsList.get(i);
+        }
 
         // 复用相同的自定义适配器和布局文件
         ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
@@ -1573,12 +1599,19 @@ public class MainActivity extends AppCompatActivity {
                 // 设置文本和图标（与文件选项对话框使用相同的布局控件）
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
-// 设置文字为白色
+
+                // 检查图标资源是否有效
+                int iconResId = icons[position];
+                if (iconResId != 0) {
+                    imageView.setImageResource(iconResId);
+                } else {
+                    // 显示默认图标作为备选
+                    imageView.setImageResource(R.drawable.ic_folder);
+                }
+
+                // 设置文字为白色
                 textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
                 textView.setText(options[position]);
-                imageView.setImageResource(icons[position]);
-
-
 
                 return convertView;
             }
@@ -1606,6 +1639,7 @@ public class MainActivity extends AppCompatActivity {
 
         builder.show();
     }
+
     // 3. 全新的删除确认方法（确保只定义一次）
     // 修改删除确认方法，根据当前目录决定是移动到回收站还是彻底删除
     private void confirmFileDeletion(File file) {
@@ -1797,15 +1831,40 @@ public class MainActivity extends AppCompatActivity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
         builder.setTitle(file.getName()); // 显示文件名作为标题
 
-        // 选项文本与对应图标
-        String[] options = new String[]{"重命名", "删除", "分享", "复制", "剪切"};
-        int[] icons = new int[]{
+        // 判断当前是否在主页或回收站
+        boolean isInHome = currentDirectory.equals(rootDirectory);
+        boolean isInRecycle = currentDirectory.equals(recycleBinDirectory);
+        boolean shouldHideShare = isInHome || isInRecycle;
+
+        // 定义基础选项数组（包含所有可能的选项）
+        String[] allOptions = {"重命名", "删除", "分享", "复制", "剪切"};
+        int[] allIcons = {
                 R.drawable.ic_rename,    // 重命名图标
                 R.drawable.ic_delete,    // 删除图标
                 R.drawable.ic_share,     // 分享图标
                 R.drawable.ic_copy,      // 复制图标
                 R.drawable.ic_cut        // 剪切图标
         };
+
+        // 根据条件筛选需要显示的选项
+        List<String> optionsList = new ArrayList<>();
+        List<Integer> iconsList = new ArrayList<>();
+
+        for (int i = 0; i < allOptions.length; i++) {
+            // 如果是分享选项且需要隐藏，则跳过
+            if (i == 2 && shouldHideShare) {
+                continue;
+            }
+            optionsList.add(allOptions[i]);
+            iconsList.add(allIcons[i]);
+        }
+
+        // 转换为数组（使用更可靠的转换方式）
+        String[] options = optionsList.toArray(new String[0]);
+        int[] icons = new int[iconsList.size()];
+        for (int i = 0; i < iconsList.size(); i++) {
+            icons[i] = iconsList.get(i); // 确保正确获取图标资源ID
+        }
 
         // 创建自定义适配器显示带图标的选项
         ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
@@ -1820,20 +1879,28 @@ public class MainActivity extends AppCompatActivity {
                 // 设置文本和图标
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
-                // 设置文字为白色
+
+                // 双重检查确保资源ID有效
+                int iconResId = icons[position];
+                if (iconResId != 0) {
+                    imageView.setImageResource(iconResId);
+                } else {
+                    // 显示默认图标作为备选
+                    imageView.setImageResource(R.drawable.ic_file);
+                }
+
                 textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
-
                 textView.setText(options[position]);
-                imageView.setImageResource(icons[position]);
-
-
 
                 return convertView;
             }
         };
 
         builder.setAdapter(adapter, (dialog, which) -> {
-            switch (which) {
+            // 计算原始索引（如果隐藏了分享选项，需要调整索引）
+            int originalWhich = shouldHideShare && which >= 2 ? which + 1 : which;
+
+            switch (originalWhich) {
                 case 0:
                     renameFile(file);
                     break;
@@ -1854,6 +1921,7 @@ public class MainActivity extends AppCompatActivity {
 
         builder.show();
     }
+
 
 
 
@@ -2103,53 +2171,32 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
+    // 修改权限检查方法（私有存储不需要外部存储权限）
     private void checkPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                        REQUEST_PERMISSION);
-            } else {
-                initExternalBrain();
-            }
-        } else {
-            initExternalBrain();
-        }
+        // 关键修改：应用私有存储不需要请求外部存储权限
+        // 直接初始化存储
+        initExternalBrain();
     }
 
+    // 修改onRequestPermissionsResult方法（移除不必要的权限处理）
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        // 处理中转站权限回调
+        // 处理中转站权限回调（中转站仍可能需要外部存储权限）
         if (requestCode == REQUEST_TRANSFER_PERMISSION) {
-            // 检查Android 11+的特殊权限（MANAGE_EXTERNAL_STORAGE）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Android 11+通过Environment.isExternalStorageManager()判断权限是否授予
                 if (Environment.isExternalStorageManager()) {
                     handleTransferPermissionGranted();
                 } else {
                     Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
                 }
             } else {
-                // 旧版本通过grantResults判断
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     handleTransferPermissionGranted();
                 } else {
                     Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
                 }
-            }
-        }
-
-        // 原有其他权限处理
-        if (requestCode == REQUEST_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                initExternalBrain();
-            } else {
-                Toast.makeText(this, "需要存储权限才能使用应用", Toast.LENGTH_SHORT).show();
-                finish();
             }
         }
     }
