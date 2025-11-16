@@ -5,6 +5,11 @@ import android.content.DialogInterface;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import java.util.Collections;
+import java.util.Comparator;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
@@ -1076,22 +1081,115 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 文件夹按名称排序
+            // 文件夹按名称排序（修改版）
             Collections.sort(folders, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
-                    return file1.getName().compareTo(file2.getName());
+                    String name1 = file1.getName();
+                    String name2 = file2.getName();
+
+                    // 提取文件名前面的数字（只提取开头的数字）
+                    Integer num1 = extractLeadingNumberFromName(name1);
+                    Integer num2 = extractLeadingNumberFromName(name2);
+
+                    // 优先按数字排序
+                    if (num1 != null && num2 != null) {
+                        return Integer.compare(num1, num2);
+                    } else if (num1 != null) {
+                        return -1; // 有数字的排在前面
+                    } else if (num2 != null) {
+                        return 1;  // 有数字的排在前面
+                    }
+
+                    // 如果都没有数字，按原有的字母顺序排序
+                    return name1.compareTo(name2);
+                }
+
+                // 内部辅助方法：从文件名前面提取数字（只提取开头的数字）
+                private Integer extractLeadingNumberFromName(String fileName) {
+                    if (fileName == null || fileName.isEmpty()) {
+                        return null;
+                    }
+
+                    // 修改正则表达式，只匹配开头的数字
+                    // ^\\d+ 表示从字符串开头开始匹配一个或多个数字
+                    Pattern pattern = Pattern.compile("^\\d+");
+                    Matcher matcher = pattern.matcher(fileName);
+
+                    if (matcher.find()) {
+                        try {
+                            return Integer.parseInt(matcher.group());
+                        } catch (NumberFormatException e) {
+                            return null;
+                        }
+                    }
+
+                    return null;
                 }
             });
 
-            // TXT文件按最后一个时间戳倒序排序（最新的在前）
             Collections.sort(txtFiles, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
-                    long time1 = getLastTimestampFromFileName(file1.getName());
-                    long time2 = getLastTimestampFromFileName(file2.getName());
-                    // 时间戳大的排在前面（最新的文件优先）
-                    return Long.compare(time2, time1);
+                    String name1 = file1.getName();
+                    String name2 = file2.getName();
+
+                    // 提取文件名前面的数字（只提取开头的数字）
+                    Integer num1 = extractLeadingNumberFromName(name1);
+                    Integer num2 = extractLeadingNumberFromName(name2);
+
+                    // 情况1：两个文件都有开头数字 → 按数字升序排序
+                    if (num1 != null && num2 != null) {
+                        return Integer.compare(num1, num2);
+                    }
+                    // 情况2：只有第一个文件有开头数字 → 有数字的排在前面
+                    else if (num1 != null) {
+                        return -1;
+                    }
+                    // 情况3：只有第二个文件有开头数字 → 有数字的排在前面
+                    else if (num2 != null) {
+                        return 1;
+                    }
+                    // 情况4：两个文件都没有开头数字 → 按时间戳排序
+                    else {
+                        // 直接使用File对象的lastModified()方法，不需要通过文件名查找
+                        long time1 = file1.lastModified();
+                        long time2 = file2.lastModified();
+
+                        System.out.println("比较文件: " + name1 + "(" + time1 + ") vs " + name2 + "(" + time2 + ")");
+
+                        // 让时间戳大的（更新的）排在前面
+                        if (time1 > time2) {
+                            System.out.println(name1 + " 更新，应该排在前面");
+                            return -1;
+                        } else if (time1 < time2) {
+                            System.out.println(name2 + " 更新，应该排在前面");
+                            return 1;
+                        } else {
+                            System.out.println("时间戳相同");
+                            return 0;
+                        }
+                    }
+                }
+
+                // 从文件名前面提取数字（只提取开头的数字）
+                private Integer extractLeadingNumberFromName(String fileName) {
+                    if (fileName == null || fileName.isEmpty()) {
+                        return null;
+                    }
+
+                    Pattern pattern = Pattern.compile("^\\d+");
+                    Matcher matcher = pattern.matcher(fileName);
+
+                    if (matcher.find()) {
+                        try {
+                            return Integer.parseInt(matcher.group());
+                        } catch (NumberFormatException e) {
+                            return null;
+                        }
+                    }
+
+                    return null;
                 }
             });
 
