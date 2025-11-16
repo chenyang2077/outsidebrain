@@ -2707,12 +2707,24 @@ public class MainActivity extends AppCompatActivity {
                     }
                 } else {
                     // 单个文件操作（支持跨存储）
+                    String targetFileName = copiedFile.getName();
+
+                    // 检查是否重名，如果重名则生成新的文件名
                     if (isCutOperation) {
-                        threadSuccess = moveFileWithTimestampUpdate(copiedFile,
-                                new File(currentDirectory, copiedFile.getName()));
+                        File targetFile = new File(currentDirectory, targetFileName);
+                        if (targetFile.exists()) {
+                            // 使用你现有的getUniqueFileName方法获取新的文件名
+                            targetFileName = getUniqueFileName(currentDirectory, targetFileName);
+                        }
+                    }
+
+                    // 创建目标文件对象（这里修正了类型不兼容的问题）
+                    File targetFile = new File(currentDirectory, targetFileName);
+
+                    if (isCutOperation) {
+                        threadSuccess = moveFileWithTimestampUpdate(copiedFile, targetFile);
                     } else {
-                        threadSuccess = copyFileWithUniqueName(copiedFile,
-                                new File(currentDirectory, copiedFile.getName()));
+                        threadSuccess = copyFileWithUniqueName(copiedFile, targetFile);
                     }
                 }
             } catch (Exception e) {
@@ -2732,6 +2744,11 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+
+    /**
+     * 获取唯一的文件名，如果目标文件已存在则添加序列号
+     */
+
     /**
      * 移动文件夹并更新内部TXT文件的时间戳
      * 规则：
