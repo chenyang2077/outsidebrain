@@ -1150,11 +1150,11 @@ public class MainActivity extends AppCompatActivity {
                     else if (num2 != null) {
                         return 1;
                     }
-                    // 情况4：两个文件都没有开头数字 → 按时间戳排序
+                    // 情况4：两个文件都没有开头数字 → 按文件名忽略最后4位后，取末尾17位数字作为时间戳排序
                     else {
-                        // 直接使用File对象的lastModified()方法，不需要通过文件名查找
-                        long time1 = file1.lastModified();
-                        long time2 = file2.lastModified();
+                        // 忽略文件名最后4个字符后，提取末尾17位数字作为时间戳
+                        long time1 = extractTimestampIgnoreLast4(name1);
+                        long time2 = extractTimestampIgnoreLast4(name2);
 
                         System.out.println("比较文件: " + name1 + "(" + time1 + ") vs " + name2 + "(" + time2 + ")");
 
@@ -1170,7 +1170,13 @@ public class MainActivity extends AppCompatActivity {
                             return 0;
                         }
                     }
+
+
+
+
                 }
+
+
 
                 // 从文件名前面提取数字（只提取开头的数字）
                 private Integer extractLeadingNumberFromName(String fileName) {
@@ -1218,6 +1224,29 @@ public class MainActivity extends AppCompatActivity {
         // 切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
+        }
+    }
+
+    // 提取文件名末尾17位数字作为时间戳的工具方法
+    // 提取文件名忽略最后4位后，末尾17位数字作为时间戳的工具方法
+    private static long extractTimestampIgnoreLast4(String fileName) {
+        // 先忽略最后4个字符（无论后缀是什么）
+        String nameWithoutLast4 = fileName.length() >= 4
+                ? fileName.substring(0, fileName.length() - 4)
+                : fileName; // 如果文件名不足4位，直接用原文件名
+
+        // 确保处理后的文件名长度至少17位
+        if (nameWithoutLast4.length() >= 17) {
+            String timestampStr = nameWithoutLast4.substring(nameWithoutLast4.length() - 17);
+            try {
+                return Long.parseLong(timestampStr);
+            } catch (NumberFormatException e) {
+                // 末尾17位不是数字，返回0（可根据需求调整默认值）
+                return 0;
+            }
+        } else {
+            // 处理后长度不足17位，返回0（可根据需求调整默认值）
+            return 0;
         }
     }
     /**
