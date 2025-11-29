@@ -19,6 +19,8 @@
         android:requestLegacyExternalStorage="true"
         tools:targetApi="30">
 
+
+
         <!-- 主活动 -->
         <activity
             android:name=".MainActivity"

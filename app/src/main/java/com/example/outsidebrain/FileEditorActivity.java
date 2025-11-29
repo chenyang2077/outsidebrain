@@ -736,6 +736,7 @@ public class FileEditorActivity extends AppCompatActivity {
         autoSave();
         super.onBackPressed();
     }
+    /**
 
     @Override
     protected void onPause() {
@@ -749,7 +750,7 @@ public class FileEditorActivity extends AppCompatActivity {
             autoSave();
         }
     }
-
+    */
     @Override
     protected void onDestroy() {
         super.onDestroy();

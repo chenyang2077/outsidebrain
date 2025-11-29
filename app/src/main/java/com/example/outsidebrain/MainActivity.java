@@ -83,7 +83,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
-
+import android.app.Application;
+import androidx.appcompat.app.AppCompatDelegate;
 public class MainActivity extends AppCompatActivity {
 
     // 1. 定义全局变量存储剪切状态（确保在Activity中全局可访问）
@@ -144,6 +145,7 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -157,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
         // 在onCreate方法中添加
         ImageButton menuButton = findViewById(R.id.menu_btn);
         menuButton.setOnClickListener(v -> showPopupMenu(v));
-
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         fileList = new ArrayList<>();
         searchResultList = new ArrayList<>();
 
