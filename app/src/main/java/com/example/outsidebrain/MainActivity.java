@@ -1083,45 +1083,58 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 文件夹按名称排序（修改版）
+            // 文件夹按名称排序（支持小数）
             Collections.sort(folders, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
                     String name1 = file1.getName();
                     String name2 = file2.getName();
 
-                    // 提取文件名前面的数字（只提取开头的数字）
-                    Integer num1 = extractLeadingNumberFromName(name1);
-                    Integer num2 = extractLeadingNumberFromName(name2);
+                    // 提取文件名前面的数字（包括小数）
+                    Double num1 = extractLeadingNumberFromName(name1);
+                    Double num2 = extractLeadingNumberFromName(name2);
 
                     // 优先按数字排序
                     if (num1 != null && num2 != null) {
-                        return Integer.compare(num1, num2);
+                        // 使用Double进行比较，可以正确处理小数
+                        return Double.compare(num1, num2);
                     } else if (num1 != null) {
-                        return -1; // 有数字的排在前面
+                        // 只有file1有数字开头，排在前面
+                        return -1;
                     } else if (num2 != null) {
-                        return 1;  // 有数字的排在前面
+                        // 只有file2有数字开头，排在前面
+                        return 1;
                     }
 
-                    // 如果都没有数字，按原有的字母顺序排序
+                    // 如果都没有数字开头，则按默认的字母顺序排序
                     return name1.compareTo(name2);
                 }
 
-                // 内部辅助方法：从文件名前面提取数字（只提取开头的数字）
-                private Integer extractLeadingNumberFromName(String fileName) {
+                /**
+                 * 内部辅助方法：从文件名开头提取数字，可以是整数或小数。
+                 * @param fileName 文件名
+                 * @return 提取到的数字（Double类型），如果没有则返回null
+                 */
+                private Double extractLeadingNumberFromName(String fileName) {
                     if (fileName == null || fileName.isEmpty()) {
                         return null;
                     }
 
-                    // 修改正则表达式，只匹配开头的数字
-                    // ^\\d+ 表示从字符串开头开始匹配一个或多个数字
-                    Pattern pattern = Pattern.compile("^\\d+");
+                    // 修改正则表达式，匹配开头的数字（包括整数和小数）
+                    // ^\\d+\\.?\\d*  解释：
+                    // ^       - 匹配字符串开头
+                    // \\d+    - 匹配一个或多个数字
+                    // \\.?    - 匹配一个可选的小数点 (.)
+                    // \\d*    - 匹配零个或多个数字（小数点后面的部分）
+                    Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
                     Matcher matcher = pattern.matcher(fileName);
 
                     if (matcher.find()) {
                         try {
-                            return Integer.parseInt(matcher.group());
+                            // 将匹配到的字符串转换为Double
+                            return Double.parseDouble(matcher.group());
                         } catch (NumberFormatException e) {
+                            // 理论上不会进入这里，因为正则表达式已经保证了是数字格式
                             return null;
                         }
                     }
@@ -1136,13 +1149,14 @@ public class MainActivity extends AppCompatActivity {
                     String name1 = file1.getName();
                     String name2 = file2.getName();
 
-                    // 提取文件名前面的数字（只提取开头的数字）
-                    Integer num1 = extractLeadingNumberFromName(name1);
-                    Integer num2 = extractLeadingNumberFromName(name2);
+                    // 【修改1】：返回类型从 Integer 改为 Double
+                    Double num1 = extractLeadingNumberFromName(name1);
+                    Double num2 = extractLeadingNumberFromName(name2);
 
                     // 情况1：两个文件都有开头数字 → 按数字升序排序
                     if (num1 != null && num2 != null) {
-                        return Integer.compare(num1, num2);
+                        // 【修改2】：使用 Double.compare 比较（支持小数）
+                        return Double.compare(num1, num2);
                     }
                     // 情况2：只有第一个文件有开头数字 → 有数字的排在前面
                     else if (num1 != null) {
@@ -1152,52 +1166,63 @@ public class MainActivity extends AppCompatActivity {
                     else if (num2 != null) {
                         return 1;
                     }
-                    // 情况4：两个文件都没有开头数字 → 按文件名忽略最后4位后，取末尾17位数字作为时间戳排序
+                    // 情况4：两个文件都没有开头数字 → 按原有时间戳逻辑排序（无任何修改）
                     else {
-                        // 忽略文件名最后4个字符后，提取末尾17位数字作为时间戳
                         long time1 = extractTimestampIgnoreLast4(name1);
                         long time2 = extractTimestampIgnoreLast4(name2);
 
-                        System.out.println("比较文件: " + name1 + "(" + time1 + ") vs " + name2 + "(" + time2 + ")");
-
                         // 让时间戳大的（更新的）排在前面
                         if (time1 > time2) {
-                            System.out.println(name1 + " 更新，应该排在前面");
                             return -1;
                         } else if (time1 < time2) {
-                            System.out.println(name2 + " 更新，应该排在前面");
                             return 1;
                         } else {
-                            System.out.println("时间戳相同");
                             return 0;
                         }
                     }
-
-
-
-
                 }
 
-
-
-                // 从文件名前面提取数字（只提取开头的数字）
-                private Integer extractLeadingNumberFromName(String fileName) {
+                /**
+                 * 【修改3】：支持提取整数和小数（核心修改）
+                 */
+                private Double extractLeadingNumberFromName(String fileName) {
                     if (fileName == null || fileName.isEmpty()) {
                         return null;
                     }
 
-                    Pattern pattern = Pattern.compile("^\\d+");
+                    // 【修改核心】：正则改为支持小数（^\\d+\\.?\\d*）
+                    Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
                     Matcher matcher = pattern.matcher(fileName);
 
                     if (matcher.find()) {
                         try {
-                            return Integer.parseInt(matcher.group());
+                            // 【修改4】：转换为 Double 类型
+                            return Double.parseDouble(matcher.group());
                         } catch (NumberFormatException e) {
                             return null;
                         }
                     }
-
                     return null;
+                }
+
+                /**
+                 * 原有时间戳提取方法（无任何修改）
+                 */
+                private long extractTimestampIgnoreLast4(String fileName) {
+                    if (fileName == null || fileName.length() <= 4) {
+                        return 0;
+                    }
+                    String nameWithoutExtension = fileName.substring(0, fileName.length() - 4);
+                    Pattern pattern = Pattern.compile("(\\d{17})$");
+                    Matcher matcher = pattern.matcher(nameWithoutExtension);
+                    if (matcher.find()) {
+                        try {
+                            return Long.parseLong(matcher.group(1));
+                        } catch (NumberFormatException e) {
+                            return 0;
+                        }
+                    }
+                    return 0;
                 }
             });
 
