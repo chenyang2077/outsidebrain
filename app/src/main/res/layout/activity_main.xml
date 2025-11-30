@@ -107,7 +107,7 @@
         android:layout_margin="16dp"
         android:contentDescription="添加文件或文件夹"
         android:src="@android:drawable/ic_input_add"
-        app:backgroundTint="@color/graygit"
+        app:backgroundTint="@color/gray"
         app:elevation="8dp"
         android:layout_alignBottom="@id/file_list"
         android:layout_alignEnd="@id/file_list"
