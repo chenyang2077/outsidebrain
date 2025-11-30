@@ -114,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
     private CompressTask compressTask;
     // 修改ROOT_FOLDER_NAME常量定义位置
     private static final String ROOT_FOLDER_NAME = "流动信息";
-    // 1. 新增快乐文字中转站目录变量
+    // 1. 新增中转站目录变量
     private File transferStationDirectory;
     private static final int REQUEST_TRANSFER_PERMISSION = 101;
     private boolean isInTransferStation = false;
@@ -179,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化回收站
         initRecycleBin();
-        transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "快乐文字中转站");
+        transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
         if (!transferStationDirectory.exists()) {
             transferStationDirectory.mkdirs();
         }
@@ -348,9 +348,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 2. 新增：判断是否在快乐文字中转站（及其子目录）
+        // 2. 新增：判断是否在中转站（及其子目录）
         if (isInTransferStation) {  // 假设已定义isInTransferStation变量
-            etSearch.setHint("快乐文字中转站");
+            etSearch.setHint("中转站");
             return;
         }
 
@@ -696,14 +696,14 @@ public class MainActivity extends AppCompatActivity {
                 // 【新增】在回收站隐藏“压缩主页文件”
                 popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
             }
-            // 2. 快乐文字中转站状态
+            // 2. 中转站状态
             else if (isInTransferStation) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                // 【新增】在快乐文字中转站显示“压缩主页文件”
+                // 【新增】在中转站显示“压缩主页文件”
                 popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true);
             }
             // 3. 主页或其他目录状态
@@ -712,7 +712,7 @@ public class MainActivity extends AppCompatActivity {
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                // 仅在主页显示“快乐文字中转站”按钮
+                // 仅在主页显示“中转站”按钮
                 boolean isHome = currentDirectory.equals(rootDirectory);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHome);
                 // 【新增】在主页或其他目录隐藏“压缩主页文件”
@@ -761,9 +761,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 8. 快乐文字中转站权限检查
-    // 2. 增强权限检查方法（确保快乐文字中转站写入权限）
-    // 2. 增强权限检查方法（确保快乐文字中转站写入权限）
+    // 8. 中转站权限检查
+    // 2. 增强权限检查方法（确保中转站写入权限）
+    // 2. 增强权限检查方法（确保中转站写入权限）
     private boolean checkTransferPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+：检查所有文件访问权限
@@ -785,15 +785,15 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 额外检查快乐文字中转站目录是否可写
+        // 额外检查中转站目录是否可写
         if (transferStationDirectory != null && !transferStationDirectory.canWrite()) {
-            Toast.makeText(this, "快乐文字中转站目录不可写", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "中转站目录不可写", Toast.LENGTH_SHORT).show();
             return false;
         }
 
         return true;
     }
-    // 5. 快乐文字中转站核心操作方法
+    // 5. 中转站核心操作方法
     private void openTransferStation() {
         isInTransferStation = true;
         isInRecycleBin = false; // <--- 确保这一行存在！
@@ -807,14 +807,14 @@ public class MainActivity extends AppCompatActivity {
         // 直接调用导航到根目录的方法，确保状态一致
         navigateToRootDirectory();
     }
-    // 6. 移动文件到快乐文字中转站（复用现有逻辑）
+    // 6. 移动文件到中转站（复用现有逻辑）
     private boolean moveToTransferStation(File file) {
         if (file == null || !file.exists()) {
             return false;
         }
 
         try {
-            // 确保快乐文字中转站目录存在
+            // 确保中转站目录存在
             if (!transferStationDirectory.exists()) {
                 transferStationDirectory.mkdirs();
             }
@@ -1681,16 +1681,16 @@ public class MainActivity extends AppCompatActivity {
     // 修改返回键逻辑，在回收站中按返回键退出回收站
     @Override
     public void onBackPressed() {
-        // 处理快乐文字中转站的返回逻辑（修改部分）
+        // 处理中转站的返回逻辑（修改部分）
         if (isInTransferStation) {
-            // 检查是否在快乐文字中转站子文件夹
+            // 检查是否在中转站子文件夹
             if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
                 // 在子文件夹，返回上一级
                 currentDirectory = currentDirectory.getParentFile();
                 loadFileList();
                 updateLevelHint();
             } else {
-                // 在快乐文字中转站根目录，直接返回主页
+                // 在中转站根目录，直接返回主页
                 exitTransferStationToHome();
             }
             return;
@@ -1736,7 +1736,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 新增：从快乐文字中转站根目录直接返回主页
+    // 新增：从中转站根目录直接返回主页
     private void exitTransferStationToHome() {
         isInTransferStation = false;
         // 直接切换到主页根目录
@@ -1764,11 +1764,11 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
 
-    // 2. 新增快乐文字中转站返回处理方法
+    // 2. 新增中转站返回处理方法
     // 2. 完善滑动返回触发的handleTransferStationBack方法
     private void handleTransferStationBack() {
         if (currentDirectory.equals(transferStationDirectory)) {
-            // 从快乐文字中转站根目录滑动返回主页时，强制刷新菜单
+            // 从中转站根目录滑动返回主页时，强制刷新菜单
             navigateToRootDirectory();
             // 额外确保状态已重置（防御性处理）
             if (isInTransferStation) {
@@ -1777,7 +1777,7 @@ public class MainActivity extends AppCompatActivity {
             // 立即刷新菜单
             invalidateOptionsMenu();
         } else {
-            // 快乐文字中转站子目录返回，不影响菜单显示
+            // 中转站子目录返回，不影响菜单显示
             File parentDir = currentDirectory.getParentFile();
             if (parentDir != null && parentDir.exists() &&
                     transferStationDirectory.getAbsolutePath().startsWith(parentDir.getAbsolutePath())) {
@@ -1798,7 +1798,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onPrepareOptionsMenu(Menu menu) {
         // 每次菜单显示前强制更新状态
         if (menu != null) {
-            // 主页状态：显示快乐文字中转站
+            // 主页状态：显示中转站
             boolean isHome = !isInRecycleBin && !isInTransferStation &&
                     currentDirectory.equals(rootDirectory);
             menu.findItem(R.id.action_transfer_station).setVisible(isHome);
@@ -1809,13 +1809,13 @@ public class MainActivity extends AppCompatActivity {
             menu.findItem(R.id.action_new_folder).setVisible(!isInRecycleBin);
 
             // 【新增代码】控制“压缩主页文件”菜单项的显示
-            // 只有在快乐文字中转站页面时才显示
+            // 只有在中转站页面时才显示
             menu.findItem(R.id.yasuo).setVisible(isInTransferStation);
         }
         return super.onPrepareOptionsMenu(menu);
     }
 
-    // 1. 检查showFolderCreateDialog()方法，确保使用当前目录（快乐文字中转站）
+    // 1. 检查showFolderCreateDialog()方法，确保使用当前目录（中转站）
     // 修改新建文件夹方法，标记创建状态
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -1835,7 +1835,7 @@ public class MainActivity extends AppCompatActivity {
 
             File newFolder = new File(currentDirectory, folderName);
 
-            // 快乐文字中转站中创建文件夹时标记状态
+            // 中转站中创建文件夹时标记状态
             if (isInTransferStation) {
                 isCreatingFolderInTransfer = true;
                 if (!checkTransferPermission()) {
@@ -2681,31 +2681,31 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        // 处理快乐文字中转站权限回调（快乐文字中转站仍可能需要外部存储权限）
+        // 处理中转站权限回调（中转站仍可能需要外部存储权限）
         if (requestCode == REQUEST_TRANSFER_PERMISSION) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (Environment.isExternalStorageManager()) {
                     handleTransferPermissionGranted();
                 } else {
-                    Toast.makeText(this, "需要存储权限才能使用快乐文字中转站", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
                 }
             } else {
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     handleTransferPermissionGranted();
                 } else {
-                    Toast.makeText(this, "需要存储权限才能使用快乐文字中转站", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "需要存储权限才能使用中转站", Toast.LENGTH_SHORT).show();
                 }
             }
         }
     }
 
-    // 新增：处理快乐文字中转站权限授予后的逻辑
+    // 新增：处理中转站权限授予后的逻辑
     private void handleTransferPermissionGranted() {
         // 如果是在创建文件夹时触发的权限请求，重新执行创建
         if (isCreatingFolderInTransfer) {
             showFolderCreateDialog(); // 重新打开创建对话框
         } else {
-            // 否则打开快乐文字中转站
+            // 否则打开中转站
             openTransferStation();
         }
         isCreatingFolderInTransfer = false; // 重置状态
@@ -2732,14 +2732,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 修改copyFileOrFolder方法，明确区分复制和剪切
-    // 6. 修改复制/剪切/粘贴逻辑，支持快乐文字中转站
+    // 6. 修改复制/剪切/粘贴逻辑，支持中转站
     private void copyFileOrFolder(File target, boolean isCut) {
         if (target == null || !target.exists()) {
             Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 允许从任何位置复制/剪切到快乐文字中转站，或从快乐文字中转站复制/剪切到其他位置
+        // 允许从任何位置复制/剪切到中转站，或从中转站复制/剪切到其他位置
         copiedFile = target;
         isCutOperation = isCut;
         showPasteButton();
@@ -2988,7 +2988,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 执行粘贴操作（处理复制/剪切逻辑）
      */
-    // 7. 修改粘贴操作的路径校验（允许与快乐文字中转站之间的操作）
+    // 7. 修改粘贴操作的路径校验（允许与中转站之间的操作）
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -3001,7 +3001,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 路径校验：允许在三个区域（主目录/回收站/快乐文字中转站）之间进行操作
+        // 路径校验：允许在三个区域（主目录/回收站/中转站）之间进行操作
         String originalParentPath = copiedFile.getParentFile().getAbsolutePath();
         String targetPath = currentDirectory.getAbsolutePath();
 
@@ -3533,17 +3533,17 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
 
-        // 原有根目录和快乐文字中转站判断
+        // 原有根目录和中转站判断
         boolean isInRootDir = parentDir.equals(rootDirectory);
         boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory);
 
         // 新增：回收站相关判断
         boolean isInRecycleBinRoot = parentDir.equals(recycleBinDirectory);
 
-        // 无需路径标识的目录：根目录、快乐文字中转站一级目录、回收站一级目录
+        // 无需路径标识的目录：根目录、中转站一级目录、回收站一级目录
         boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot || isInRecycleBinRoot;
 
-        // 判断是否在快乐文字中转站和回收站的子目录中（不包含一级目录）
+        // 判断是否在中转站和回收站的子目录中（不包含一级目录）
         boolean isInTransferStationSubDir = false;
         boolean isInRecycleBinSubDir = false; // 新增
         String actualPath = "";
@@ -3552,7 +3552,7 @@ public class MainActivity extends AppCompatActivity {
             // 获取标准化路径
             String parentPath = parentDir.getCanonicalPath() + File.separator;
 
-            // 快乐文字中转站路径判断（原有逻辑）
+            // 中转站路径判断（原有逻辑）
             String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
             isInTransferStationSubDir = parentPath.startsWith(transferPath) && !isInTransferStationRoot;
 
@@ -3562,7 +3562,7 @@ public class MainActivity extends AppCompatActivity {
 
             // 计算实际路径（核心逻辑）
             if (isInTransferStationSubDir) {
-                // 快乐文字中转站子目录：仅显示快乐文字中转站下级路径
+                // 中转站子目录：仅显示中转站下级路径
                 actualPath = parentPath.substring(transferPath.length())
                         .replace(File.separator, "/")
                         .replaceAll("/$", "");
@@ -3613,7 +3613,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 pathProcessed = true;
             } else if (i == 0 && isInNoPathRequiredDir) {
-                // 根目录/快乐文字中转站一级/回收站一级：移除路径标识
+                // 根目录/中转站一级/回收站一级：移除路径标识
                 String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
                 newContent.append(processedLine).append("\n");
                 pathProcessed = true;

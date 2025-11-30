@@ -38,7 +38,7 @@
         <EditText
             android:id="@+id/et_content"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
         android:background="@drawable/editor_border2"
         android:padding="5dp"
         android:hint="请输入文件内容..."
