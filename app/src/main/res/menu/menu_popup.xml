@@ -8,6 +8,7 @@
     android:textColor="@color/white"
     android:padding="12dp"/>
 
+
     <item
         android:id="@+id/action_new_folder"
         android:layout_width="match_parent"
@@ -16,7 +17,14 @@
         android:background="#333333"
         android:textColor="@color/white"
     android:padding="12dp"/>
-
+    <item
+        android:id="@+id/yasuo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:title="压缩主页文件"
+        android:background="#333333"
+        android:textColor="@color/white"
+        android:padding="12dp"/>
     <item
         android:id="@+id/action_recycle_bin"
         android:layout_width="match_parent"
@@ -44,4 +52,5 @@
         android:background="#333333"
         android:textColor="@color/white"
     android:padding="12dp"/>
+
 </menu>

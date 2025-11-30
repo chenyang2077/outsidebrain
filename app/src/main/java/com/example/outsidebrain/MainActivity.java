@@ -1,7 +1,9 @@
 package com.example.outsidebrain;
 
 import android.Manifest;
+import android.app.ProgressDialog;
 import android.content.DialogInterface;
+import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -81,6 +83,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import android.app.Application;
@@ -104,6 +109,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInSearchMode = false;
     private ImageButton folderCreateBtn;
     private FloatingActionButton preEditFileBtn;
+
+    // 用于标识压缩任务的 AsyncTask
+    private CompressTask compressTask;
     // 修改ROOT_FOLDER_NAME常量定义位置
     private static final String ROOT_FOLDER_NAME = "流动信息";
     // 1. 新增中转站目录变量
@@ -361,6 +369,245 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    // 在你的 Activity 类中
+
+    // 用于标识压缩任务的 AsyncTask
+
+
+// ... (你的其他成员变量和方法) ...
+
+    /**
+     * 压缩根目录 "流动信息" 到当前目录
+     */
+    /**
+     * 压缩根目录 "流动信息" 到当前目录，增加确认对话框
+     */
+    private void compressRootFolder() {
+        // 1. 创建并显示确认对话框
+        new AlertDialog.Builder(this)
+                .setTitle("确认压缩")
+                .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n压缩后的文件将以“主页压缩包.zip”命名。")
+                .setPositiveButton("确认", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        // 2. 用户点击“确认”后，执行真正的压缩逻辑
+                        dialog.dismiss();
+
+                        if (rootDirectory == null || !rootDirectory.exists() || !rootDirectory.isDirectory()) {
+                            Toast.makeText(MainActivity.this, "根目录不存在，无法压缩", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        if (currentDirectory == null || !currentDirectory.exists() || !currentDirectory.isDirectory()) {
+                            Toast.makeText(MainActivity.this, "当前目录不存在，无法保存压缩包", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        // 构建目标 ZIP 文件
+                        String baseFileName = "主页压缩包";
+                        String extension = ".zip";
+                        File zipFile = new File(currentDirectory, baseFileName + extension);
+
+                        // 检查并处理重名文件
+                        int counter = 1;
+                        while (zipFile.exists()) {
+                            zipFile = new File(currentDirectory, baseFileName + " (" + counter + ")" + extension);
+                            counter++;
+                        }
+
+                        // 执行压缩任务
+                        compressTask = new CompressTask();
+                        compressTask.execute(rootDirectory, zipFile);
+                    }
+                })
+                .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        // 3. 用户点击“取消”后，关闭对话框，不执行任何操作
+                        dialog.dismiss();
+                    }
+                })
+                .setCancelable(true) // 允许用户通过点击对话框外部或返回键取消
+                .show();
+    }
+
+    /**
+     * 后台压缩任务
+     */
+    private class CompressTask extends AsyncTask<File, Integer, Boolean> {
+        private File sourceDir;
+        private File destZipFile;
+        private String errorMessage;
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            // 显示进度对话框
+            showProgressDialog("正在压缩...");
+        }
+
+        @Override
+        protected Boolean doInBackground(File... params) {
+            sourceDir = params[0];
+            destZipFile = params[1];
+
+            try {
+                // 使用 Java 的 ZipOutputStream 来压缩文件夹
+                ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(destZipFile));
+                File[] files = sourceDir.listFiles();
+
+                if (files == null) {
+                    errorMessage = "无法读取根目录内容";
+                    return false;
+                }
+
+                // 计算总文件数，用于更新进度
+                int totalFiles = countFiles(sourceDir);
+                int processedFiles = 0;
+
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        // 如果是文件夹，递归压缩
+                        zipDirectory(file, file.getName(), zos, sourceDir.getPath().length() + 1, totalFiles, processedFiles);
+                    } else {
+                        // 如果是文件，直接压缩
+                        zipFile(file, zos, sourceDir.getPath().length() + 1);
+                    }
+                    processedFiles++;
+                    publishProgress((int) ((processedFiles / (float) totalFiles) * 100));
+                }
+
+                zos.closeEntry();
+                zos.close();
+                return true;
+            } catch (IOException e) {
+                e.printStackTrace();
+                errorMessage = "压缩失败: " + e.getMessage();
+                return false;
+            }
+        }
+
+        @Override
+        protected void onProgressUpdate(Integer... values) {
+            super.onProgressUpdate(values);
+            // 更新进度对话框
+            updateProgressDialog(values[0]);
+        }
+
+        @Override
+        protected void onPostExecute(Boolean result) {
+            super.onPostExecute(result);
+            // 关闭进度对话框
+            dismissProgressDialog();
+
+            if (result) {
+                Toast.makeText(MainActivity.this, "压缩成功: " + destZipFile.getName(), Toast.LENGTH_LONG).show();
+                // 压缩成功后，刷新文件列表
+                loadFileList();
+            } else {
+                Toast.makeText(MainActivity.this, errorMessage, Toast.LENGTH_LONG).show();
+            }
+            compressTask = null; // 释放引用
+        }
+
+        /**
+         * 计算目录下的文件总数（包括子目录）
+         */
+        private int countFiles(File directory) {
+            int count = 0;
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile()) {
+                        count++;
+                    } else if (file.isDirectory()) {
+                        count += countFiles(file);
+                    }
+                }
+            }
+            return count;
+        }
+
+        /**
+         * 压缩单个文件
+         */
+        private void zipFile(File file, ZipOutputStream zos, int pathPrefixLength) throws IOException {
+            byte[] buffer = new byte[1024];
+            FileInputStream fis = new FileInputStream(file);
+
+            // 创建 ZIP 条目，去掉根目录路径，只保留相对路径
+            String entryName = file.getPath().substring(pathPrefixLength);
+            ZipEntry zipEntry = new ZipEntry(entryName);
+            zos.putNextEntry(zipEntry);
+
+            int length;
+            while ((length = fis.read(buffer)) > 0) {
+                zos.write(buffer, 0, length);
+            }
+
+            zos.closeEntry();
+            fis.close();
+        }
+
+        /**
+         * 递归压缩目录
+         */
+        private void zipDirectory(File directory, String parentEntryName, ZipOutputStream zos, int pathPrefixLength, int totalFiles, int processedFiles) throws IOException {
+            File[] files = directory.listFiles();
+            if (files == null) {
+                return;
+            }
+
+            for (File file : files) {
+                String entryName = parentEntryName + File.separator + file.getName();
+                if (file.isDirectory()) {
+                    zipDirectory(file, entryName, zos, pathPrefixLength, totalFiles, processedFiles);
+                } else {
+                    zipFile(file, zos, pathPrefixLength);
+                    processedFiles++;
+                    publishProgress((int) ((processedFiles / (float) totalFiles) * 100));
+                }
+            }
+        }
+    }
+
+    /**
+     * 以下是辅助方法，用于显示和管理进度对话框
+     * 你可以根据自己的 UI 框架进行调整
+     */
+    private ProgressDialog progressDialog;
+
+    private void showProgressDialog(String message) {
+        if (progressDialog == null) {
+            progressDialog = new ProgressDialog(this);
+            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+            progressDialog.setCancelable(false); // 不可取消
+        }
+        progressDialog.setMessage(message);
+        progressDialog.setProgress(0);
+        progressDialog.show();
+    }
+
+    private void updateProgressDialog(int progress) {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.setProgress(progress);
+        }
+    }
+
+    private void dismissProgressDialog() {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
+    }
+
+    // 在 Activity 销毁时，取消可能还在运行的任务
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (compressTask != null && !compressTask.isCancelled()) {
+            compressTask.cancel(true);
+        }
+    }
     private List<Integer> getLevelPath(File file) {
         List<Integer> levelPath = new ArrayList<>();
         File current = file;
@@ -437,35 +684,43 @@ public class MainActivity extends AppCompatActivity {
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
 
-            // 状态判断逻辑保持不变
-            boolean currentInRecycle = isInRecycleBin;
-            boolean currentInTransfer = isInTransferStation;
+            // --- 状态判断逻辑 ---
 
+            // 1. 回收站状态
             if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-            } else if (isInTransferStation) {
+                // 【新增】在回收站隐藏“压缩主页文件”
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+            }
+            // 2. 中转站状态
+            else if (isInTransferStation) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-            } else {
+                // 【新增】在中转站显示“压缩主页文件”
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true);
+            }
+            // 3. 主页或其他目录状态
+            else {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-                if (currentDirectory.equals(rootDirectory)) {
-                    popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-                }
+                // 仅在主页显示“中转站”按钮
+                boolean isHome = currentDirectory.equals(rootDirectory);
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHome);
+                // 【新增】在主页或其他目录隐藏“压缩主页文件”
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
             }
 
+            // --- 点击事件逻辑 ---
             popupMenu.setOnMenuItemClickListener(item -> {
-                // 点击事件逻辑保持不变
                 int itemId = item.getItemId();
                 if (itemId == R.id.action_home) {
                     if (isInRecycleBin) {
@@ -487,6 +742,9 @@ public class MainActivity extends AppCompatActivity {
                     if (checkTransferPermission()) {
                         openTransferStation();
                     }
+                    return true;
+                } else if (itemId == R.id.yasuo) { // 【新增】处理“压缩主页文件”的点击事件
+                    compressRootFolder(); // 调用执行压缩操作的方法（已包含确认对话框）
                     return true;
                 }
                 return false;
@@ -1534,6 +1792,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 3. 重写onPrepareOptionsMenu确保菜单状态实时更新
+
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
         // 每次菜单显示前强制更新状态
@@ -1543,10 +1802,14 @@ public class MainActivity extends AppCompatActivity {
                     currentDirectory.equals(rootDirectory);
             menu.findItem(R.id.action_transfer_station).setVisible(isHome);
 
-            // 其他菜单状态处理（保持与showPopupMenu一致）
+            // 其他菜单状态处理
             menu.findItem(R.id.action_recycle_bin).setVisible(!isInRecycleBin);
             menu.findItem(R.id.action_clear_recycle_bin).setVisible(isInRecycleBin);
             menu.findItem(R.id.action_new_folder).setVisible(!isInRecycleBin);
+
+            // 【新增代码】控制“压缩主页文件”菜单项的显示
+            // 只有在中转站页面时才显示
+            menu.findItem(R.id.yasuo).setVisible(isInTransferStation);
         }
         return super.onPrepareOptionsMenu(menu);
     }
