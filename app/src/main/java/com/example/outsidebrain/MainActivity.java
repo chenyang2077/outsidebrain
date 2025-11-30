@@ -796,7 +796,7 @@ public class MainActivity extends AppCompatActivity {
     // 5. 中转站核心操作方法
     private void openTransferStation() {
         isInTransferStation = true;
-        isInRecycleBin = false;
+        isInRecycleBin = false; // <--- 确保这一行存在！
         currentDirectory = transferStationDirectory;
         loadFileList(); // 复用现有文件列表加载
         updateLevelHint();
@@ -902,6 +902,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 切换到回收站
         isInRecycleBin = true;
+        isInTransferStation = false; // <--- 确保这一行存在！
         currentDirectory = recycleBinDirectory;
         loadFileList();
         updateLevelHint();
