@@ -3,6 +3,7 @@ package com.example.outsidebrain;
 import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
@@ -974,9 +975,13 @@ public class MainActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(keyword)) {
             isInSearchMode = false;
             fileAdapter.setData(fileList);
+            clearSearchKeyword(); // 关键词为空时，清除暂存
             Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // 关键：搜索时直接暂存关键词（用户确认搜索的内容，最准确）
+        saveSearchKeyword(keyword);
 
         new Thread(() -> {
             isInSearchMode = true;
@@ -992,7 +997,17 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+    // 暂存搜索关键词（用于后续编辑文件时匹配）
+    private void saveSearchKeyword(String keyword) {
+        SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
+        sp.edit().putString("current_keyword", keyword).apply(); // 异步保存，不阻塞
+    }
 
+    // （可选）清除关键词（比如退出搜索模式时）
+    private void clearSearchKeyword() {
+        SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
+        sp.edit().remove("current_keyword").apply();
+    }
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
 

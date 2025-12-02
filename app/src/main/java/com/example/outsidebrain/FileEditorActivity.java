@@ -1,5 +1,6 @@
 package com.example.outsidebrain;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -25,11 +26,12 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
-import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import android.content.SharedPreferences;
+
 
 /**
  * V1版本 - 文件编辑活动
@@ -47,6 +49,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private boolean isSaved = true;  // 是否已保存
     private static final int MAX_TITLE_LEN = 31;  // 标题最大长度
     private static final String ROOT_FOLDER_NAME = "流动信息";  // 根目录名称（私有存储中）
+    private String searchKeyword;
 
     // 正则表达式模式（保持不变）
     private static final Pattern RANDOM_STR_PATTERN = Pattern.compile("[A-Za-z0-9]{6}");
@@ -73,13 +76,18 @@ public class FileEditorActivity extends AppCompatActivity {
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
 
-        // 获取意图参数
+        // 获取意图参数（完整接收所有参数，删除原有的 search_keyword Intent 接收逻辑）
         String filePath = getIntent().getStringExtra("file_path");
         String currentDirPath = getIntent().getStringExtra("current_dir_path");
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
 
-        // 处理压缩和分享意图
+        // 关键修改1：从 SharedPreferences 读取关键词（替换原有的 Intent 接收逻辑）
+        // 读取 MainActivity 中 performSearch() 暂存的搜索关键词
+        SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
+        searchKeyword = sp.getString("current_keyword", "").trim(); // 默认空字符串，去空格
+
+        // 处理压缩和分享意图（保持不变）
         handleZipAndShareIntent();
 
         // 记录编辑状态（仅针对已有文件）
@@ -96,7 +104,6 @@ public class FileEditorActivity extends AppCompatActivity {
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
-            focusAndShowSoftInput(etContent);  // 聚焦内容输入框
 
             // 标题输入过滤（自动清理时间戳格式）
             if (needHandleTimestamp) {
@@ -114,16 +121,50 @@ public class FileEditorActivity extends AppCompatActivity {
                     }
                 });
             }
+
+            // 新建文件模式：不执行光标/键盘逻辑（按之前需求）
         }
-        // 编辑已有文件模式初始化
+        // 编辑已有文件模式初始化（核心：整合匹配+光标+键盘逻辑）
         else if (filePath != null) {
             targetFile = new File(filePath);
+            // 同步加载文件内容（你的原有方法，不变）
             loadExistingFileData(needHandleTimestamp);
+
+            // 核心整合：文件加载后，延迟执行匹配+光标+键盘逻辑（原有逻辑不变）
+            if (etContent != null) {
+                etContent.postDelayed(() -> {
+                    // 1. 获取加载完成的文件内容
+                    String fileContent = etContent.getText().toString();
+
+                    // 2. 严格匹配条件：仅编辑模式+关键词非空+文件内容非空
+                    if (!TextUtils.isEmpty(searchKeyword) && !TextUtils.isEmpty(fileContent)) {
+                        // 查找关键词第一次出现的位置（区分大小写，如需忽略可改toLowerCase()）
+                        int matchStartIndex = fileContent.indexOf(searchKeyword);
+                        if (matchStartIndex != -1) {
+                            // 找到匹配：定位光标+弹键盘
+                            etContent.requestFocus(); // 请求焦点
+                            int cursorPosition = matchStartIndex + searchKeyword.length(); // 匹配字符后方
+                            etContent.setSelection(cursorPosition); // 定位光标
+
+                            // 弹出软键盘（强制模式）
+                            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                            if (imm != null) {
+                                imm.showSoftInput(etContent, InputMethodManager.SHOW_FORCED);
+                            }
+                        }
+                        // 匹配失败：不做任何操作
+                    }
+                    // 关键词为空/文件内容为空：不做任何操作
+                }, 100); // 延迟100ms（确保文件内容完全渲染到EditText）
+            }
         }
 
-        // 设置文本变化监听（标记未保存状态）
+        // 设置文本变化监听（保持不变）
         setupTextChangeListeners();
     }
+
+
+
 
     // 以下方法保持不变：parseTimestampStructure、removeAllTimestampFormats、loadExistingFileData、setupTextChangeListeners
     private String[] parseTimestampStructure(String fileNameWithoutExt) {
