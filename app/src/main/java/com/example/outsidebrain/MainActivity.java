@@ -2332,43 +2332,45 @@ public class MainActivity extends AppCompatActivity {
     private void showFileOptions(File file) {
         hidePasteButton();
 
-        // 使用Material风格的对话框构建器
-
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
 
-// 将标题文字设置为白色
+        // 标题白色文字设置（不变）
         String fileName = file.getName();
         SpannableString whiteTitle = new SpannableString(fileName);
-// 设置文字颜色为白色
         whiteTitle.setSpan(
                 new ForegroundColorSpan(ContextCompat.getColor(this, android.R.color.white)),
                 0,
                 fileName.length(),
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE
         );
-        builder.setTitle(whiteTitle); // 显示文件名作为标题（白色）
+        builder.setTitle(whiteTitle);
 
-        // 判断当前是否在主页或回收站
-        boolean isInHome = currentDirectory.equals(rootDirectory);
-        boolean isInRecycle = currentDirectory.equals(recycleBinDirectory);
-        boolean shouldHideShare = isInHome || isInRecycle;
+        // --- 核心修改：更新分享选项的隐藏条件 ---
+        // 原来的条件：isInHome || isInRecycle（仅主页/回收站根目录隐藏）
+        // 新条件：
+        // 1. 主页及所有子文件夹 → 隐藏
+        // 2. 回收站及所有子文件夹 → 隐藏
+        // 3. 其他（仅中转站及子文件夹）→ 显示
+        boolean isHomeOrHomeSubFolder = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
+        boolean isRecycleOrRecycleSubFolder = currentDirectory.getAbsolutePath().startsWith(recycleBinDirectory.getAbsolutePath());
+        boolean shouldHideShare = isHomeOrHomeSubFolder || isRecycleOrRecycleSubFolder; // 满足任一条件就隐藏分享
 
-        // 定义基础选项数组（包含所有可能的选项）
+        // 基础选项数组（不变）
         String[] allOptions = {"重命名", "删除", "分享", "复制", "剪切"};
         int[] allIcons = {
-                R.drawable.ic_rename,    // 重命名图标
-                R.drawable.ic_delete,    // 删除图标
-                R.drawable.ic_share,     // 分享图标
-                R.drawable.ic_copy,      // 复制图标
-                R.drawable.ic_cut        // 剪切图标
+                R.drawable.ic_rename,
+                R.drawable.ic_delete,
+                R.drawable.ic_share,
+                R.drawable.ic_copy,
+                R.drawable.ic_cut
         };
 
-        // 根据条件筛选需要显示的选项
+        // 筛选需要显示的选项（不变，仅使用新的 shouldHideShare 条件）
         List<String> optionsList = new ArrayList<>();
         List<Integer> iconsList = new ArrayList<>();
 
         for (int i = 0; i < allOptions.length; i++) {
-            // 如果是分享选项且需要隐藏，则跳过
+            // 如果是分享选项（i==2）且需要隐藏，则跳过
             if (i == 2 && shouldHideShare) {
                 continue;
             }
@@ -2376,14 +2378,14 @@ public class MainActivity extends AppCompatActivity {
             iconsList.add(allIcons[i]);
         }
 
-        // 转换为数组（使用更可靠的转换方式）
+        // 转换为数组（不变）
         String[] options = optionsList.toArray(new String[0]);
         int[] icons = new int[iconsList.size()];
         for (int i = 0; i < iconsList.size(); i++) {
-            icons[i] = iconsList.get(i); // 确保正确获取图标资源ID
+            icons[i] = iconsList.get(i);
         }
 
-        // 创建自定义适配器显示带图标的选项
+        // 自定义适配器（不变）
         ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
             @NonNull
             @Override
@@ -2393,16 +2395,13 @@ public class MainActivity extends AppCompatActivity {
                             .inflate(R.layout.file_option_item, parent, false);
                 }
 
-                // 设置文本和图标
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
 
-                // 双重检查确保资源ID有效
                 int iconResId = icons[position];
                 if (iconResId != 0) {
                     imageView.setImageResource(iconResId);
                 } else {
-                    // 显示默认图标作为备选
                     imageView.setImageResource(R.drawable.ic_file);
                 }
 
@@ -2413,8 +2412,8 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
+        // 选项点击事件（不变）
         builder.setAdapter(adapter, (dialog, which) -> {
-            // 计算原始索引（如果隐藏了分享选项，需要调整索引）
             int originalWhich = shouldHideShare && which >= 2 ? which + 1 : which;
 
             switch (originalWhich) {
