@@ -688,36 +688,37 @@ public class MainActivity extends AppCompatActivity {
             // --- 状态判断逻辑 ---
 
             // 1. 回收站状态
+            // 1. 回收站状态
             if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-                // 【新增】在回收站隐藏“压缩主页文件”
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true); // 回收站显示中转站
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false); // 回收站隐藏压缩
             }
-            // 2. 中转站状态
+// 2. 中转站状态（仅这里隐藏中转站按钮）
             else if (isInTransferStation) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false); // 中转站隐藏自身
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                // 【新增】在中转站显示“压缩主页文件”
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true);
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true); // 中转站显示压缩
             }
-            // 3. 主页或其他目录状态
+// 3. 主页/所有层级子文件夹/其他目录状态（核心修改：支持所有层级子文件夹）
             else {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                // 仅在主页显示“中转站”按钮
-                boolean isHome = currentDirectory.equals(rootDirectory);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHome);
-                // 【新增】在主页或其他目录隐藏“压缩主页文件”
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+
+                // 关键修改：主页 + 主页下任意层级子文件夹（支持深层嵌套）都显示中转站按钮
+                // 原理：判断当前目录的绝对路径是否以主页（根目录）的绝对路径为前缀
+                boolean isHomeOrHomeSubFolders = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHomeOrHomeSubFolders);
+
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false); // 非中转站隐藏压缩
             }
 
             // --- 点击事件逻辑 ---
@@ -1813,18 +1814,21 @@ public class MainActivity extends AppCompatActivity {
     public boolean onPrepareOptionsMenu(Menu menu) {
         // 每次菜单显示前强制更新状态
         if (menu != null) {
-            // 主页状态：显示中转站
+            // 主页状态：显示中转站（原逻辑不变）
             boolean isHome = !isInRecycleBin && !isInTransferStation &&
                     currentDirectory.equals(rootDirectory);
-            menu.findItem(R.id.action_transfer_station).setVisible(isHome);
 
-            // 其他菜单状态处理
+            // 关键修改：中转站菜单项 → 非中转站页面才显示（!isInTransferStation）
+            // 原逻辑：setVisible(isHome) → 仅主页显示
+            // 新逻辑：setVisible(!isInTransferStation) → 所有非中转站页面都显示
+            menu.findItem(R.id.action_transfer_station).setVisible(!isInTransferStation);
+
+            // 其他菜单状态处理（保持不变）
             menu.findItem(R.id.action_recycle_bin).setVisible(!isInRecycleBin);
             menu.findItem(R.id.action_clear_recycle_bin).setVisible(isInRecycleBin);
             menu.findItem(R.id.action_new_folder).setVisible(!isInRecycleBin);
 
-            // 【新增代码】控制“压缩主页文件”菜单项的显示
-            // 只有在中转站页面时才显示
+            // 压缩菜单项（保持不变：仅中转站页面显示）
             menu.findItem(R.id.yasuo).setVisible(isInTransferStation);
         }
         return super.onPrepareOptionsMenu(menu);
@@ -1917,7 +1921,7 @@ public class MainActivity extends AppCompatActivity {
         File testFile = new File(currentDirectory, "使用说明与注意事项_" + randomStr + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
-                String content = "此软件主要提供TXT文件的整理、搜索、压缩、发送，文字图片阅览等。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件路径，文件传播过程中可能会暴露此类信息。\n\n从屏幕左边缘向右划返回或退出。\n\n左上角添加新文件夹，可文件夹内创建文件夹。\n\n搜索功能只能搜索到当前文件夹里的内容。\n\n右下角加号可以新增TXT文件。\n\n长按文件和文件夹模块可以更名，分享发送给微信QQ好友，以及压缩文件夹。\n\n单击压缩文件解压文件，单击TXT文件打开。返回或关闭软件自动保存。\n\n此软件为清洁的不联网工具软件，查询更新功能，或者有增加功能的意见，直接找开发者。\n\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
+                String content = "此软件为无广告的不联网工具软件，主要提供TXT文件的整理、词条搜索、压缩、分享发送，文字编辑阅览等。\n\n右下角加号可以在当前文件夹新增TXT文件。\n\n左上角的标识点击可以打开选项，在当前文件夹创建新的文件夹。\n\n右上角可以搜索关键词搜索当前文件夹内的文件以及文件夹。文件夹里面还可以创建文件夹。\n\n长按模块可以更名，复制，剪切，删除等。\n\n分享文件只支持文件，包括压缩文件。所以要传输文件夹要先压缩成zip文件。传输只在中转站可以。所以要讲压缩文件剪切粘贴到中转站再分享。\n\n“中转站”文件夹在公共存储，别人传输的文件也要打开手机自带的文件管理将文件移动到“中转站”。然后建议将重要文件用本软件从中转站剪切到主页，公共存储的文件会被别的软件浏览甚至删改，我自己使用的时候遇到过。\n\n主页的文件存储在软件私有存储中。这样就不会被其他软件窥视。但是如果卸载软件，数据就会全部丢失。所以要讲数据备份可以分享上传到其他地方。分享上传需要在中转站点击“压缩主页文件”。然后将压缩包分享发送到QQ发送至电脑。分享至QQ直接点击发送至电脑可能有点问题，可以先点击好友，再点击发送至电脑。\n\n从屏幕左边缘向右划返回或退出。编辑状态返回自动保存。编辑的文件一定要从边缘滑动屏幕保存，直接关闭软件不会保存。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件目录结构路径，文件传播过程中可能会暴露此类信息。\n\n排序以序列号优先，包括带小数点的数字。\n\n如果有增加功能的意见，直接找开发者。\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
 
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes(StandardCharsets.UTF_8));
