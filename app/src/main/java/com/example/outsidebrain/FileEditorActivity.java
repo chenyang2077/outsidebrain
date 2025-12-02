@@ -138,13 +138,18 @@ public class FileEditorActivity extends AppCompatActivity {
 
                     // 2. 严格匹配条件：仅编辑模式+关键词非空+文件内容非空
                     if (!TextUtils.isEmpty(searchKeyword) && !TextUtils.isEmpty(fileContent)) {
-                        // 查找关键词第一次出现的位置（区分大小写，如需忽略可改toLowerCase()）
-                        int matchStartIndex = fileContent.indexOf(searchKeyword);
+                        // 关键修改：忽略大小写匹配（转换为全小写后比较）
+                        String lowerFileContent = fileContent.toLowerCase();
+                        String lowerKeyword = searchKeyword.toLowerCase();
+
+                        // 查找关键词第一次出现的位置（基于小写文本，不改变原始内容）
+                        int matchStartIndex = lowerFileContent.indexOf(lowerKeyword);
                         if (matchStartIndex != -1) {
-                            // 找到匹配：定位光标+弹键盘
+                            // 找到匹配：定位光标+弹键盘（使用原始内容的索引，不影响选中位置）
                             etContent.requestFocus(); // 请求焦点
-                            int cursorPosition = matchStartIndex + searchKeyword.length(); // 匹配字符后方
-                            etContent.setSelection(cursorPosition); // 定位光标
+                            // 光标位置 = 匹配起始索引 + 原始关键词长度（避免长度偏差）
+                            int cursorPosition = matchStartIndex + searchKeyword.length();
+                            etContent.setSelection(cursorPosition); // 定位光标到匹配字符后方
 
                             // 弹出软键盘（强制模式）
                             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
