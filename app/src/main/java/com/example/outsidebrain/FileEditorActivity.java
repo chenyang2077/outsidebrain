@@ -141,15 +141,22 @@ public class FileEditorActivity extends AppCompatActivity {
                         // 关键修改：忽略大小写匹配（转换为全小写后比较）
                         String lowerFileContent = fileContent.toLowerCase();
                         String lowerKeyword = searchKeyword.toLowerCase();
+                        int keywordLength = lowerKeyword.length(); // 关键词长度（小写不影响长度）
 
-                        // 查找关键词第一次出现的位置（基于小写文本，不改变原始内容）
-                        int matchStartIndex = lowerFileContent.indexOf(lowerKeyword);
-                        if (matchStartIndex != -1) {
-                            // 找到匹配：定位光标+弹键盘（使用原始内容的索引，不影响选中位置）
+                        // 第一步：找第一个匹配位置
+                        int firstMatchIndex = lowerFileContent.indexOf(lowerKeyword);
+                        if (firstMatchIndex != -1) {
+                            // 第二步：从第一个匹配结束的位置，找第二个匹配位置
+                            int secondMatchIndex = lowerFileContent.indexOf(lowerKeyword, firstMatchIndex + keywordLength);
+
+                            // 优先定位第二个匹配；如果只有一个匹配，仍定位第一个
+                            int targetMatchIndex = (secondMatchIndex != -1) ? secondMatchIndex : firstMatchIndex;
+
+                            // 定位光标+弹键盘
                             etContent.requestFocus(); // 请求焦点
-                            // 光标位置 = 匹配起始索引 + 原始关键词长度（避免长度偏差）
-                            int cursorPosition = matchStartIndex + searchKeyword.length();
-                            etContent.setSelection(cursorPosition); // 定位光标到匹配字符后方
+                            // 光标位置 = 目标匹配起始索引 + 原始关键词长度
+                            int cursorPosition = targetMatchIndex + searchKeyword.length();
+                            etContent.setSelection(cursorPosition); // 定位到匹配字符后方
 
                             // 弹出软键盘（强制模式）
                             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -157,7 +164,7 @@ public class FileEditorActivity extends AppCompatActivity {
                                 imm.showSoftInput(etContent, InputMethodManager.SHOW_FORCED);
                             }
                         }
-                        // 匹配失败：不做任何操作
+                        // 无匹配：不做任何操作
                     }
                     // 关键词为空/文件内容为空：不做任何操作
                 }, 100); // 延迟100ms（确保文件内容完全渲染到EditText）
