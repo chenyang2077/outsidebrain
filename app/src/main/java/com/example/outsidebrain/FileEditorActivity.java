@@ -105,22 +105,22 @@ public class FileEditorActivity extends AppCompatActivity {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
 
-            // 标题输入过滤（自动清理时间戳格式）
-            if (needHandleTimestamp) {
-                etFileName.addTextChangedListener(new android.text.TextWatcher() {
-                    @Override
-                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-                    @Override
-                    public void onTextChanged(CharSequence s, int start, int before, int count) {}
-                    @Override
-                    public void afterTextChanged(android.text.Editable s) {
-                        String cleanedTitle = removeAllTimestampFormats(s.toString());
-                        if (!cleanedTitle.equals(s.toString())) {
-                            s.replace(0, s.length(), cleanedTitle);
-                        }
-                    }
-                });
-            }
+            // 删掉这段重复的TextWatcher
+// if (needHandleTimestamp) {
+//     etFileName.addTextChangedListener(new android.text.TextWatcher() {
+//         @Override
+//         public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+//         @Override
+//         public void onTextChanged(CharSequence s, int start, int before, int count) {}
+//         @Override
+//         public void afterTextChanged(android.text.Editable s) {
+//             String cleanedTitle = removeAllTimestampFormats(s.toString());
+//             if (!cleanedTitle.equals(s.toString())) {
+//                 s.replace(0, s.length(), cleanedTitle);
+//             }
+//         }
+//     });
+// }
 
             // 新建文件模式：不执行光标/键盘逻辑（按之前需求）
         }
@@ -236,10 +236,13 @@ public class FileEditorActivity extends AppCompatActivity {
         Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(result);
         result = singleMatcher.replaceAll("");
 
-        // 清理可能的残留下划线
+        // 清理可能的残留下划线（仅删除末尾的下划线，保留空格）
         result = result.replaceAll("_+$", "");
 
-        return result.trim();
+        // ========== 关键：删除这行trim() ==========
+        // result = result.trim();
+
+        return result;
     }
 
     private void loadExistingFileData(boolean needHandleTimestamp) {
@@ -288,6 +291,7 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private void setupTextChangeListeners() {
+        // 保留一个TextWatcher即可，删除onCreate中新建文件模式的那个
         etFileName.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -297,9 +301,16 @@ public class FileEditorActivity extends AppCompatActivity {
             }
             @Override
             public void afterTextChanged(android.text.Editable s) {
-                String cleanedTitle = removeAllTimestampFormats(s.toString());
-                if (!cleanedTitle.equals(s.toString())) {
+                // 优化：仅清理时间戳，保留原始空格
+                String original = s.toString();
+                String cleanedTitle = removeAllTimestampFormats(original);
+                // 只有时间戳被清理时才替换，避免空格被误改
+                if (!cleanedTitle.equals(original)) {
+                    // 保存光标位置，避免替换后光标跳回开头
+                    int cursorPos = etFileName.getSelectionStart();
                     s.replace(0, s.length(), cleanedTitle);
+                    // 恢复光标位置（兼容长度变化）
+                    etFileName.setSelection(Math.min(cursorPos, cleanedTitle.length()));
                 }
             }
         });
@@ -427,11 +438,14 @@ public class FileEditorActivity extends AppCompatActivity {
                     ? removeAllTimestampFormats(originalFileNameWithoutExt)
                     : originalFileNameWithoutExt;
 
-            String newTitleInput = etFileName.getText().toString().trim();
-            newTitleInput = cleanFileName(newTitleInput);
+            // 关键修复：移除trim()，后续再删首尾空格
+            String newTitleInput = etFileName.getText().toString(); // 去掉trim()
+            // 先删除首尾空格，再清理非法字符
+            String newTitleWithoutEdgeSpace = newTitleInput.trim();
+            newTitleWithoutEdgeSpace = cleanFileName(newTitleWithoutEdgeSpace);
             String cleanedNewTitle = needHandleTimestamp
-                    ? removeAllTimestampFormats(newTitleInput)
-                    : newTitleInput;
+                    ? removeAllTimestampFormats(newTitleWithoutEdgeSpace)
+                    : newTitleWithoutEdgeSpace;
 
             if (TextUtils.isEmpty(cleanedNewTitle)) {
                 cleanedNewTitle = cleanedOriginalTitle;
@@ -539,7 +553,8 @@ public class FileEditorActivity extends AppCompatActivity {
     private void autoSave() {
         if (isSaved) return;
 
-        String inputTitle = etFileName.getText().toString().trim();
+        // 关键修复1：移除trim()，保留原始输入（包括首尾空格）
+        String inputTitle = etFileName.getText().toString();
         String content = etContent.getText().toString();
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
@@ -559,19 +574,24 @@ public class FileEditorActivity extends AppCompatActivity {
 
         // 新建文件逻辑
         if (isPreEdit) {
+            // 关键修复2：仅在判断空内容时，对标题做trim()检查（不修改原始值）
+            boolean isTitleEmpty = TextUtils.isEmpty(inputTitle.trim());
+            boolean isContentEmpty = TextUtils.isEmpty(content.trim());
             // 空内容+空标题：放弃创建
-            if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content.trim())) {
+            if (isTitleEmpty && isContentEmpty) {
                 Toast.makeText(this, "未输入内容，放弃创建", Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
 
             // 生成原始标题（空标题时用内容前31字符）
-            String rawTitle = TextUtils.isEmpty(inputTitle)
+            String rawTitle = isTitleEmpty
                     ? getContentSubtitle(content)
                     : inputTitle;
-            // 清理标题中的特殊字符
-            rawTitle = cleanFileName(rawTitle);
+            // 关键修复3：仅删除首尾空格，保留中间空格（核心需求）
+            String titleWithoutEdgeSpace = rawTitle.trim();
+            // 清理标题中的特殊字符（仅清理非法字符，保留空格）
+            String cleanedTitle = cleanFileName(titleWithoutEdgeSpace);
             String timestampSuffix = "";
 
             // 处理时间戳后缀
@@ -587,7 +607,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
             // 生成全局唯一文件名
             String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDir, targetDirectory, rawTitle, timestampSuffix
+                    rootDir, targetDirectory, cleanedTitle, timestampSuffix
             );
             targetFile = new File(targetDirectory, uniqueFileName);
 
@@ -641,11 +661,14 @@ public class FileEditorActivity extends AppCompatActivity {
                     ? removeAllTimestampFormats(originalFileNameWithoutExt)
                     : originalFileNameWithoutExt;
 
-            String newTitleInput = etFileName.getText().toString().trim();
-            newTitleInput = cleanFileName(newTitleInput);
+            /// 关键修复：移除trim()，后续再删首尾空格
+            String newTitleInput = etFileName.getText().toString(); // 去掉trim()
+            // 先删除首尾空格，再清理非法字符
+            String newTitleWithoutEdgeSpace = newTitleInput.trim();
+            newTitleWithoutEdgeSpace = cleanFileName(newTitleWithoutEdgeSpace);
             String cleanedNewTitle = needHandleTimestamp
-                    ? removeAllTimestampFormats(newTitleInput)
-                    : newTitleInput;
+                    ? removeAllTimestampFormats(newTitleWithoutEdgeSpace)
+                    : newTitleWithoutEdgeSpace;
 
             if (TextUtils.isEmpty(cleanedNewTitle)) {
                 cleanedNewTitle = cleanedOriginalTitle;
@@ -665,13 +688,11 @@ public class FileEditorActivity extends AppCompatActivity {
                 if (timestampStruct.length == 0) {
                     newRandomStr = UniqueFileNameHandler.generateRandomString();
                     newTimestamps.add(newMillisTimestamp);
-                }
-                else if (timestampStruct.length == 2) {
+                } else if (timestampStruct.length == 2) {
                     newRandomStr = timestampStruct[0];
                     newTimestamps.add(timestampStruct[1]);
                     newTimestamps.add(newMillisTimestamp);
-                }
-                else if (timestampStruct.length >= 3) {
+                } else if (timestampStruct.length >= 3) {
                     newRandomStr = timestampStruct[0];
                     for (int i = 1; i < timestampStruct.length - 1; i++) {
                         newTimestamps.add(timestampStruct[i]);
@@ -750,13 +771,16 @@ public class FileEditorActivity extends AppCompatActivity {
         finish();
     }
 
+    // 补充：确保cleanFileName仅过滤非法字符，保留空格
+    private String cleanFileName(String fileName) {
+        // 仅替换Windows/Android非法文件名字符，保留空格
+        return fileName.replaceAll("[\\\\/:*?\"<>|]", "");
+    }
+
     // 以下方法保持不变：cleanFileName、parseFirstLinePath、processContentForSaving、readFileContent
     // getContentSubtitle、writeFileContent、addContentTimestamp、handleZipAndShareIntent
     // zipFolder、addFolderToZip、shareFile、getMimeType、focusAndShowSoftInput、hideSoftInput
-    private String cleanFileName(String fileName) {
-        if (TextUtils.isEmpty(fileName)) return "";
-        return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
-    }
+
 
     private File parseFirstLinePath(String content, File rootDir, boolean isRootDirectory) {
         if (isRootDirectory || TextUtils.isEmpty(content)) {

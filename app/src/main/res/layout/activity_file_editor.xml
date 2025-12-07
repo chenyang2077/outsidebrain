@@ -29,10 +29,9 @@
             android:textSize="20sp"
             android:textStyle="bold"
             android:singleLine="true"
-            android:ellipsize="end"
-            android:inputType="textCapWords|textNoSuggestions"
-            android:imeOptions="actionNext"
-            android:layout_marginBottom="4dp"/>
+        android:inputType="text|textNoSuggestions"
+        android:imeOptions="actionDone"
+        android:layout_marginBottom="4dp"/>
 
         <!-- 内容编辑区（带边框）- 核心修改在这里 -->
         <EditText

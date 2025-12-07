@@ -1017,9 +1017,12 @@ public class MainActivity extends AppCompatActivity {
 
         for (File file : files) {
             if (file.isDirectory()) {
+                // 1. 先判断文件夹名是否匹配，匹配则加入结果列表
                 if (file.getName().toLowerCase().contains(keyword.toLowerCase())) {
                     searchResultList.add(file);
                 }
+                // 2. 关键修复：无论文件夹名是否匹配，都递归搜索其内部内容
+                //    （原逻辑中这行被隐含限制，现在强制递归）
                 recursiveSearch(file, keyword);
             } else if (isSupportedFile(file)) {
                 boolean nameMatch = getDisplayName(file).toLowerCase().contains(keyword.toLowerCase());
