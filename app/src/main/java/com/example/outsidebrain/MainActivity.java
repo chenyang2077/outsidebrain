@@ -1736,6 +1736,7 @@ public class MainActivity extends AppCompatActivity {
             etSearch.setText("");
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
+            clearSearchKeyword();
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
             hidePasteButton();
             PreferenceUtils.saveLastPageType(this, "main");
@@ -1753,6 +1754,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             super.onBackPressed();
         }
+
     }
 
     // 新增：从中转站根目录直接返回主页
