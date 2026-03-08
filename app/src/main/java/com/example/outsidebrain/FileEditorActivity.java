@@ -1,4 +1,9 @@
 package com.example.outsidebrain;
+import android.widget.Toast;
+import java.io.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 
 import android.content.Context;
 import android.content.Intent;
@@ -28,8 +33,6 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 import android.content.SharedPreferences;
 
 
@@ -39,8 +42,8 @@ import android.content.SharedPreferences;
  * 特点：统一使用UniqueFileNameHandler处理文件名查重和时间戳，存储在应用私有目录
  */
 public class FileEditorActivity extends AppCompatActivity {
-
-    public static final int RESULT_REFRESH = 100;
+    private static final int BUFFER_SIZE = 8192;
+    private static final int RESULT_REFRESH = 1002;
     private EditText etFileName;
     private EditText etContent;
     private boolean isPreEdit;       // 是否为新建文件模式
@@ -164,15 +167,40 @@ public class FileEditorActivity extends AppCompatActivity {
                                 imm.showSoftInput(etContent, InputMethodManager.SHOW_FORCED);
                             }
                         }
+                        // ========== 新增核心逻辑：etContent为空时强制弹键盘 ==========
+                        else if (TextUtils.isEmpty(fileContent)) {
+                            showKeyboard(etContent);
+                        }
                         // 无匹配：不做任何操作
                     }
-                    // 关键词为空/文件内容为空：不做任何操作
+                    // ========== 补充：关键词为空但内容为空时也弹键盘 ==========
+                    else if (TextUtils.isEmpty(fileContent)) {
+                        showKeyboard(etContent);
+                    }
                 }, 100); // 延迟100ms（确保文件内容完全渲染到EditText）
             }
         }
 
+        // ========== 全局补充：如果是新建文件/内容为空，直接弹键盘 ==========
+        // 覆盖所有etContent为空的场景（包括新建文件、编辑空文件）
+        if (etContent != null && TextUtils.isEmpty(etContent.getText().toString())) {
+            etContent.post(() -> showKeyboard(etContent));
+        }
+
         // 设置文本变化监听（保持不变）
         setupTextChangeListeners();
+    }
+
+    // ========== 新增：弹出键盘的工具方法（放在类中） ==========
+    private void showKeyboard(EditText editText) {
+        editText.requestFocus(); // 获取焦点（显示光标）
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            // 强制弹出键盘，兼容各种场景
+            imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
+            // 备选方案（如果上面不生效）：
+            // imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY);
+        }
     }
 
 
@@ -911,37 +939,68 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+
+
+// 注意：这是当前Activity中的方法，需确保类已导入上述包
+
+    // 定义压缩缓冲区大小（提升读写效率）
+
+    // 假设你的RESULT_REFRESH是自定义的返回码，需提前定义
+
+
+
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        try {
-            String zipFileName = folder.getName() + ".zip";
-            File zipFile = new File(folder.getParentFile(), zipFileName);
+        // 确定最终的压缩文件路径（避免重名）
+        String zipFileName = folder.getName() + ".zip";
+        File zipFile = new File(folder.getParentFile(), zipFileName);
 
-            // 避免压缩文件重名
-            int counter = 1;
-            while (zipFile.exists()) {
-                zipFileName = folder.getName() + "(" + counter + ").zip";
-                zipFile = new File(folder.getParentFile(), zipFileName);
-                counter++;
-            }
-
-            // 执行压缩
-            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile))) {
-                addFolderToZip(folder, folder.getName(), zos);
-                Toast.makeText(this, "压缩成功：" + zipFile.getName(), Toast.LENGTH_SHORT).show();
-                setResult(RESULT_REFRESH);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "压缩失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        int counter = 1;
+        while (zipFile.exists()) {
+            zipFileName = folder.getName() + "(" + counter + ").zip";
+            zipFile = new File(folder.getParentFile(), zipFileName);
+            counter++;
         }
+
+        // 定义final变量供lambda使用
+        final File finalZipFile = zipFile;
+
+        // 子线程执行压缩，避免ANR
+        new Thread(() -> {
+            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(finalZipFile))) {
+                zos.setLevel(9); // 最高压缩级别
+                addFolderToZip(folder, folder.getName(), zos);
+
+                // 压缩成功：切回主线程更新UI
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "压缩成功：" + finalZipFile.getName(), Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_REFRESH);
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+                // 压缩失败：提示并删除不完整文件
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "压缩失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    if (finalZipFile.exists()) {
+                        finalZipFile.delete();
+                    }
+                });
+            }
+        }).start();
     }
 
+    // 修复后的addFolderToZip（支持保留空文件夹，无重复变量）
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
+        // 核心：先创建文件夹Entry（无论是否为空），保留空文件夹
+        ZipEntry dirEntry = new ZipEntry(parentEntryName + "/");
+        dirEntry.setTime(folder.lastModified()); // 保留修改时间
+        zos.putNextEntry(dirEntry);
+        zos.closeEntry();
+
         File[] files = folder.listFiles();
         if (files == null) return;
 
@@ -953,8 +1012,9 @@ public class FileEditorActivity extends AppCompatActivity {
                 ZipEntry zipEntry = new ZipEntry(parentEntryName + "/" + file.getName());
                 zos.putNextEntry(zipEntry);
 
+                // 使用统一的BUFFER_SIZE，避免重复定义
                 try (FileInputStream fis = new FileInputStream(file)) {
-                    byte[] buffer = new byte[1024];
+                    byte[] buffer = new byte[BUFFER_SIZE];
                     int length;
                     while ((length = fis.read(buffer)) > 0) {
                         zos.write(buffer, 0, length);

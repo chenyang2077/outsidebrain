@@ -4,6 +4,12 @@ import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
@@ -177,6 +183,9 @@ public class MainActivity extends AppCompatActivity {
         fileRecyclerView.setAdapter(fileAdapter);
 
         checkPermission();
+        clearSearchKeyword();
+        // 3. 重置搜索模式标记（避免残留搜索状态）
+        isInSearchMode = false;
 
         // 初始化回收站
         initRecycleBin();
@@ -368,6 +377,44 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
+    /**
+     * 获取与小数排序规则一致的层级路径（最终版）
+     * @param targetDir 目标文件夹
+     * @return 层级数字列表（与图标序列号完全一致）
+     */
+
+    /**
+     * 公共排序方法：文件夹按名称排序（支持小数）【复用你的原有逻辑】
+     */
+    private void sortFoldersWithDecimalSupport(List<File> folders) {
+        Collections.sort(folders, new Comparator<File>() {
+            @Override
+            public int compare(File file1, File file2) {
+                String name1 = file1.getName();
+                String name2 = file2.getName();
+
+                // 提取文件名前面的数字（包括小数）
+                Double num1 = extractLeadingNumberFromName(name1);
+                Double num2 = extractLeadingNumberFromName(name2);
+
+                // 优先按数字排序
+                if (num1 != null && num2 != null) {
+                    // 使用Double进行比较，可以正确处理小数
+                    return Double.compare(num1, num2);
+                } else if (num1 != null) {
+                    // 只有file1有数字开头，排在前面
+                    return -1;
+                } else if (num2 != null) {
+                    // 只有file2有数字开头，排在前面
+                    return 1;
+                }
+
+                // 如果都没有数字开头，则按默认的字母顺序排序
+                return name1.compareTo(name2);
+            }
+        });
+    }
+
 
 
     // 在你的 Activity 类中
@@ -443,7 +490,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
-            // 显示进度对话框
             showProgressDialog("正在压缩...");
         }
 
@@ -452,126 +498,162 @@ public class MainActivity extends AppCompatActivity {
             sourceDir = params[0];
             destZipFile = params[1];
 
-            try {
-                // 使用 Java 的 ZipOutputStream 来压缩文件夹
-                ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(destZipFile));
-                File[] files = sourceDir.listFiles();
-
-                if (files == null) {
-                    errorMessage = "无法读取根目录内容";
-                    return false;
-                }
-
-                // 计算总文件数，用于更新进度
-                int totalFiles = countFiles(sourceDir);
-                int processedFiles = 0;
-
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        // 如果是文件夹，递归压缩
-                        zipDirectory(file, file.getName(), zos, sourceDir.getPath().length() + 1, totalFiles, processedFiles);
-                    } else {
-                        // 如果是文件，直接压缩
-                        zipFile(file, zos, sourceDir.getPath().length() + 1);
-                    }
-                    processedFiles++;
-                    publishProgress((int) ((processedFiles / (float) totalFiles) * 100));
-                }
-
-                zos.closeEntry();
-                zos.close();
-                return true;
-            } catch (IOException e) {
-                e.printStackTrace();
-                errorMessage = "压缩失败: " + e.getMessage();
+            // 1. 终极校验：确保源目录存在且可读写
+            if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
+                errorMessage = "源目录不存在或不是文件夹";
                 return false;
+            }
+            if (!sourceDir.canRead()) {
+                errorMessage = "没有读取源目录的权限";
+                return false;
+            }
+
+            // 2. 确保目标目录可写
+            if (!destZipFile.getParentFile().canWrite()) {
+                errorMessage = "没有写入压缩包的权限";
+                return false;
+            }
+
+            ZipOutputStream zos = null;
+            try {
+                // 移除 setEncoding，安卓不支持，改用默认编码即可
+                zos = new ZipOutputStream(new FileOutputStream(destZipFile));
+
+                // 3. 核心：遍历所有文件/文件夹（包括空文件夹）
+                File[] allItems = sourceDir.listFiles();
+                if (allItems == null) {
+                    // 根目录是空的（全是空文件夹/无内容），手动创建根目录条目
+                    ZipEntry rootEntry = new ZipEntry(sourceDir.getName() + "/");
+                    zos.putNextEntry(rootEntry);
+                    zos.closeEntry();
+                    return true;
+                }
+
+                for (File item : allItems) {
+                    // 递归处理每个条目（强制保留空文件夹）
+                    addToZip(item, sourceDir, zos);
+                }
+
+                return true;
+            } catch (Exception e) {
+                errorMessage = "压缩失败：" + e.getMessage();
+                e.printStackTrace();
+                return false;
+            } finally {
+                // 4. 安全关闭流（必须保证流关闭，否则条目写入失败）
+                if (zos != null) {
+                    try {
+                        zos.flush(); // 先刷新，确保所有条目写入
+                        zos.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
         }
 
         @Override
         protected void onProgressUpdate(Integer... values) {
             super.onProgressUpdate(values);
-            // 更新进度对话框
             updateProgressDialog(values[0]);
         }
 
         @Override
         protected void onPostExecute(Boolean result) {
             super.onPostExecute(result);
-            // 关闭进度对话框
             dismissProgressDialog();
 
             if (result) {
-                Toast.makeText(MainActivity.this, "压缩成功: " + destZipFile.getName(), Toast.LENGTH_LONG).show();
-                // 压缩成功后，刷新文件列表
+                Toast.makeText(MainActivity.this, "压缩成功：" + destZipFile.getName(), Toast.LENGTH_LONG).show();
                 loadFileList();
             } else {
                 Toast.makeText(MainActivity.this, errorMessage, Toast.LENGTH_LONG).show();
+                // 失败时删除无效的压缩包
+                if (destZipFile.exists()) {
+                    destZipFile.delete();
+                }
             }
-            compressTask = null; // 释放引用
+            compressTask = null;
         }
 
         /**
-         * 计算目录下的文件总数（包括子目录）
+         * 核心方法：添加文件/文件夹到ZIP（强制保留空文件夹）
+         * @param file 要添加的文件/文件夹
+         * @param rootDir 根目录（用于计算相对路径）
+         * @param zos ZIP输出流
          */
-        private int countFiles(File directory) {
-            int count = 0;
-            File[] files = directory.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isFile()) {
-                        count++;
-                    } else if (file.isDirectory()) {
-                        count += countFiles(file);
+        private void addToZip(File file, File rootDir, ZipOutputStream zos) throws IOException {
+            // 打印日志，排查空文件夹是否被处理（可保留用于调试）
+            Log.d("CompressDebug", "处理条目：" + file.getAbsolutePath()
+                    + " | 是否文件夹：" + file.isDirectory()
+                    + " | 是否为空：" + (file.listFiles() == null || file.listFiles().length == 0));
+
+            // 计算相对路径（兜底处理：避免空路径）
+            String relativePath = getRelativePath(rootDir, file);
+            if (relativePath.isEmpty()) {
+                relativePath = file.getName();
+            }
+
+            // 1. 处理文件夹（核心中的核心）
+            if (file.isDirectory()) {
+                // 强制加/结尾，哪怕是根目录下的空文件夹
+                if (!relativePath.endsWith("/")) {
+                    relativePath += "/";
+                }
+
+                // ********** 强制创建文件夹条目 **********
+                ZipEntry dirEntry = new ZipEntry(relativePath);
+                // 设置条目属性，确保解压工具识别为文件夹
+                dirEntry.setSize(0);
+                dirEntry.setTime(file.lastModified());
+                zos.putNextEntry(dirEntry);
+                zos.closeEntry(); // 空文件夹必须关闭条目
+
+                // 打印日志，确认文件夹条目已创建
+                Log.d("CompressDebug", "创建文件夹条目：" + relativePath);
+
+                // 遍历子条目（哪怕是空文件夹，listFiles返回null也不影响）
+                File[] children = file.listFiles();
+                if (children != null) {
+                    for (File child : children) {
+                        addToZip(child, rootDir, zos);
                     }
                 }
             }
-            return count;
-        }
+            // 2. 处理文件
+            else {
+                ZipEntry fileEntry = new ZipEntry(relativePath);
+                fileEntry.setTime(file.lastModified());
+                zos.putNextEntry(fileEntry);
 
-        /**
-         * 压缩单个文件
-         */
-        private void zipFile(File file, ZipOutputStream zos, int pathPrefixLength) throws IOException {
-            byte[] buffer = new byte[1024];
-            FileInputStream fis = new FileInputStream(file);
-
-            // 创建 ZIP 条目，去掉根目录路径，只保留相对路径
-            String entryName = file.getPath().substring(pathPrefixLength);
-            ZipEntry zipEntry = new ZipEntry(entryName);
-            zos.putNextEntry(zipEntry);
-
-            int length;
-            while ((length = fis.read(buffer)) > 0) {
-                zos.write(buffer, 0, length);
-            }
-
-            zos.closeEntry();
-            fis.close();
-        }
-
-        /**
-         * 递归压缩目录
-         */
-        private void zipDirectory(File directory, String parentEntryName, ZipOutputStream zos, int pathPrefixLength, int totalFiles, int processedFiles) throws IOException {
-            File[] files = directory.listFiles();
-            if (files == null) {
-                return;
-            }
-
-            for (File file : files) {
-                String entryName = parentEntryName + File.separator + file.getName();
-                if (file.isDirectory()) {
-                    zipDirectory(file, entryName, zos, pathPrefixLength, totalFiles, processedFiles);
-                } else {
-                    zipFile(file, zos, pathPrefixLength);
-                    processedFiles++;
-                    publishProgress((int) ((processedFiles / (float) totalFiles) * 100));
+                FileInputStream fis = new FileInputStream(file);
+                byte[] buffer = new byte[4096];
+                int len;
+                while ((len = fis.read(buffer)) != -1) {
+                    zos.write(buffer, 0, len);
                 }
+
+                fis.close();
+                zos.closeEntry();
+                publishProgress(0);
             }
+        }
+
+        /**
+         * 计算相对路径（兜底：避免空字符串）
+         */
+        private String getRelativePath(File rootDir, File file) throws IOException {
+            String rootPath = rootDir.getCanonicalPath();
+            String filePath = file.getCanonicalPath();
+
+            // 兜底：如果是根目录下的直接子项，返回文件名
+            if (filePath.startsWith(rootPath)) {
+                String rel = filePath.substring(rootPath.length());
+                return rel.startsWith(File.separator) ? rel.substring(1) : rel;
+            }
+            return file.getName();
         }
     }
-
     /**
      * 以下是辅助方法，用于显示和管理进度对话框
      * 你可以根据自己的 UI 框架进行调整
@@ -608,51 +690,6 @@ public class MainActivity extends AppCompatActivity {
         if (compressTask != null && !compressTask.isCancelled()) {
             compressTask.cancel(true);
         }
-    }
-    private List<Integer> getLevelPath(File file) {
-        List<Integer> levelPath = new ArrayList<>();
-        File current = file;
-
-        if (current.getName().equals(ROOT_FOLDER_NAME)) {
-            levelPath.add(1);
-            return levelPath;
-        }
-
-        while (current != null) {
-            String fileName = current.getName();
-            if (fileName.equals(ROOT_FOLDER_NAME)) {
-                levelPath.add(1);
-                break;
-            }
-
-            File parent = current.getParentFile();
-            if (parent == null) break;
-
-            File[] siblings = parent.listFiles(File::isDirectory);
-            if (siblings != null) {
-                List<File> sortedSiblings = new ArrayList<>();
-                Collections.addAll(sortedSiblings, siblings);
-                // 修复排序对象错误：原代码用fileList排序，改为用siblings排序
-                Collections.sort(sortedSiblings, new Comparator<File>() {
-                    @Override
-                    public int compare(File file1, File file2) {
-                        return file1.getName().compareTo(file2.getName());
-                    }
-                });
-
-                for (int i = 0; i < sortedSiblings.size(); i++) {
-                    if (sortedSiblings.get(i).getName().equals(fileName)) {
-                        levelPath.add(i + 1);
-                        break;
-                    }
-                }
-            }
-
-            current = parent;
-        }
-
-        Collections.reverse(levelPath);
-        return levelPath;
     }
 
     private void startFilePreEdit() {
@@ -1361,66 +1398,10 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 文件夹按名称排序（支持小数）
-            Collections.sort(folders, new Comparator<File>() {
-                @Override
-                public int compare(File file1, File file2) {
-                    String name1 = file1.getName();
-                    String name2 = file2.getName();
+            // ========== 仅修改这1行：调用公共排序方法（替代原有内嵌的排序逻辑） ==========
+            sortFoldersWithDecimalSupport(folders);
 
-                    // 提取文件名前面的数字（包括小数）
-                    Double num1 = extractLeadingNumberFromName(name1);
-                    Double num2 = extractLeadingNumberFromName(name2);
-
-                    // 优先按数字排序
-                    if (num1 != null && num2 != null) {
-                        // 使用Double进行比较，可以正确处理小数
-                        return Double.compare(num1, num2);
-                    } else if (num1 != null) {
-                        // 只有file1有数字开头，排在前面
-                        return -1;
-                    } else if (num2 != null) {
-                        // 只有file2有数字开头，排在前面
-                        return 1;
-                    }
-
-                    // 如果都没有数字开头，则按默认的字母顺序排序
-                    return name1.compareTo(name2);
-                }
-
-                /**
-                 * 内部辅助方法：从文件名开头提取数字，可以是整数或小数。
-                 * @param fileName 文件名
-                 * @return 提取到的数字（Double类型），如果没有则返回null
-                 */
-                private Double extractLeadingNumberFromName(String fileName) {
-                    if (fileName == null || fileName.isEmpty()) {
-                        return null;
-                    }
-
-                    // 修改正则表达式，匹配开头的数字（包括整数和小数）
-                    // ^\\d+\\.?\\d*  解释：
-                    // ^       - 匹配字符串开头
-                    // \\d+    - 匹配一个或多个数字
-                    // \\.?    - 匹配一个可选的小数点 (.)
-                    // \\d*    - 匹配零个或多个数字（小数点后面的部分）
-                    Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
-                    Matcher matcher = pattern.matcher(fileName);
-
-                    if (matcher.find()) {
-                        try {
-                            // 将匹配到的字符串转换为Double
-                            return Double.parseDouble(matcher.group());
-                        } catch (NumberFormatException e) {
-                            // 理论上不会进入这里，因为正则表达式已经保证了是数字格式
-                            return null;
-                        }
-                    }
-
-                    return null;
-                }
-            });
-
+            // 原有txt文件排序逻辑（完全保留，未做任何修改）
             Collections.sort(txtFiles, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
@@ -1458,29 +1439,6 @@ public class MainActivity extends AppCompatActivity {
                             return 0;
                         }
                     }
-                }
-
-                /**
-                 * 【修改3】：支持提取整数和小数（核心修改）
-                 */
-                private Double extractLeadingNumberFromName(String fileName) {
-                    if (fileName == null || fileName.isEmpty()) {
-                        return null;
-                    }
-
-                    // 【修改核心】：正则改为支持小数（^\\d+\\.?\\d*）
-                    Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
-                    Matcher matcher = pattern.matcher(fileName);
-
-                    if (matcher.find()) {
-                        try {
-                            // 【修改4】：转换为 Double 类型
-                            return Double.parseDouble(matcher.group());
-                        } catch (NumberFormatException e) {
-                            return null;
-                        }
-                    }
-                    return null;
                 }
 
                 /**
@@ -1530,6 +1488,85 @@ public class MainActivity extends AppCompatActivity {
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
         }
+    }
+
+    // ========== 第三步：完整的getLevelPath方法（基于公共排序逻辑） ==========
+    private List<Integer> getLevelPath(File targetDir) {
+        List<Integer> levelPath = new ArrayList<>();
+        File currentDir = targetDir;
+
+        // 从目标文件夹向上回溯到根目录
+        while (currentDir != null && !currentDir.equals(rootDirectory)) { // 替换为你的根目录常量
+            File parentDir = currentDir.getParentFile();
+            if (parentDir == null || !parentDir.exists()) break;
+
+            // 1. 获取父目录下的所有文件夹
+            File[] parentFiles = parentDir.listFiles();
+            List<File> parentFolders = new ArrayList<>();
+            if (parentFiles != null) {
+                for (File f : parentFiles) {
+                    if (f.isDirectory()) {
+                        parentFolders.add(f);
+                    }
+                }
+            }
+
+            // 2. 复用公共小数排序逻辑
+            sortFoldersWithDecimalSupport(parentFolders);
+
+            // 3. 找到当前目录在排序后列表中的位置（序列号=索引+1）
+            int serialNumber = 0;
+            for (int i = 0; i < parentFolders.size(); i++) {
+                if (parentFolders.get(i).getAbsolutePath().equals(currentDir.getAbsolutePath())) {
+                    serialNumber = i + 1; // 序列号从1开始，与图标显示一致
+                    break;
+                }
+            }
+
+            // 4. 添加到层级路径
+            if (serialNumber > 0) {
+                levelPath.add(serialNumber);
+            }
+
+            // 5. 向上回溯
+            currentDir = parentDir;
+        }
+
+        // 反转列表（从根到子的顺序）
+        Collections.reverse(levelPath);
+
+        // 根目录补充（Lv-1）
+        if (levelPath.isEmpty() && targetDir.equals(rootDirectory)) {
+            levelPath.add(1);
+        }
+
+        return levelPath;
+    }
+    private Double extractLeadingNumberFromName(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return null;
+        }
+
+        // 修改正则表达式，匹配开头的数字（包括整数和小数）
+        // ^\\d+\\.?\\d*  解释：
+        // ^       - 匹配字符串开头
+        // \\d+    - 匹配一个或多个数字
+        // \\.?    - 匹配一个可选的小数点 (.)
+        // \\d*    - 匹配零个或多个数字（小数点后面的部分）
+        Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
+        Matcher matcher = pattern.matcher(fileName);
+
+        if (matcher.find()) {
+            try {
+                // 将匹配到的字符串转换为Double
+                return Double.parseDouble(matcher.group());
+            } catch (NumberFormatException e) {
+                // 理论上不会进入这里，因为正则表达式已经保证了是数字格式
+                return null;
+            }
+        }
+
+        return null;
     }
 
     // 提取文件名末尾17位数字作为时间戳的工具方法
@@ -3719,6 +3756,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 文件列表适配器
+    // ========== 完整的FileAdapter类（含图标放大+序列号逻辑） ==========
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
@@ -3742,10 +3780,21 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
 
-            // 严格按类型设置样式（保持原有逻辑）
+            // 严格按类型设置样式（修改：文件夹部分添加放大+序列号）
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
-                holder.ivIcon.setImageResource(R.drawable.ic_folder);
+
+                // ========== 核心修改：放大图标 + 绘制同色序列号 ==========
+                // 1. 放大图标尺寸（24dp → 36dp，可自行调整）
+                int iconSize = dp2px(holder.itemView.getContext(), 36);
+                ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
+                params.width = iconSize;
+                params.height = iconSize;
+                holder.ivIcon.setLayoutParams(params);
+
+                // 2. 绘制带同色（#FFB85C）序列号的文件夹图标
+                drawFolderIconWithNumber(holder.ivIcon, position + 1); // 序列号从1开始
+
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else if (file.getName().toLowerCase().endsWith(".zip")) {
                 holder.ivIcon.setImageResource(R.drawable.ic_image_error);
@@ -3765,10 +3814,10 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
 
-            // 关键修改：使用处理后的显示名称
+            // 关键修改：使用处理后的显示名称（原有逻辑保留）
             holder.tvName.setText(formatFileNameForDisplay(file.getName()));
 
-            // 保持原有的点击事件逻辑
+            // 保持原有的点击事件逻辑（完全未改）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -3826,7 +3875,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // 保持原有的长按事件逻辑
+            // 保持原有的长按事件逻辑（完全未改）
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
@@ -3851,6 +3900,55 @@ public class MainActivity extends AppCompatActivity {
                 ivIcon = itemView.findViewById(R.id.icon);
                 tvName = itemView.findViewById(R.id.name);
             }
+        }
+
+        // ========== 新增：dp转px工具方法（Adapter内部） ==========
+        private int dp2px(Context context, float dp) {
+            return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
+        }
+
+        // ========== 新增：绘制带同色序列号的文件夹图标 ==========
+        // ========== 修改后的绘制方法（序列号居中） ==========
+        private void drawFolderIconWithNumber(ImageView imageView, int number) {
+            // 1. 获取原始ic_folder图标
+            Drawable folderDrawable = ContextCompat.getDrawable(imageView.getContext(), R.drawable.ic_folder);
+            if (folderDrawable == null) {
+                imageView.setImageResource(R.drawable.ic_folder); // 兜底显示原始图标
+                return;
+            }
+
+            // 2. 创建位图画布
+            int drawableWidth = folderDrawable.getIntrinsicWidth();
+            int drawableHeight = folderDrawable.getIntrinsicHeight();
+            Bitmap bitmap = Bitmap.createBitmap(drawableWidth, drawableHeight, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+
+            // 3. 绘制原始文件夹图标
+            folderDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+            folderDrawable.draw(canvas);
+
+            // 4. 绘制序列号（颜色与ic_folder一致：#FFB85C）
+            Paint paint = new Paint();
+            paint.setColor(Color.parseColor("#FFB85C")); // 与你的矢量图标颜色一致
+            paint.setTextSize(dp2px(imageView.getContext(), 12)); // 序列号字体大小
+            paint.setTypeface(Typeface.DEFAULT_BOLD); // 加粗
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setAntiAlias(true); // 抗锯齿
+
+            // ========== 关键修改：序列号居中并向下偏移1/4文字高度 ==========
+            String numberText = String.valueOf(number);
+            // X轴：画布宽度的一半（水平居中）
+            float x = canvas.getWidth() / 2f;
+
+            // 计算文字总高度（descent是负数，ascent是正数，总高度=descent - ascent）
+            float textHeight = paint.descent() - paint.ascent();
+            // Y轴：居中位置 + 文字高度的1/6（仅改这一行）
+            float y = canvas.getHeight() / 2f - (paint.descent() + paint.ascent()) / 2 + textHeight / 6;
+
+            canvas.drawText(numberText, x, y, paint);
+
+            // 6. 设置最终图标
+            imageView.setImageBitmap(bitmap);
         }
     }
 }
