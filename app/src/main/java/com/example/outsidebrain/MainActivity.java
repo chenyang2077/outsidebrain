@@ -368,11 +368,16 @@ public class MainActivity extends AppCompatActivity {
         if (currentDirectory == null) return;
 
         List<Integer> levelPath = getLevelPath(currentDirectory);
-        StringBuilder levelStr = new StringBuilder("Lv-");
-        for (int i = 0; i < levelPath.size(); i++) {
-            levelStr.append(levelPath.get(i));
-            if (i < levelPath.size() - 1) {
-                levelStr.append("-");
+        StringBuilder levelStr = new StringBuilder();
+
+        // 仅当层级列表非空时，才拼接Lv-xxx（核心修改）
+        if (!levelPath.isEmpty()) {
+            levelStr.append("Lv-");
+            for (int i = 0; i < levelPath.size(); i++) {
+                levelStr.append(levelPath.get(i));
+                if (i < levelPath.size() - 1) {
+                    levelStr.append("-");
+                }
             }
         }
         etSearch.setHint(levelStr.toString());
@@ -1495,8 +1500,13 @@ public class MainActivity extends AppCompatActivity {
         List<Integer> levelPath = new ArrayList<>();
         File currentDir = targetDir;
 
-        // 从目标文件夹向上回溯到根目录
-        while (currentDir != null && !currentDir.equals(rootDirectory)) { // 替换为你的根目录常量
+        // 根目录直接返回空列表（核心修改）
+        if (targetDir.equals(rootDirectory)) {
+            return levelPath;
+        }
+
+        // 非根目录：正常回溯层级
+        while (currentDir != null && !currentDir.equals(rootDirectory)) {
             File parentDir = currentDir.getParentFile();
             if (parentDir == null || !parentDir.exists()) break;
 
@@ -1535,8 +1545,8 @@ public class MainActivity extends AppCompatActivity {
         // 反转列表（从根到子的顺序）
         Collections.reverse(levelPath);
 
-        // 根目录补充（Lv-1）
-        if (levelPath.isEmpty() && targetDir.equals(rootDirectory)) {
+        // 非根目录但层级为空的异常兜底
+        if (levelPath.isEmpty()) {
             levelPath.add(1);
         }
 
