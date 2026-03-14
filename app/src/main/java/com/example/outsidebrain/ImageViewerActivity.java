@@ -6,6 +6,8 @@ import android.graphics.Matrix;
 import android.graphics.PointF;
 import android.graphics.RectF;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -18,6 +20,7 @@ import androidx.appcompat.widget.AppCompatImageView;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.RequestOptions;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -33,6 +36,9 @@ public class ImageViewerActivity extends AppCompatActivity {
     private ViewPager2 viewPager2;
     private List<File> imageFiles;
     private int currentPosition;
+    private ImageAdapter imageAdapter;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean isPreloadInited = false; // 标记预加载是否已初始化
 
     private final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     private final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
@@ -52,11 +58,59 @@ public class ImageViewerActivity extends AppCompatActivity {
         currentPosition = findImagePosition(currentImagePath);
 
         viewPager2 = findViewById(R.id.view_pager);
+        // 初始不设置预加载，使用默认值（等效于0）
         viewPager2.setOrientation(ViewPager2.ORIENTATION_VERTICAL);
-        viewPager2.setOffscreenPageLimit(1);
         viewPager2.setUserInputEnabled(false);
-        viewPager2.setAdapter(new ImageAdapter());
+
+        imageAdapter = new ImageAdapter();
+        viewPager2.setAdapter(imageAdapter);
         viewPager2.setCurrentItem(currentPosition, false);
+
+        // 监听首屏布局完成，延迟开启预加载
+        viewPager2.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                viewPager2.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                // 首屏布局完成后，延迟1秒开启预加载（确保首屏完全稳定）
+                handler.postDelayed(() -> {
+                    if (!isPreloadInited && viewPager2 != null && imageFiles.size() > 1) {
+                        viewPager2.setOffscreenPageLimit(1); // 开启预加载（符合规则）
+                        isPreloadInited = true;
+                        // 刷新下一页预加载内容
+                        if (currentPosition + 1 < imageFiles.size()) {
+                            imageAdapter.notifyItemChanged(currentPosition + 1);
+                        }
+                    }
+                }, 1000);
+            }
+        });
+
+        // 页面切换监听：确保每次切换都正确初始化+居中
+        viewPager2.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                super.onPageSelected(position);
+                currentPosition = position;
+                // 延迟初始化当前页并强制居中
+                handler.postDelayed(() -> {
+                    RecyclerView recyclerView = (RecyclerView) viewPager2.getChildAt(0);
+                    if (recyclerView != null) {
+                        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+                        if (holder instanceof ImageAdapter.Holder) {
+                            SystemPhotoView photoView = ((ImageAdapter.Holder) holder).photoView;
+                            photoView.forceInitDisplay();
+                            photoView.forceCenterImage(); // 强制居中
+                        }
+                    }
+                }, 50);
+            }
+        });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        handler.removeCallbacksAndMessages(null);
     }
 
     private List<File> getImageFilesInFolder(File folder) {
@@ -162,8 +216,10 @@ public class ImageViewerActivity extends AppCompatActivity {
         @Override
         public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             SystemPhotoView photoView = new SystemPhotoView(parent.getContext());
-            photoView.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
+            photoView.setLayoutParams(new RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
             photoView.setScaleType(ImageView.ScaleType.MATRIX);
 
             photoView.setOnPageSlideListener(new SystemPhotoView.OnPageSlideListener() {
@@ -193,11 +249,22 @@ public class ImageViewerActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(@NonNull Holder holder, int position) {
-            // 每次绑定都重新初始化显示
+            // 禁用Glide变换和缓存，保证尺寸准确
             Glide.with(ImageViewerActivity.this)
                     .load(imageFiles.get(position))
+                    .apply(new RequestOptions()
+                            .dontTransform()
+                            .skipMemoryCache(true)
+                            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE))
                     .into(holder.photoView);
-            holder.photoView.post(() -> holder.photoView.initImageDisplay());
+
+            // 初始化并强制居中
+            holder.photoView.post(() -> {
+                holder.photoView.forceInitDisplay();
+                holder.photoView.forceCenterImage();
+                // 二次确认居中
+                handler.postDelayed(() -> holder.photoView.forceCenterImage(), 100);
+            });
         }
 
         @Override
@@ -215,11 +282,11 @@ public class ImageViewerActivity extends AppCompatActivity {
     }
 
     // ================================
-    // 完美版：严格按你的规则显示和缩放
+    // 核心：缩放回弹自动居中 + 首屏预加载优化
     // ================================
     public static class SystemPhotoView extends AppCompatImageView {
 
-        private static final float SLIDE_THRESHOLD = 40; // 滑动灵敏度
+        private static final float SLIDE_THRESHOLD = 40;
 
         private final Matrix matrix = new Matrix();
         private float baseScale = 1.0f; // 基准缩放：宽度=屏幕宽度
@@ -252,108 +319,117 @@ public class ImageViewerActivity extends AppCompatActivity {
 
         private void init() {
             setScaleType(ScaleType.MATRIX);
-            // 布局完成后初始化显示
-            getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-                @Override
-                public void onGlobalLayout() {
-                    getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                    initImageDisplay();
+            // 布局变化时强制初始化+居中
+            addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (right - left > 0 && bottom - top > 0) {
+                    forceInitDisplay();
+                    forceCenterImage();
                 }
             });
         }
 
-        // ========== 核心：初始化显示（严格按你的规则） ==========
-        public void initImageDisplay() {
-            if (getDrawable() == null) return;
+        // ========== 强制初始化显示（宽度=屏幕宽度） ==========
+        public void forceInitDisplay() {
+            if (getDrawable() == null || getWidth() == 0 || getHeight() == 0) {
+                return;
+            }
 
-            // 1. 获取尺寸
+            // 重置矩阵和缩放状态
+            matrix.reset();
+            currentScale = 1.0f;
+
+            // 计算基准缩放
             int screenWidth = getWidth();
             int screenHeight = getHeight();
             int imageWidth = getDrawable().getIntrinsicWidth();
             int imageHeight = getDrawable().getIntrinsicHeight();
 
-            // 2. 计算基准缩放：图片宽度 = 屏幕宽度
             baseScale = (float) screenWidth / imageWidth;
             currentScale = baseScale;
 
-            // 3. 重置矩阵
-            matrix.reset();
-            // 4. 缩放：宽度匹配屏幕
+            // 应用缩放
             matrix.postScale(baseScale, baseScale);
-            // 5. 平移：水平居中，垂直居中
-            float translateX = (screenWidth - imageWidth * baseScale) / 2f;
-            float translateY = (screenHeight - imageHeight * baseScale) / 2f;
-            matrix.postTranslate(translateX, translateY);
 
-            // 6. 应用矩阵
+            // 先居中，再应用矩阵
+            forceCenterImage();
             setImageMatrix(matrix);
+            invalidate();
         }
 
-        // ========== 触摸事件处理 ==========
+        // ========== 核心新增：强制图片上下左右完全居中 ==========
+        public void forceCenterImage() {
+            if (getDrawable() == null || getWidth() == 0 || getHeight() == 0) {
+                return;
+            }
+
+            RectF imageRect = new RectF();
+            matrix.mapRect(imageRect, new RectF(0, 0, getDrawable().getIntrinsicWidth(), getDrawable().getIntrinsicHeight()));
+
+            // 计算完全居中的偏移量
+            float dx = (getWidth() - imageRect.width()) / 2f - imageRect.left;
+            float dy = (getHeight() - imageRect.height()) / 2f - imageRect.top;
+
+            // 应用居中平移
+            matrix.postTranslate(dx, dy);
+            setImageMatrix(matrix);
+            invalidate();
+        }
+
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    // 单指按下
                     lastTouchPoint.set(event.getX(), event.getY());
                     touchMode = 1;
                     break;
 
                 case MotionEvent.ACTION_POINTER_DOWN:
-                    // 双指按下
                     lastFingerDistance = calculateFingerDistance(event);
                     touchMode = 2;
                     break;
 
                 case MotionEvent.ACTION_MOVE:
                     if (touchMode == 2) {
-                        // 双指缩放
                         handleTwoFingerScale(event);
                     } else if (touchMode == 1) {
-                        // 单指操作
                         handleSingleFingerMove(event);
                     }
                     break;
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_POINTER_UP:
-                    // 手指抬起：缩放不足则回弹到基准大小
                     touchMode = 0;
-                    if (currentScale < baseScale) {
+                    // 缩放到基准宽度时，强制居中
+                    if (currentScale <= baseScale + 0.01f) { // 允许微小误差
+                        currentScale = baseScale;
                         resetToBaseScale();
+                        forceCenterImage(); // 缩放回弹后自动居中
                     }
                     break;
             }
             return true;
         }
 
-        // ========== 双指缩放（限制最小缩放为基准缩放） ==========
         private void handleTwoFingerScale(MotionEvent event) {
             float newDistance = calculateFingerDistance(event);
             if (newDistance > 10f) {
-                // 计算缩放比例
                 float scaleRatio = newDistance / lastFingerDistance;
                 float targetScale = currentScale * scaleRatio;
-
-                // 限制最小缩放为基准缩放（宽度=屏幕宽度）
+                // 最小缩放为基准缩放（宽度=屏幕宽度）
                 targetScale = Math.max(baseScale, targetScale);
-                // 限制最大缩放（可根据需要调整）
+                // 最大缩放为基准缩放的4倍
                 targetScale = Math.min(targetScale, baseScale * 4);
 
-                // 计算缩放中心点
                 float centerX = (event.getX(0) + event.getX(1)) / 2f;
                 float centerY = (event.getY(0) + event.getY(1)) / 2f;
 
-                // 应用缩放
                 matrix.postScale(targetScale / currentScale, targetScale / currentScale, centerX, centerY);
                 currentScale = targetScale;
                 setImageMatrix(matrix);
-
                 lastFingerDistance = newDistance;
             }
         }
 
-        // ========== 单指操作（平移/翻页） ==========
         private void handleSingleFingerMove(MotionEvent event) {
             float dx = event.getX() - lastTouchPoint.x;
             float dy = event.getY() - lastTouchPoint.y;
@@ -370,76 +446,44 @@ public class ImageViewerActivity extends AppCompatActivity {
             } else {
                 // 放大状态：平移图片
                 matrix.postTranslate(dx, dy);
-                // 边界修正（保证图片宽度至少占满屏幕）
-                fixImageBorder();
+                fixImageBorder(); // 边界修正
                 setImageMatrix(matrix);
             }
 
             lastTouchPoint.set(event.getX(), event.getY());
         }
 
-        // ========== 回弹到基准缩放（宽度=屏幕宽度） ==========
+        // 回弹到基准缩放并自动居中
         private void resetToBaseScale() {
-            // 计算缩放比例
             float scaleRatio = baseScale / currentScale;
-
-            // 计算屏幕中心点作为回弹中心
             float centerX = getWidth() / 2f;
             float centerY = getHeight() / 2f;
 
-            // 应用缩放和平移
             matrix.postScale(scaleRatio, scaleRatio, centerX, centerY);
             currentScale = baseScale;
 
-            // 重新居中
-            centerImage();
             setImageMatrix(matrix);
         }
 
-        // ========== 边界修正（保证宽度至少占满屏幕） ==========
+        // 边界修正（保证宽度至少占满屏幕）
         private void fixImageBorder() {
             RectF imageRect = new RectF();
             matrix.mapRect(imageRect, new RectF(0, 0, getDrawable().getIntrinsicWidth(), getDrawable().getIntrinsicHeight()));
 
-            float dx = 0, dy = 0;
+            float dx = 0;
             int screenWidth = getWidth();
-            int screenHeight = getHeight();
 
-            // 宽度：至少占满屏幕，不足则居中
             if (imageRect.width() < screenWidth) {
                 dx = (screenWidth - imageRect.width()) / 2f - imageRect.left;
             } else {
-                // 宽度超出：限制左右边界
                 if (imageRect.left > 0) dx = -imageRect.left;
                 if (imageRect.right < screenWidth) dx = screenWidth - imageRect.right;
             }
 
-            // 高度：不限制，超出则裁剪，不足则留空白
-            // （如果需要限制高度边界，可取消下面注释）
-            // if (imageRect.height() < screenHeight) {
-            //     dy = (screenHeight - imageRect.height()) / 2f - imageRect.top;
-            // } else {
-            //     if (imageRect.top > 0) dy = -imageRect.top;
-            //     if (imageRect.bottom < screenHeight) dy = screenHeight - imageRect.bottom;
-            // }
-
-            matrix.postTranslate(dx, dy);
+            matrix.postTranslate(dx, 0);
         }
 
-        // ========== 图片居中 ==========
-        private void centerImage() {
-            if (getDrawable() == null) return;
-
-            RectF imageRect = new RectF();
-            matrix.mapRect(imageRect, new RectF(0, 0, getDrawable().getIntrinsicWidth(), getDrawable().getIntrinsicHeight()));
-
-            float dx = (getWidth() - imageRect.width()) / 2f - imageRect.left;
-            float dy = (getHeight() - imageRect.height()) / 2f - imageRect.top;
-
-            matrix.postTranslate(dx, dy);
-        }
-
-        // ========== 计算双指距离 ==========
+        // 计算双指距离
         private float calculateFingerDistance(MotionEvent event) {
             float x = event.getX(0) - event.getX(1);
             float y = event.getY(0) - event.getY(1);
