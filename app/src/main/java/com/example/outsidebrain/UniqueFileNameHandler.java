@@ -1,8 +1,6 @@
 package com.example.outsidebrain;
 
 import android.text.TextUtils;
-import android.util.Log;
-
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -13,18 +11,18 @@ import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 唯一文件名处理工具类文件UniqueFileNameHandler.java：生成无冲突文件名、清理时间戳、解析文件名结构
+ */
 public class UniqueFileNameHandler {
     private static final String TAG = "UniqueFileNameHandler";
-    // 匹配带序列号的文件名模式，如"文件(1)"
     private static final Pattern SUFFIX_PATTERN = Pattern.compile("^(.*?)\\((\\d+)\\)$");
-
-    // 两种时间戳格式的正则（私有，仅内部使用）
     private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
 
-    // -------------------------- 公开方法：生成6位随机字符串 --------------------------
     /**
-     * 生成6位随机字符串（字母+数字）
+     * 生成6位随机字符串（包含大小写字母和数字）
+     * @return String 6位随机字符串
      */
     public static String generateRandomString() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -36,49 +34,15 @@ public class UniqueFileNameHandler {
         return sb.toString();
     }
 
-    // -------------------------- 公开方法：提取随机字符串 --------------------------
     /**
-     * 从文件名中提取6位随机字符串（支持基础/增量格式）
-     * @param fileName 不含扩展名的原始文件名（如"笔记_abc123_20250928153022123"）
-     * @return 提取的随机字符串，提取失败则生成新的
+     * 生成全局唯一的TXT文件名，自动规避命名冲突
+     * @return String 无冲突的唯一文件名
      */
-    public static String extractRandomString(String fileName) {
-        if (TextUtils.isEmpty(fileName)) {
-            return generateRandomString(); // 空文件名时生成新随机串
-        }
-
-        // 1. 先匹配基础格式（_abc123_20250928153022123）
-        Matcher singleMatcher = SINGLE_TIMESTAMP_PATTERN.matcher(fileName);
-        if (singleMatcher.find()) {
-            String[] parts = singleMatcher.group().split("_"); // 分割为 ["", "abc123", "20250928153022123"]
-            if (parts.length >= 2) {
-                return parts[1]; // 返回第2个元素（6位随机串）
-            }
-        }
-
-        // 2. 再匹配增量格式（_abc123_20250928153022123_20250928164033444）
-        Matcher multiMatcher = MULTI_TIMESTAMP_PATTERN.matcher(fileName);
-        if (multiMatcher.find()) {
-            String[] parts = multiMatcher.group().split("_"); // 分割为 ["", "abc123", "20250928153022123", "20250928164033444"]
-            if (parts.length >= 2) {
-                return parts[1]; // 返回第2个元素（6位随机串）
-            }
-        }
-
-        // 3. 两种格式都匹配失败，生成新的随机串
-        return generateRandomString();
-    }
-
-    // -------------------------- 其他已有方法保持不变 --------------------------
     public static String getGlobalUniqueFileName(File rootDir, File targetDir, String baseName, String timestamp) {
         String cleanedBaseName = cleanTitle(baseName);
         NameParts nameParts = parseNameParts(cleanedBaseName);
         String coreName = nameParts.coreName;
-
-        // 获取所有冲突文件
         List<File> conflictFiles = findConflictingFiles(rootDir, coreName);
-
-        // 收集已使用的序列号
         List<Integer> usedSuffixes = new ArrayList<>();
         for (File file : conflictFiles) {
             String fileName = cleanTitle(file.getName());
@@ -88,16 +52,17 @@ public class UniqueFileNameHandler {
                 usedSuffixes.add(parts.suffix);
             }
         }
-
-        // 从0开始查找第一个未被使用的序列号
         int suffix = 0;
         while (usedSuffixes.contains(suffix)) {
             suffix++;
         }
-
         return buildFileName(coreName, suffix, timestamp);
     }
 
+    /**
+     * 清理文件名中的各类时间戳，返回纯文本标题
+     * @return String 清理后的文件名
+     */
     public static String cleanTitle(String input) {
         if (TextUtils.isEmpty(input)) {
             return "";
@@ -110,6 +75,10 @@ public class UniqueFileNameHandler {
         return cleaned.trim();
     }
 
+    /**
+     * 解析文件名结构，提取核心名称和数字后缀
+     * @return NameParts 文件名解析结果
+     */
     private static NameParts parseNameParts(String fileName) {
         Matcher matcher = SUFFIX_PATTERN.matcher(fileName);
         if (matcher.matches()) {
@@ -124,6 +93,10 @@ public class UniqueFileNameHandler {
         return new NameParts(fileName, 0);
     }
 
+    /**
+     * 构建最终文件名，拼接核心名称、后缀和时间戳
+     * @return String 完整文件名
+     */
     private static String buildFileName(String coreName, int suffix, String timestamp) {
         if (suffix <= 0) {
             return coreName + timestamp + ".txt";
@@ -132,6 +105,10 @@ public class UniqueFileNameHandler {
         }
     }
 
+    /**
+     * 移除文件名中的所有时间戳（含旧版格式）
+     * @return String 去时间戳后的文件名
+     */
     public static String removeTimestamp(String fileName) {
         String cleaned = cleanTitle(fileName);
         if (MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN != null) {
@@ -140,6 +117,10 @@ public class UniqueFileNameHandler {
         return cleaned;
     }
 
+    /**
+     * 查找指定根目录下所有与核心名称冲突的TXT文件
+     * @return List<File> 冲突文件列表
+     */
     private static List<File> findConflictingFiles(File rootDir, String coreName) {
         List<File> result = new ArrayList<>();
         if (!rootDir.exists() || !rootDir.isDirectory()) {
@@ -149,6 +130,9 @@ public class UniqueFileNameHandler {
         return result;
     }
 
+    /**
+     * 递归搜索目录下的冲突TXT文件
+     */
     private static void searchFiles(File dir, String coreName, List<File> result) {
         File[] files = dir.listFiles();
         if (files == null) {
@@ -168,25 +152,39 @@ public class UniqueFileNameHandler {
         }
     }
 
+    /**
+     * 内部数据类：存储文件名解析结果（核心名称、数字后缀）
+     */
     private static class NameParts {
         String coreName;
         int suffix;
+
         NameParts(String coreName, int suffix) {
             this.coreName = coreName;
             this.suffix = suffix;
         }
     }
 
-    // 时间戳处理内部类
+    /**
+     * 时间戳处理内部类：生成时间戳、处理TXT文件名时间戳更新
+     */
     public static class TimestampHandler {
         public static String generateRandomString() {
             return UniqueFileNameHandler.generateRandomString(); // 复用外部方法
         }
 
+        /**
+         * 生成毫秒级时间戳（yyyyMMddHHmmssSSS）
+         * @return String 毫秒级时间戳字符串
+         */
         public static String generateMillisTimestamp() {
             return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
         }
 
+        /**
+         * 处理TXT文件名，更新/添加时间戳保证唯一性
+         * @return String 处理后的文件名
+         */
         public static String processTxtFileName(String originalFileName) {
             if (!originalFileName.toLowerCase().endsWith(".txt")) {
                 return originalFileName;

@@ -2,13 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.outsidebrain">
-
-    <!-- 存储权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
-
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_folder2"
@@ -18,10 +15,6 @@
         android:theme="@style/Theme.OutsideBrain"
         android:requestLegacyExternalStorage="true"
         tools:targetApi="30">
-
-
-
-        <!-- 主活动 -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -30,14 +23,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- 文件编辑活动 -->
         <activity
             android:name=".FileEditorActivity"
             android:exported="false"
             android:theme="@style/Theme.OutsideBrain.NoActionBar" />
-
-        <!-- FileProvider：用于Android 7.0+文件分享 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -47,7 +36,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
     </application>
-
 </manifest>

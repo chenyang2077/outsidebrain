@@ -16,7 +16,6 @@ import android.os.Looper;
 import android.provider.Settings;
 import java.util.Collections;
 import java.util.Comparator;
-
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import android.text.Spannable;
@@ -38,7 +37,6 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
-import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -54,8 +52,6 @@ import android.widget.ListAdapter;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
-
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
@@ -65,10 +61,8 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
 import com.bumptech.glide.Glide;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -83,117 +77,117 @@ import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
 import android.content.Context;
 import android.view.ContextThemeWrapper;
-import android.app.Application;
 import androidx.appcompat.app.AppCompatDelegate;
+
+/**
+ * 主界面文件MainActivity.java：实现文件管理器核心功能，包括：
+ * 1. 文件/文件夹的浏览、创建、重命名、复制、剪切、粘贴、删除；
+ * 2. TXT文件智能命名（含时间戳/随机字符）、路径自动修正、内容搜索；
+ * 3. ZIP压缩包解压/文件夹压缩、文件分享；
+ * 4. 回收站/中转站功能，实现文件临时存储与恢复；
+ * 5. 图片预览、文件排序（支持数字/时间戳排序）；
+ * 6. 搜索功能（文件名/文件内容关键词匹配）；
+ * 7. 状态恢复（上次打开的目录/文件/图片）。
+ */
 public class MainActivity extends AppCompatActivity {
-
-    // 1. 定义全局变量存储剪切状态（确保在Activity中全局可访问）
-    private File copiedFile;          // 记录待粘贴的文件/文件夹
-    private boolean isCutOperation;   // 标记是否为剪切操作
-    private boolean isPasteAvailable = false; // 粘贴功能是否可用
-    private static final int REQUEST_PERMISSION = 1001;
+    // 复制/剪切的目标文件
+    private File copiedFile;
+    // 是否为剪切操作标识
+    private boolean isCutOperation;
+    // 文件编辑请求码
     private static final int REQUEST_EDIT_FILE = 101;
+    // 文件列表RecyclerView
     private RecyclerView fileRecyclerView;
+    // 文件列表适配器
     private FileAdapter fileAdapter;
+    // 当前目录下的文件列表
     private List<File> fileList;
+    // 搜索结果文件列表
     private List<File> searchResultList;
+    // 当前浏览的目录
     private File currentDirectory;
+    // 应用根目录（流动信息）
     private File rootDirectory;
+    // 搜索输入框
     private EditText etSearch;
+    // 搜索按钮
     private Button btnSearch;
+    // 是否处于搜索模式标识
     private boolean isInSearchMode = false;
-    private ImageButton folderCreateBtn;
+    // 新增/编辑文件悬浮按钮
     private FloatingActionButton preEditFileBtn;
-
-    // 用于标识压缩任务的 AsyncTask
+    // 压缩任务异步处理对象
     private CompressTask compressTask;
-    // 修改ROOT_FOLDER_NAME常量定义位置
+    // 根文件夹固定名称：流动信息
     private static final String ROOT_FOLDER_NAME = "流动信息";
-    // 1. 新增中转站目录变量
+    // 中转站目录
     private File transferStationDirectory;
+    // 中转站权限请求码
     private static final int REQUEST_TRANSFER_PERMISSION = 101;
+    // 是否处于中转站目录标识
     private boolean isInTransferStation = false;
-
-    // 匹配文件名中的时间戳（格式：_yyyyMMddHHmmss）
-    // 新正则（匹配“_随机字符串_时间戳”，其中随机字符串是6位字母数字）
-    public static final Pattern FILE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    // 定义时间戳正则（17位数字：yyyyMMddHHmmssSSS）
-    private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");
-    // 首先在类中添加回收站相关变量
-    private File recycleBinDirectory;  // 回收站目录
-    private boolean isInRecycleBin = false;  // 是否在回收站中
-    public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()); // 17位格式
+    // 回收站目录
+    private File recycleBinDirectory;
+    // 是否处于回收站目录标识
+    private boolean isInRecycleBin = false;
+    // 毫秒级时间戳格式化器：yyyyMMddHHmmssSSS（17位）
+    public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
+    // 文件毫秒时间戳正则：匹配_6位随机字符_17位数字
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-
-    // 仅匹配整行的路径标识（严格第一行使用）
+    // TXT文件首行路径正则：匹配【任意字符】格式
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
-    // 匹配内容中的时间戳（格式：(yyyy-MM-dd)）
-    private static final Pattern CONTENT_TIMESTAMP_PATTERN = Pattern.compile("\\(\\d{4}-\\d{2}-\\d{2}\\)");
-
-    // 1. 目标格式正则：_随机字符(6位)_时间戳(17位) → 例：_abc123_20250928153022123
+    // 目标时间戳正则：匹配_6位随机字符_17位数字
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-
-    // 2. 增量格式正则：目标格式 + _时间戳(17位) → 例：_abc123_20250928153022123_20250928153567890
+    // 增量时间戳正则：匹配(_6位随机字符_17位数字)(_17位数字)+格式
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
-
-    // 3. 旧格式正则（兼容历史文件：可能是纯时间戳，如_20250928153022）
-    public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$"); // 14位秒级/17位毫秒级旧格式
-
-
+    // 旧版时间戳正则：匹配_(14位数字|17位数字)结尾格式
+    public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
+    // 粘贴按钮视图
     private View pasteButton;
-
-    // 图片文件扩展名
+    // 图片文件扩展名数组
     private static final String[] IMAGE_EXTENSIONS = {
             ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"
     };
 
-
-
+    /**
+     * 页面创建初始化：
+     * 1. 绑定布局控件，初始化视图组件；
+     * 2. 设置夜间模式、文件列表适配器；
+     * 3. 初始化回收站/中转站目录；
+     * 4. 设置搜索框/菜单按钮/新增按钮点击事件；
+     * 5. 检查存储权限，初始化根目录。
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         etSearch = findViewById(R.id.et_search);
         btnSearch = findViewById(R.id.btn_search);
         fileRecyclerView = findViewById(R.id.file_list);
         preEditFileBtn = findViewById(R.id.add_button);
-
-        // 在onCreate方法中添加
         ImageButton menuButton = findViewById(R.id.menu_btn);
         menuButton.setOnClickListener(v -> showPopupMenu(v));
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         fileList = new ArrayList<>();
         searchResultList = new ArrayList<>();
-
         fileAdapter = new FileAdapter();
         fileRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileRecyclerView.setAdapter(fileAdapter);
-
         checkPermission();
         clearSearchKeyword();
-        // 3. 重置搜索模式标记（避免残留搜索状态）
         isInSearchMode = false;
-
-        // 初始化回收站
         initRecycleBin();
         transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
         if (!transferStationDirectory.exists()) {
             transferStationDirectory.mkdirs();
         }
-
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -206,111 +200,77 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
-
-
         btnSearch.setOnClickListener(v -> {
             hidePasteButton();
             performSearch();
         });
-
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (TextUtils.isEmpty(s)) {
                     updateLevelHint();
                 }
             }
-            @Override
-            public void afterTextChanged(android.text.Editable s) {}
-        });
 
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+            }
+        });
         etSearch.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 hidePasteButton();
             }
             return false;
         });
-
         preEditFileBtn.setOnClickListener(v -> {
             hidePasteButton();
             startFilePreEdit();
         });
-
     }
 
-    // 在MainActivity类中添加返回根目录的方法
-    // 1. 增强navigateToRootDirectory方法的状态同步
+    /**
+     * 导航至根目录：
+     * 1. 退出搜索模式，清空搜索框；
+     * 2. 重置回收站/中转站标识；
+     * 3. 加载根目录文件列表，更新层级提示；
+     * 4. 保存页面状态，延迟修正TXT文件路径。
+     */
     private void navigateToRootDirectory() {
         if (rootDirectory != null && rootDirectory.exists() && rootDirectory.isDirectory()) {
             if (isInSearchMode) {
                 isInSearchMode = false;
                 etSearch.setText("");
             }
-
-            // 强制重置所有目录状态标识（核心）
             isInRecycleBin = false;
             isInTransferStation = false;
-            // 保留粘贴相关状态
-            // copiedFile和isCutOperation不重置
-
             currentDirectory = rootDirectory;
             loadFileList();
             updateLevelHint();
-
-            // 保存状态时明确标记为主页
             PreferenceUtils.saveLastPageType(this, "main");
             PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-
-            // 触发菜单状态刷新（新增）
             invalidateOptionsMenu();
-
-            // 原有延迟核验逻辑
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 new Thread(() -> {
                     batchCorrectTxtFilepaths(rootDirectory);
                     runOnUiThread(() -> loadFileList());
                 }).start();
             }, 1000);
-
         } else {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private long getLastTimestampFromFileName(String fileName) {
-        // 移除文件后缀
-        String nameWithoutExt = fileName;
-        if (fileName.toLowerCase().endsWith(".txt")) {
-            nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
-        }
-
-        // 匹配所有时间戳（17位数字）
-        Matcher matcher = TIMESTAMP_PATTERN.matcher(nameWithoutExt);
-        long lastTimestamp = 0;
-
-        // 找到最后一个匹配的时间戳
-        while (matcher.find()) {
-            try {
-                long timestamp = Long.parseLong(matcher.group());
-                if (timestamp > lastTimestamp) {
-                    lastTimestamp = timestamp;
-                }
-            } catch (NumberFormatException e) {
-                // 忽略无效的数字格式
-            }
-        }
-
-        return lastTimestamp;
-    }
-    // 初始化回收站目录
-    // 修改回收站初始化路径（也使用应用私有存储）
+    /**
+     * 初始化回收站：
+     * 1. 创建应用内部存储的回收站目录；
+     * 2. 打印创建结果日志，失败时提示权限问题。
+     */
     private void initRecycleBin() {
-        // 回收站位于应用内部存储的私有目录
         recycleBinDirectory = new File(getFilesDir(), "回收站");
-
-        // 检查并创建回收站目录
         if (!recycleBinDirectory.exists()) {
             boolean created = recycleBinDirectory.mkdirs();
             if (created) {
@@ -321,7 +281,12 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-    // 毫秒级TXT排序比较器
+
+    /**
+     * TXT文件时间戳比较器：
+     * 1. 优先按文件名中的17位时间戳降序排序；
+     * 2. 无时间戳时按文件最后修改时间降序排序。
+     */
     private class TxtTimestampComparator implements Comparator<File> {
         @Override
         public int compare(File f1, File f2) {
@@ -334,7 +299,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 毫秒级时间戳提取
+    /**
+     * 从文件名提取毫秒时间戳：
+     * 1. 仅处理TXT文件；
+     * 2. 匹配FILE_MILLIS_TIMESTAMP_PATTERN正则，解析17位数字为时间戳；
+     * 3. 解析失败返回0。
+     *
+     * @param fileName 文件名
+     * @return 解析后的时间戳（毫秒），失败返回0
+     */
     private long getMillisTimestampFromFileName(String fileName) {
         if (!fileName.endsWith(".txt")) return 0;
         Matcher matcher = FILE_MILLIS_TIMESTAMP_PATTERN.matcher(fileName);
@@ -350,27 +323,23 @@ public class MainActivity extends AppCompatActivity {
         return 0;
     }
 
-    // 修改路径提示，区分回收站和正常目录
+    /**
+     * 更新搜索框层级提示：
+     * 1. 回收站/中转站目录显示对应提示；
+     * 2. 普通目录显示层级路径（如Lv-1-2-3）。
+     */
     private void updateLevelHint() {
-        // 1. 优先判断回收站
         if (isInRecycleBin) {
             etSearch.setHint("回收站");
             return;
         }
-
-        // 2. 新增：判断是否在中转站（及其子目录）
-        if (isInTransferStation) {  // 假设已定义isInTransferStation变量
+        if (isInTransferStation) {
             etSearch.setHint("中转站");
             return;
         }
-
-        // 3. 原有路径提示逻辑（保持不变）
         if (currentDirectory == null) return;
-
         List<Integer> levelPath = getLevelPath(currentDirectory);
         StringBuilder levelStr = new StringBuilder();
-
-        // 仅当层级列表非空时，才拼接Lv-xxx（核心修改）
         if (!levelPath.isEmpty()) {
             levelStr.append("Lv-");
             for (int i = 0; i < levelPath.size(); i++) {
@@ -382,14 +351,13 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
-    /**
-     * 获取与小数排序规则一致的层级路径（最终版）
-     * @param targetDir 目标文件夹
-     * @return 层级数字列表（与图标序列号完全一致）
-     */
 
     /**
-     * 公共排序方法：文件夹按名称排序（支持小数）【复用你的原有逻辑】
+     * 文件夹排序（支持小数序号）：
+     * 1. 提取文件夹名称开头的数字（支持小数）；
+     * 2. 按数字升序排序，无数字则按名称字母序排序。
+     *
+     * @param folders 待排序的文件夹列表
      */
     private void sortFoldersWithDecimalSupport(List<File> folders) {
         Collections.sort(folders, new Comparator<File>() {
@@ -397,53 +365,33 @@ public class MainActivity extends AppCompatActivity {
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
-
-                // 提取文件名前面的数字（包括小数）
                 Double num1 = extractLeadingNumberFromName(name1);
                 Double num2 = extractLeadingNumberFromName(name2);
-
-                // 优先按数字排序
                 if (num1 != null && num2 != null) {
-                    // 使用Double进行比较，可以正确处理小数
                     return Double.compare(num1, num2);
                 } else if (num1 != null) {
-                    // 只有file1有数字开头，排在前面
                     return -1;
                 } else if (num2 != null) {
-                    // 只有file2有数字开头，排在前面
                     return 1;
                 }
-
-                // 如果都没有数字开头，则按默认的字母顺序排序
                 return name1.compareTo(name2);
             }
         });
     }
 
-
-
-    // 在你的 Activity 类中
-
-    // 用于标识压缩任务的 AsyncTask
-
-
-// ... (你的其他成员变量和方法) ...
-
     /**
-     * 压缩根目录 "流动信息" 到当前目录
-     */
-    /**
-     * 压缩根目录 "流动信息" 到当前目录，增加确认对话框
+     * 压缩根文件夹：
+     * 1. 弹出确认对话框，确认压缩操作；
+     * 2. 生成无冲突的压缩包名称（主页压缩包.zip/主页压缩包(1).zip）；
+     * 3. 执行异步压缩任务。
      */
     private void compressRootFolder() {
-        // 1. 创建并显示确认对话框
         new AlertDialog.Builder(this)
                 .setTitle("确认压缩")
                 .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n压缩后的文件将以“主页压缩包.zip”命名。")
                 .setPositiveButton("确认", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        // 2. 用户点击“确认”后，执行真正的压缩逻辑
                         dialog.dismiss();
 
                         if (rootDirectory == null || !rootDirectory.exists() || !rootDirectory.isDirectory()) {
@@ -455,20 +403,14 @@ public class MainActivity extends AppCompatActivity {
                             Toast.makeText(MainActivity.this, "当前目录不存在，无法保存压缩包", Toast.LENGTH_SHORT).show();
                             return;
                         }
-
-                        // 构建目标 ZIP 文件
                         String baseFileName = "主页压缩包";
                         String extension = ".zip";
                         File zipFile = new File(currentDirectory, baseFileName + extension);
-
-                        // 检查并处理重名文件
                         int counter = 1;
                         while (zipFile.exists()) {
                             zipFile = new File(currentDirectory, baseFileName + " (" + counter + ")" + extension);
                             counter++;
                         }
-
-                        // 执行压缩任务
                         compressTask = new CompressTask();
                         compressTask.execute(rootDirectory, zipFile);
                     }
@@ -476,34 +418,49 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        // 3. 用户点击“取消”后，关闭对话框，不执行任何操作
                         dialog.dismiss();
                     }
                 })
-                .setCancelable(true) // 允许用户通过点击对话框外部或返回键取消
+                .setCancelable(true)
                 .show();
     }
 
     /**
-     * 后台压缩任务
+     * 异步压缩任务：
+     * 1. 后台执行文件夹压缩，显示进度对话框；
+     * 2. 递归处理文件夹/文件，生成ZIP压缩包；
+     * 3. 压缩完成后更新UI，提示结果。
      */
     private class CompressTask extends AsyncTask<File, Integer, Boolean> {
+        // 源目录
         private File sourceDir;
+        // 目标ZIP文件
         private File destZipFile;
+        // 错误信息
         private String errorMessage;
 
+        /**
+         * 压缩前准备：显示进度对话框，提示"正在压缩..."
+         */
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
             showProgressDialog("正在压缩...");
         }
 
+        /**
+         * 后台压缩逻辑：
+         * 1. 校验源目录/目标目录权限；
+         * 2. 创建ZipOutputStream，递归添加文件/文件夹到压缩包；
+         * 3. 返回压缩结果（成功/失败）。
+         *
+         * @param params 参数数组：params[0]=源目录，params[1]=目标ZIP文件
+         * @return 压缩是否成功
+         */
         @Override
         protected Boolean doInBackground(File... params) {
             sourceDir = params[0];
             destZipFile = params[1];
-
-            // 1. 终极校验：确保源目录存在且可读写
             if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
                 errorMessage = "源目录不存在或不是文件夹";
                 return false;
@@ -512,22 +469,15 @@ public class MainActivity extends AppCompatActivity {
                 errorMessage = "没有读取源目录的权限";
                 return false;
             }
-
-            // 2. 确保目标目录可写
             if (!destZipFile.getParentFile().canWrite()) {
                 errorMessage = "没有写入压缩包的权限";
                 return false;
             }
-
             ZipOutputStream zos = null;
             try {
-                // 移除 setEncoding，安卓不支持，改用默认编码即可
                 zos = new ZipOutputStream(new FileOutputStream(destZipFile));
-
-                // 3. 核心：遍历所有文件/文件夹（包括空文件夹）
                 File[] allItems = sourceDir.listFiles();
                 if (allItems == null) {
-                    // 根目录是空的（全是空文件夹/无内容），手动创建根目录条目
                     ZipEntry rootEntry = new ZipEntry(sourceDir.getName() + "/");
                     zos.putNextEntry(rootEntry);
                     zos.closeEntry();
@@ -535,20 +485,17 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 for (File item : allItems) {
-                    // 递归处理每个条目（强制保留空文件夹）
                     addToZip(item, sourceDir, zos);
                 }
-
                 return true;
             } catch (Exception e) {
                 errorMessage = "压缩失败：" + e.getMessage();
                 e.printStackTrace();
                 return false;
             } finally {
-                // 4. 安全关闭流（必须保证流关闭，否则条目写入失败）
                 if (zos != null) {
                     try {
-                        zos.flush(); // 先刷新，确保所有条目写入
+                        zos.flush();
                         zos.close();
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -557,23 +504,34 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        /**
+         * 更新压缩进度：更新进度对话框的进度值
+         *
+         * @param values 进度值数组
+         */
         @Override
         protected void onProgressUpdate(Integer... values) {
             super.onProgressUpdate(values);
             updateProgressDialog(values[0]);
         }
 
+        /**
+         * 压缩完成处理：
+         * 1. 关闭进度对话框；
+         * 2. 提示压缩结果，加载文件列表；
+         * 3. 失败时删除无效压缩包。
+         *
+         * @param result 压缩结果
+         */
         @Override
         protected void onPostExecute(Boolean result) {
             super.onPostExecute(result);
             dismissProgressDialog();
-
             if (result) {
                 Toast.makeText(MainActivity.this, "压缩成功：" + destZipFile.getName(), Toast.LENGTH_LONG).show();
                 loadFileList();
             } else {
                 Toast.makeText(MainActivity.this, errorMessage, Toast.LENGTH_LONG).show();
-                // 失败时删除无效的压缩包
                 if (destZipFile.exists()) {
                     destZipFile.delete();
                 }
@@ -582,51 +540,41 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
-         * 核心方法：添加文件/文件夹到ZIP（强制保留空文件夹）
-         * @param file 要添加的文件/文件夹
-         * @param rootDir 根目录（用于计算相对路径）
-         * @param zos ZIP输出流
+         * 递归添加文件/文件夹到压缩包：
+         * 1. 处理文件夹：创建目录Entry，递归添加子项；
+         * 2. 处理文件：创建文件Entry，写入文件内容；
+         * 3. 发布进度更新。
+         *
+         * @param file    当前处理的文件/文件夹
+         * @param rootDir 根目录
+         * @param zos     Zip输出流
+         * @throws IOException IO异常
          */
         private void addToZip(File file, File rootDir, ZipOutputStream zos) throws IOException {
-            // 打印日志，排查空文件夹是否被处理（可保留用于调试）
             Log.d("CompressDebug", "处理条目：" + file.getAbsolutePath()
                     + " | 是否文件夹：" + file.isDirectory()
                     + " | 是否为空：" + (file.listFiles() == null || file.listFiles().length == 0));
-
-            // 计算相对路径（兜底处理：避免空路径）
             String relativePath = getRelativePath(rootDir, file);
             if (relativePath.isEmpty()) {
                 relativePath = file.getName();
             }
-
-            // 1. 处理文件夹（核心中的核心）
             if (file.isDirectory()) {
-                // 强制加/结尾，哪怕是根目录下的空文件夹
                 if (!relativePath.endsWith("/")) {
                     relativePath += "/";
                 }
-
-                // ********** 强制创建文件夹条目 **********
                 ZipEntry dirEntry = new ZipEntry(relativePath);
-                // 设置条目属性，确保解压工具识别为文件夹
                 dirEntry.setSize(0);
                 dirEntry.setTime(file.lastModified());
                 zos.putNextEntry(dirEntry);
-                zos.closeEntry(); // 空文件夹必须关闭条目
-
-                // 打印日志，确认文件夹条目已创建
+                zos.closeEntry();
                 Log.d("CompressDebug", "创建文件夹条目：" + relativePath);
-
-                // 遍历子条目（哪怕是空文件夹，listFiles返回null也不影响）
                 File[] children = file.listFiles();
                 if (children != null) {
                     for (File child : children) {
                         addToZip(child, rootDir, zos);
                     }
                 }
-            }
-            // 2. 处理文件
-            else {
+            } else {
                 ZipEntry fileEntry = new ZipEntry(relativePath);
                 fileEntry.setTime(file.lastModified());
                 zos.putNextEntry(fileEntry);
@@ -645,13 +593,18 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
-         * 计算相对路径（兜底：避免空字符串）
+         * 获取文件相对路径：
+         * 1. 计算文件相对于根目录的路径；
+         * 2. 处理路径分隔符，返回标准化相对路径。
+         *
+         * @param rootDir 根目录
+         * @param file    目标文件
+         * @return 相对路径
+         * @throws IOException IO异常
          */
         private String getRelativePath(File rootDir, File file) throws IOException {
             String rootPath = rootDir.getCanonicalPath();
             String filePath = file.getCanonicalPath();
-
-            // 兜底：如果是根目录下的直接子项，返回文件名
             if (filePath.startsWith(rootPath)) {
                 String rel = filePath.substring(rootPath.length());
                 return rel.startsWith(File.separator) ? rel.substring(1) : rel;
@@ -659,12 +612,17 @@ public class MainActivity extends AppCompatActivity {
             return file.getName();
         }
     }
-    /**
-     * 以下是辅助方法，用于显示和管理进度对话框
-     * 你可以根据自己的 UI 框架进行调整
-     */
+
+    // 进度对话框
     private ProgressDialog progressDialog;
 
+    /**
+     * 显示进度对话框：
+     * 1. 创建水平进度条对话框，设置不可取消；
+     * 2. 设置提示信息，初始化进度为0并显示。
+     *
+     * @param message 提示文本
+     */
     private void showProgressDialog(String message) {
         if (progressDialog == null) {
             progressDialog = new ProgressDialog(this);
@@ -676,19 +634,30 @@ public class MainActivity extends AppCompatActivity {
         progressDialog.show();
     }
 
+    /**
+     * 更新进度对话框：设置当前进度值
+     *
+     * @param progress 进度值（0-100）
+     */
     private void updateProgressDialog(int progress) {
         if (progressDialog != null && progressDialog.isShowing()) {
             progressDialog.setProgress(progress);
         }
     }
 
+    /**
+     * 关闭进度对话框：隐藏并释放对话框资源
+     */
     private void dismissProgressDialog() {
         if (progressDialog != null && progressDialog.isShowing()) {
             progressDialog.dismiss();
         }
     }
 
-    // 在 Activity 销毁时，取消可能还在运行的任务
+    /**
+     * 页面销毁处理：
+     * 1. 取消未完成的压缩任务，避免内存泄漏。
+     */
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -697,12 +666,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 启动文件预编辑：
+     * 1. 校验当前目录有效性；
+     * 2. 跳转到FileEditorActivity，传递目录路径等参数。
+     */
     private void startFilePreEdit() {
         if (currentDirectory == null) {
             Toast.makeText(this, "目录未初始化，请稍后重试", Toast.LENGTH_SHORT).show();
             return;
         }
-
         Intent preEditIntent = new Intent(MainActivity.this, FileEditorActivity.class);
         preEditIntent.putExtra("current_dir_path", currentDirectory.getAbsolutePath());
         preEditIntent.putExtra("is_pre_edit", true);
@@ -710,60 +683,47 @@ public class MainActivity extends AppCompatActivity {
         preEditIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
-    // 弹出菜单方法
 
-
+    /**
+     * 显示弹出菜单：
+     * 1. 创建主题化PopupMenu，加载菜单布局；
+     * 2. 根据当前目录（回收站/中转站/普通目录）调整菜单项显示；
+     * 3. 设置菜单项点击事件，处理主页/回收站/新建文件夹等操作。
+     *
+     * @param view 菜单按钮视图
+     */
     private void showPopupMenu(View view) {
         try {
-            // 关键：使用统一的主题包装器，确保所有版本生效
             ContextThemeWrapper themeWrapper = new ContextThemeWrapper(this, R.style.CustomPopupMenu);
             PopupMenu popupMenu = new PopupMenu(themeWrapper, view);
-
-            // 修复：设置弹出位置（避免受Gravity参数影响样式）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
                 popupMenu.setGravity(Gravity.TOP | Gravity.START);
             }
-
             MenuInflater inflater = popupMenu.getMenuInflater();
             inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
-
-            // --- 状态判断逻辑 ---
-
-            // 1. 回收站状态
-            // 1. 回收站状态
             if (isInRecycleBin) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true); // 回收站显示中转站
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false); // 回收站隐藏压缩
-            }
-// 2. 中转站状态（仅这里隐藏中转站按钮）
-            else if (isInTransferStation) {
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+            } else if (isInTransferStation) {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false); // 中转站隐藏自身
+                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true); // 中转站显示压缩
-            }
-// 3. 主页/所有层级子文件夹/其他目录状态（核心修改：支持所有层级子文件夹）
-            else {
+            } else {
                 popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
                 popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
                 popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
                 popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-
-                // 关键修改：主页 + 主页下任意层级子文件夹（支持深层嵌套）都显示中转站按钮
-                // 原理：判断当前目录的绝对路径是否以主页（根目录）的绝对路径为前缀
                 boolean isHomeOrHomeSubFolders = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
                 popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHomeOrHomeSubFolders);
-
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false); // 非中转站隐藏压缩
+                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
             }
-
-            // --- 点击事件逻辑 ---
             popupMenu.setOnMenuItemClickListener(item -> {
                 int itemId = item.getItemId();
                 if (itemId == R.id.action_home) {
@@ -787,16 +747,15 @@ public class MainActivity extends AppCompatActivity {
                         openTransferStation();
                     }
                     return true;
-                } else if (itemId == R.id.yasuo) { // 【新增】处理“压缩主页文件”的点击事件
-                    compressRootFolder(); // 调用执行压缩操作的方法（已包含确认对话框）
+                } else if (itemId == R.id.yasuo) {
+                    compressRootFolder();
                     return true;
                 }
                 return false;
             });
-
-            // 强制刷新菜单样式（解决部分机型缓存问题）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                popupMenu.setOnDismissListener(menu -> {});
+                popupMenu.setOnDismissListener(menu -> {
+                });
             }
             popupMenu.show();
         } catch (Exception e) {
@@ -805,12 +764,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 8. 中转站权限检查
-    // 2. 增强权限检查方法（确保中转站写入权限）
-    // 2. 增强权限检查方法（确保中转站写入权限）
+    /**
+     * 检查中转站权限：
+     * 1. Android 11+ 检查MANAGE_EXTERNAL_STORAGE权限；
+     * 2. 低版本检查读写外部存储权限；
+     * 3. 校验中转站目录可写性。
+     *
+     * @return 权限是否已授予
+     */
     private boolean checkTransferPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+：检查所有文件访问权限
             if (!Environment.isExternalStorageManager()) {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
                 intent.setData(Uri.parse("package:" + getPackageName()));
@@ -818,7 +781,6 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         } else {
-            // Android 10及以下：检查读写权限
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this,
@@ -828,59 +790,31 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         }
-
-        // 额外检查中转站目录是否可写
         if (transferStationDirectory != null && !transferStationDirectory.canWrite()) {
             Toast.makeText(this, "中转站目录不可写", Toast.LENGTH_SHORT).show();
             return false;
         }
-
         return true;
     }
-    // 5. 中转站核心操作方法
+
+    /**
+     * 打开中转站目录：
+     * 1. 设置中转站标识，切换当前目录为中转站；
+     * 2. 加载文件列表，更新层级提示。
+     */
     private void openTransferStation() {
         isInTransferStation = true;
-        isInRecycleBin = false; // <--- 确保这一行存在！
+        isInRecycleBin = false;
         currentDirectory = transferStationDirectory;
-        loadFileList(); // 复用现有文件列表加载
+        loadFileList();
         updateLevelHint();
     }
 
-    // 同步修改exitTransferStation方法，统一使用上述导航方法
-    private void exitTransferStation() {
-        // 直接调用导航到根目录的方法，确保状态一致
-        navigateToRootDirectory();
-    }
-    // 6. 移动文件到中转站（复用现有逻辑）
-    private boolean moveToTransferStation(File file) {
-        if (file == null || !file.exists()) {
-            return false;
-        }
-
-        try {
-            // 确保中转站目录存在
-            if (!transferStationDirectory.exists()) {
-                transferStationDirectory.mkdirs();
-            }
-
-            // 处理文件名冲突（复用现有方法）
-            File initialTarget = new File(transferStationDirectory, file.getName());
-            File targetFile = getNonConflictFile(initialTarget);
-
-            // 复用现有移动逻辑
-            if (file.isDirectory()) {
-                return moveFolderToRecycleBin(file, targetFile); // 复用文件夹移动
-            } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                return moveFileWithTimestampUpdate(file, targetFile); // 复用TXT处理
-            } else {
-                return file.renameTo(targetFile); // 普通文件直接移动
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-    // 新增：清空回收站确认对话框
+    /**
+     * 确认清空回收站：
+     * 1. 弹出确认对话框，提示永久删除风险；
+     * 2. 确认后执行清空操作，提示结果。
+     */
     private void confirmClearRecycleBin() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("确认清空回收站")
@@ -897,24 +831,38 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 新增：执行清空回收站操作
+    /**
+     * 清空回收站：
+     * 1. 递归删除回收站目录下所有文件/文件夹；
+     * 2. 返回删除结果。
+     *
+     * @return 是否清空成功
+     */
     private boolean clearRecycleBin() {
         if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
-            return true; // 回收站不存在视为已清空
+            return true;
         }
 
         File[] files = recycleBinDirectory.listFiles();
         if (files != null) {
             for (File file : files) {
                 if (!deleteFileOrDirectory(file)) {
-                    return false; // 有文件删除失败则返回false
+                    return false;
                 }
             }
         }
         return true;
     }
 
-    // 新增：递归删除文件或目录
+    /**
+     * 递归删除文件/文件夹：
+     * 1. 处理文件夹：递归删除子项后删除自身；
+     * 2. 处理文件：直接删除；
+     * 3. 返回删除结果。
+     *
+     * @param file 待删除的文件/文件夹
+     * @return 是否删除成功
+     */
     private boolean deleteFileOrDirectory(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -929,74 +877,72 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
-    // 打开回收站
-    // 2. 打开回收站（优化版）
+    /**
+     * 打开回收站目录：
+     * 1. 校验回收站目录有效性；
+     * 2. 退出搜索模式，切换当前目录为回收站；
+     * 3. 加载文件列表，更新层级提示，保存页面状态。
+     */
     private void openRecycleBin() {
-        // 校验回收站有效性
         if (recycleBinDirectory == null || !recycleBinDirectory.exists()) {
             Toast.makeText(this, "回收站不存在", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 退出搜索模式
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
         }
-
-        // 切换到回收站
         isInRecycleBin = true;
-        isInTransferStation = false; // <--- 确保这一行存在！
+        isInTransferStation = false;
         currentDirectory = recycleBinDirectory;
         loadFileList();
         updateLevelHint();
-
-        // 保存状态
         PreferenceUtils.saveLastPageType(this, "recycle_bin");
         PreferenceUtils.saveLastFolderPath(this, recycleBinDirectory.getAbsolutePath());
-
-
     }
-    // 退出回收站，返回之前的目录
-    // 1. 优化从回收站返回文件列表（优化版）
+
+    /**
+     * 退出回收站：
+     * 1. 退出搜索模式，切换当前目录为根目录；
+     * 2. 加载文件列表，更新层级提示，保存页面状态。
+     */
     private void exitRecycleBin() {
-        // 退出搜索模式
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
         }
-
-        // 校验根目录有效性
         if (rootDirectory == null || !rootDirectory.exists() || !rootDirectory.isDirectory()) {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 切换到根目录
         isInRecycleBin = false;
         currentDirectory = rootDirectory;
         loadFileList();
         updateLevelHint();
-
-        // 保存状态
         PreferenceUtils.saveLastPageType(this, "main");
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-
-
     }
 
+    /**
+     * 检查文件内容是否包含关键词：
+     * 1. 跳过ZIP/图片/其他非文本文件；
+     * 2. 读取文件内容，跳过首行路径标识后匹配关键词；
+     * 3. 返回匹配结果。
+     *
+     * @param file    待检查文件
+     * @param keyword 搜索关键词
+     * @return 是否包含关键词
+     */
     private boolean isContentContainKeyword(File file, String keyword) {
         if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
             return false;
         }
-
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
             boolean isFirstLine = true;
             while ((line = br.readLine()) != null) {
                 String filteredLine = line;
-                // 仅移除第一行的路径标识，中间行【】保留
                 if (isFirstLine) {
                     filteredLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
                     isFirstLine = false;
@@ -1011,6 +957,12 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
+    /**
+     * 执行文件搜索：
+     * 1. 获取搜索关键词，校验非空；
+     * 2. 后台递归搜索当前目录下匹配的文件（名称/内容）；
+     * 3. 排序搜索结果，更新UI显示。
+     */
     private void performSearch() {
         String keyword = etSearch.getText().toString().trim();
         etSearch.clearFocus();
@@ -1018,20 +970,16 @@ public class MainActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(keyword)) {
             isInSearchMode = false;
             fileAdapter.setData(fileList);
-            clearSearchKeyword(); // 关键词为空时，清除暂存
+            clearSearchKeyword();
             Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 关键：搜索时直接暂存关键词（用户确认搜索的内容，最准确）
         saveSearchKeyword(keyword);
-
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
             recursiveSearch(currentDirectory, keyword);
             sortSearchResult();
-
             runOnUiThread(() -> {
                 fileAdapter.setData(searchResultList);
                 Toast.makeText(MainActivity.this,
@@ -1040,17 +988,34 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
-    // 暂存搜索关键词（用于后续编辑文件时匹配）
+
+    /**
+     * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
+     *
+     * @param keyword 搜索关键词
+     */
     private void saveSearchKeyword(String keyword) {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         sp.edit().putString("current_keyword", keyword).apply(); // 异步保存，不阻塞
     }
 
-    // （可选）清除关键词（比如退出搜索模式时）
+    /**
+     * 清空搜索关键词：从SharedPreferences移除当前关键词
+     */
     private void clearSearchKeyword() {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         sp.edit().remove("current_keyword").apply();
     }
+
+    /**
+     * 递归搜索文件：
+     * 1. 遍历当前目录下所有文件/文件夹；
+     * 2. 文件夹：名称匹配则加入结果，递归搜索子目录；
+     * 3. 文件：名称/内容匹配则加入结果。
+     *
+     * @param dir     搜索目录
+     * @param keyword 搜索关键词
+     */
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
 
@@ -1059,12 +1024,9 @@ public class MainActivity extends AppCompatActivity {
 
         for (File file : files) {
             if (file.isDirectory()) {
-                // 1. 先判断文件夹名是否匹配，匹配则加入结果列表
                 if (file.getName().toLowerCase().contains(keyword.toLowerCase())) {
                     searchResultList.add(file);
                 }
-                // 2. 关键修复：无论文件夹名是否匹配，都递归搜索其内部内容
-                //    （原逻辑中这行被隐含限制，现在强制递归）
                 recursiveSearch(file, keyword);
             } else if (isSupportedFile(file)) {
                 boolean nameMatch = getDisplayName(file).toLowerCase().contains(keyword.toLowerCase());
@@ -1076,7 +1038,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 判断是否为图片文件
+    /**
+     * 判断是否为图片文件：
+     * 1. 检查文件扩展名是否在IMAGE_EXTENSIONS数组中；
+     * 2. 返回判断结果。
+     *
+     * @param file 待判断文件
+     * @return 是否为图片文件
+     */
     private boolean isImageFile(File file) {
         if (file.isDirectory()) return false;
 
@@ -1089,15 +1058,26 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    // 判断是否为其他文件（非文件夹、非ZIP、非TXT、非图片）
+    /**
+     * 判断是否为其他非文本/非压缩/非图片文件：
+     * 1. 排除TXT/ZIP/图片文件，返回其他文件类型；
+     *
+     * @param file 待判断文件
+     * @return 是否为其他文件
+     */
     private boolean isOtherFile(File file) {
         if (file.isDirectory()) return false;
-
         String fileName = file.getName().toLowerCase();
-        // 明确排除已知类型
         return !(fileName.endsWith(".txt") || fileName.endsWith(".zip") || isImageFile(file));
     }
 
+    /**
+     * 判断是否为支持的文件类型：
+     * 1. 支持文件夹/TXT/ZIP/图片/其他文件；
+     *
+     * @param file 待判断文件
+     * @return 是否支持
+     */
     private boolean isSupportedFile(File file) {
         return file.isDirectory() ||
                 file.getName().toLowerCase().endsWith(".txt") ||
@@ -1106,6 +1086,11 @@ public class MainActivity extends AppCompatActivity {
                 isOtherFile(file);
     }
 
+    /**
+     * 排序搜索结果：
+     * 1. 按类型分组（文件夹→ZIP→TXT→图片→其他）；
+     * 2. 文件夹按名称排序，TXT按时间戳排序，其余按修改时间排序。
+     */
     private void sortSearchResult() {
         if (searchResultList.isEmpty()) return;
 
@@ -1139,7 +1124,6 @@ public class MainActivity extends AppCompatActivity {
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-
         searchResultList.clear();
         searchResultList.addAll(folders);
         searchResultList.addAll(zipFiles);
@@ -1148,40 +1132,33 @@ public class MainActivity extends AppCompatActivity {
         searchResultList.addAll(otherFiles);
     }
 
-    // 修改初始化外部存储的方法
+    /**
+     * 初始化外部存储（根目录）：
+     * 1. 创建应用私有存储的根目录（流动信息）；
+     * 2. 目录创建失败时使用兼容模式；
+     * 3. 创建测试文件，加载文件列表，恢复上次状态。
+     */
     private void initExternalBrain() {
-        // 关键修改：使用内部私有存储（与回收站保持一致）
         File privateStorageDir = getFilesDir();
-
-        // 检查内部存储是否可用
         if (!privateStorageDir.exists()) {
             Toast.makeText(this, "存储不可用，无法初始化应用", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 构建根文件夹路径（内部私有存储下的"流动信息"目录）
         rootDirectory = new File(privateStorageDir, ROOT_FOLDER_NAME);
         currentDirectory = rootDirectory;
-
-        // 检查文件夹是否存在
         if (!currentDirectory.exists()) {
-            // 尝试直接创建文件夹
             boolean created = currentDirectory.mkdirs();
-
-            // 如果创建失败，尝试使用兼容模式创建唯一文件夹
             if (!created) {
                 File createdDir = FileUtils.createUniqueFolder(
-                        privateStorageDir,  // 使用内部私有存储作为父目录
+                        privateStorageDir,
                         ROOT_FOLDER_NAME
                 );
-
                 if (createdDir != null) {
                     currentDirectory = createdDir;
                     rootDirectory = createdDir;
                     Toast.makeText(this, "在内部存储中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
                     createTestFile();
                 } else {
-                    // 最后尝试使用应用专属目录作为备选方案（仍为内部存储）
                     File fallbackDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
                     if (fallbackDir.mkdirs()) {
                         currentDirectory = fallbackDir;
@@ -1203,43 +1180,34 @@ public class MainActivity extends AppCompatActivity {
                 createTestFile();
             }
         }
-
         loadFileList();
         updateLevelHint();
-        // 恢复最后状态
         restoreLastState();
     }
 
-
-
-
-    // 修改状态恢复逻辑，支持恢复回收站状态
+    /**
+     * 恢复上次页面状态：
+     * 1. 从SharedPreferences读取上次页面类型/文件夹路径；
+     * 2. 恢复回收站/图片/编辑页面状态，否则返回根目录。
+     */
     private void restoreLastState() {
         String lastPageType = PreferenceUtils.getLastPageType(this);
         String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
-
-        // 关键校验：如果最后路径不在公共存储根目录下，直接恢复到根目录
         if (lastFolderPath != null) {
             File lastFolder = new File(lastFolderPath);
-            // 检查路径是否以根目录为前缀（不在根目录体系中则强制跳转）
             if (!lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                 navigateToRootDirectory();
                 return;
             }
         }
-
-        // 完全跳过回收站相关的状态恢复
         if ("recycle_bin".equals(lastPageType)) {
             navigateToRootDirectory();
             return;
         }
-
-        // 1. 优先恢复图片查看状态（仅当路径在根目录下）
         if ("image".equals(lastPageType)) {
             String lastImagePath = PreferenceUtils.getLastViewedImage(this);
             if (lastImagePath != null) {
                 File imageFile = new File(lastImagePath);
-                // 额外校验图片文件是否在根目录体系中
                 if (imageFile.exists() && isImageFile(imageFile) &&
                         imageFile.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                     currentDirectory = imageFile.getParentFile();
@@ -1249,13 +1217,10 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        // 2. 恢复TXT编辑状态（仅当路径在根目录下）
         if ("editor".equals(lastPageType)) {
             String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
             if (lastEditedFile != null) {
                 File file = new File(lastEditedFile);
-                // 额外校验TXT文件是否在根目录体系中
                 if (file.exists() && file.getName().toLowerCase().endsWith(".txt") &&
                         file.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
                     currentDirectory = file.getParentFile();
@@ -1265,8 +1230,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        // 3. 恢复文件夹浏览状态（仅当路径在根目录下）
         if (lastFolderPath != null) {
             File lastFolder = new File(lastFolderPath);
             if (lastFolder.exists() && lastFolder.isDirectory() &&
@@ -1276,12 +1239,16 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
         }
-
-        // 所有情况不匹配时，默认打开根目录
         navigateToRootDirectory();
     }
 
-    // 新增：打开文件编辑器的封装方法
+    /**
+     * 打开文件编辑器：
+     * 1. 跳转到FileEditorActivity，传递文件路径等参数；
+     * 2. 用于编辑已存在的TXT文件。
+     *
+     * @param file 待编辑的TXT文件
+     */
     private void openFileEditor(File file) {
         Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
         editIntent.putExtra("file_path", file.getAbsolutePath());
@@ -1290,71 +1257,15 @@ public class MainActivity extends AppCompatActivity {
         editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(editIntent, REQUEST_EDIT_FILE);
     }
-    // 新增方法：恢复最后访问的位置
-    // 在restoreLastLocation方法中正确使用变量和方法
-    // 2. 在恢复状态时正确获取图片路径
-    // 2. 状态恢复方法（完全替换原方法）
-    private void restoreLastLocation() {
-        String lastPageType = PreferenceUtils.getLastPageType(this);
 
-        // 优先恢复图片查看状态
-        if ("image".equals(lastPageType)) {
-            // 使用正确的方法名获取图片路径
-            String lastImagePath = PreferenceUtils.getLastViewedImage(this); // 正确方法
-            if (lastImagePath != null && !lastImagePath.isEmpty()) {
-                File imageFile = new File(lastImagePath);
-                if (imageFile.exists() && isImageFile(imageFile)) {
-                    currentDirectory = imageFile.getParentFile();
-                    loadFileList();
-                    openImageFile(imageFile);
-                    return;
-                } else {
-                    PreferenceUtils.clearLastViewedImage(this);
-                }
-            }
-        }
-
-        // 恢复编辑文件状态
-        if ("editor".equals(lastPageType)) {
-            String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
-            if (lastEditedFile != null && !lastEditedFile.isEmpty()) {
-                File file = new File(lastEditedFile);
-                if (file.exists() && file.isFile() && file.getName().toLowerCase().endsWith(".txt")) {
-                    currentDirectory = file.getParentFile();
-                    loadFileList();
-
-                    Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                    editIntent.putExtra("file_path", file.getAbsolutePath());
-                    editIntent.putExtra("is_pre_edit", false);
-                    editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
-                    editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
-                    startActivityForResult(editIntent, REQUEST_EDIT_FILE);
-
-                    return;
-                } else {
-                    PreferenceUtils.clearLastEditedFile(this);
-                }
-            }
-        }
-
-        // 最后恢复文件夹浏览状态
-        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
-        if (lastFolderPath != null && !lastFolderPath.isEmpty()) {
-            File lastFolder = new File(lastFolderPath);
-            if (lastFolder.exists() && lastFolder.isDirectory() &&
-                    lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
-                currentDirectory = lastFolder;
-                loadFileList();
-            }
-        }
-    }
-
-
-    // 修改保存状态逻辑，区分回收站和正常目录
+    /**
+     * 页面暂停处理：
+     * 1. 保存当前页面类型/文件夹路径到SharedPreferences；
+     * 2. 排除编辑/图片页面，仅保存主页面/回收站状态。
+     */
     @Override
     protected void onPause() {
         super.onPause();
-        // 当在主页面暂停时，更新状态类型为main
         String currentPageType = PreferenceUtils.getLastPageType(this);
         if (!"editor".equals(currentPageType) && !"image".equals(currentPageType)) {
             PreferenceUtils.saveLastPageType(this, isInRecycleBin ? "recycle_bin" : "main");
@@ -1364,20 +1275,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 修改onActivityResult方法，处理从编辑页面返回的情况
+    /**
+     * 活动结果处理：
+     * 1. 处理文件编辑返回结果，刷新文件列表；
+     * 2. 保存主页面状态。
+     *
+     * @param requestCode 请求码
+     * @param resultCode  结果码
+     * @param data        返回数据
+     */
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_EDIT_FILE) {
-            // 从TXT编辑页面返回，更新状态为main
             PreferenceUtils.saveLastPageType(this, "main");
-            // 刷新文件列表
             loadFileList();
         }
     }
 
-
+    /**
+     * 加载文件列表：
+     * 1. 按类型分组（文件夹→ZIP→TXT→图片→其他）；
+     * 2. 文件夹按小数序号排序，TXT按数字/时间戳排序；
+     * 3. 更新适配器数据，刷新UI。
+     */
     private void loadFileList() {
         fileList.clear();
 
@@ -1388,7 +1310,6 @@ public class MainActivity extends AppCompatActivity {
             List<File> txtFiles = new ArrayList<>();
             List<File> imageFiles = new ArrayList<>();
             List<File> otherFiles = new ArrayList<>();
-
             for (File file : files) {
                 if (file.isDirectory()) {
                     folders.add(file);
@@ -1402,40 +1323,23 @@ public class MainActivity extends AppCompatActivity {
                     otherFiles.add(file);
                 }
             }
-
-            // ========== 仅修改这1行：调用公共排序方法（替代原有内嵌的排序逻辑） ==========
             sortFoldersWithDecimalSupport(folders);
-
-            // 原有txt文件排序逻辑（完全保留，未做任何修改）
             Collections.sort(txtFiles, new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
                     String name1 = file1.getName();
                     String name2 = file2.getName();
-
-                    // 【修改1】：返回类型从 Integer 改为 Double
                     Double num1 = extractLeadingNumberFromName(name1);
                     Double num2 = extractLeadingNumberFromName(name2);
-
-                    // 情况1：两个文件都有开头数字 → 按数字升序排序
                     if (num1 != null && num2 != null) {
-                        // 【修改2】：使用 Double.compare 比较（支持小数）
                         return Double.compare(num1, num2);
-                    }
-                    // 情况2：只有第一个文件有开头数字 → 有数字的排在前面
-                    else if (num1 != null) {
+                    } else if (num1 != null) {
                         return -1;
-                    }
-                    // 情况3：只有第二个文件有开头数字 → 有数字的排在前面
-                    else if (num2 != null) {
+                    } else if (num2 != null) {
                         return 1;
-                    }
-                    // 情况4：两个文件都没有开头数字 → 按原有时间戳逻辑排序（无任何修改）
-                    else {
+                    } else {
                         long time1 = extractTimestampIgnoreLast4(name1);
                         long time2 = extractTimestampIgnoreLast4(name2);
-
-                        // 让时间戳大的（更新的）排在前面
                         if (time1 > time2) {
                             return -1;
                         } else if (time1 < time2) {
@@ -1447,7 +1351,11 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 /**
-                 * 原有时间戳提取方法（无任何修改）
+                 * 提取文件名末尾的17位时间戳（忽略最后4位）：
+                 * 1. 去除文件扩展名，匹配末尾17位数字；
+                 * 2. 返回解析后的数字，失败返回0。
+                 * @param fileName 文件名
+                 * @return 时间戳数字
                  */
                 private long extractTimestampIgnoreLast4(String fileName) {
                     if (fileName == null || fileName.length() <= 4) {
@@ -1466,51 +1374,43 @@ public class MainActivity extends AppCompatActivity {
                     return 0;
                 }
             });
-
-            // 其他文件类型保持原排序（按修改时间倒序）
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-
-            // 合并所有文件列表
             fileList.addAll(folders);
             fileList.addAll(zipFiles);
             fileList.addAll(txtFiles);
             fileList.addAll(imageFiles);
             fileList.addAll(otherFiles);
         }
-
         if (!isInSearchMode) {
-            // 直接使用原File列表，通过getDisplayName方法处理显示名称
             fileAdapter.setData(fileList);
         }
-
         if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
             updateLevelHint();
         }
-
-        // 切换目录后自动校验：若当前目录是被复制/剪切的文件夹，隐藏粘贴按钮
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
         }
     }
 
-    // ========== 第三步：完整的getLevelPath方法（基于公共排序逻辑） ==========
+    /**
+     * 获取目录层级路径：
+     * 1. 从当前目录向上遍历至根目录，记录每个层级的序号；
+     * 2. 反转层级列表，返回标准化层级路径（如[1,2,3]）。
+     *
+     * @param targetDir 目标目录
+     * @return 层级序号列表
+     */
     private List<Integer> getLevelPath(File targetDir) {
         List<Integer> levelPath = new ArrayList<>();
         File currentDir = targetDir;
-
-        // 根目录直接返回空列表（核心修改）
         if (targetDir.equals(rootDirectory)) {
             return levelPath;
         }
-
-        // 非根目录：正常回溯层级
         while (currentDir != null && !currentDir.equals(rootDirectory)) {
             File parentDir = currentDir.getParentFile();
             if (parentDir == null || !parentDir.exists()) break;
-
-            // 1. 获取父目录下的所有文件夹
             File[] parentFiles = parentDir.listFiles();
             List<File> parentFolders = new ArrayList<>();
             if (parentFiles != null) {
@@ -1520,264 +1420,102 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
-
-            // 2. 复用公共小数排序逻辑
             sortFoldersWithDecimalSupport(parentFolders);
-
-            // 3. 找到当前目录在排序后列表中的位置（序列号=索引+1）
             int serialNumber = 0;
             for (int i = 0; i < parentFolders.size(); i++) {
                 if (parentFolders.get(i).getAbsolutePath().equals(currentDir.getAbsolutePath())) {
-                    serialNumber = i + 1; // 序列号从1开始，与图标显示一致
+                    serialNumber = i + 1;
                     break;
                 }
             }
-
-            // 4. 添加到层级路径
             if (serialNumber > 0) {
                 levelPath.add(serialNumber);
             }
-
-            // 5. 向上回溯
             currentDir = parentDir;
         }
-
-        // 反转列表（从根到子的顺序）
         Collections.reverse(levelPath);
-
-        // 非根目录但层级为空的异常兜底
         if (levelPath.isEmpty()) {
             levelPath.add(1);
         }
-
         return levelPath;
     }
+
+    /**
+     * 提取文件名开头的数字（支持小数）：
+     * 1. 匹配文件名开头的数字（如1.2、3）；
+     * 2. 返回解析后的Double值，失败返回null。
+     *
+     * @param fileName 文件名
+     * @return 开头数字，无则返回null
+     */
     private Double extractLeadingNumberFromName(String fileName) {
         if (fileName == null || fileName.isEmpty()) {
             return null;
         }
-
-        // 修改正则表达式，匹配开头的数字（包括整数和小数）
-        // ^\\d+\\.?\\d*  解释：
-        // ^       - 匹配字符串开头
-        // \\d+    - 匹配一个或多个数字
-        // \\.?    - 匹配一个可选的小数点 (.)
-        // \\d*    - 匹配零个或多个数字（小数点后面的部分）
         Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
         Matcher matcher = pattern.matcher(fileName);
 
         if (matcher.find()) {
             try {
-                // 将匹配到的字符串转换为Double
                 return Double.parseDouble(matcher.group());
             } catch (NumberFormatException e) {
-                // 理论上不会进入这里，因为正则表达式已经保证了是数字格式
                 return null;
             }
         }
-
         return null;
     }
 
-    // 提取文件名末尾17位数字作为时间戳的工具方法
-    // 提取文件名忽略最后4位后，末尾17位数字作为时间戳的工具方法
-    private static long extractTimestampIgnoreLast4(String fileName) {
-        // 先忽略最后4个字符（无论后缀是什么）
-        String nameWithoutLast4 = fileName.length() >= 4
-                ? fileName.substring(0, fileName.length() - 4)
-                : fileName; // 如果文件名不足4位，直接用原文件名
-
-        // 确保处理后的文件名长度至少17位
-        if (nameWithoutLast4.length() >= 17) {
-            String timestampStr = nameWithoutLast4.substring(nameWithoutLast4.length() - 17);
-            try {
-                return Long.parseLong(timestampStr);
-            } catch (NumberFormatException e) {
-                // 末尾17位不是数字，返回0（可根据需求调整默认值）
-                return 0;
-            }
-        } else {
-            // 处理后长度不足17位，返回0（可根据需求调整默认值）
-            return 0;
-        }
-    }
     /**
-     * 格式化TXT文件名用于显示（隐藏随机字符和所有时间戳）
-     * 处理格式：
-     * - 基础名_随机字符_时间戳.txt → 基础名.txt
-     * - 基础名_随机字符_时间戳1_时间戳2.txt → 基础名.txt
-     */
-
-    private void showRenameDialog(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("重命名");
-
-        String originalName = file.getName();
-        String displayName = formatFileNameForDisplay(originalName);
-        String editTextContent = displayName;
-
-        EditText input = new EditText(this);
-        input.setText(editTextContent);
-        builder.setView(input);
-
-        builder.setPositiveButton("确定", (dialog, which) -> {
-            String newBaseName = input.getText().toString().trim();
-            if (newBaseName.isEmpty()) {
-                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            if (originalName.toLowerCase().endsWith(".txt")) {
-                handleTxtRename(file, newBaseName);
-            } else {
-                // 正确调用：仅传递文件名参数
-                renameFile(file, newBaseName + getFileExtension(originalName));
-            }
-        });
-
-        builder.setNegativeButton("取消", null);
-        builder.show();
-    }
-    private void renameFile(File file, String newFileName) {
-        File parentDir = file.getParentFile();
-        File newFile = new File(parentDir, newFileName);
-
-        if (newFile.exists()) {
-            Toast.makeText(this, "文件名已存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (file.renameTo(newFile)) {
-            Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
-            loadFileList();
-        } else {
-            Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private String getFileExtension(String fileName) {
-        if (fileName == null || !fileName.contains(".")) {
-            return "";
-        }
-        return fileName.substring(fileName.lastIndexOf("."));
-    }
-    private void handleTxtRename(File file, String newBaseName) {
-        String originalName = file.getName();
-        String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf("."));
-        String newTimestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-        String newFileName;
-
-        // 匹配随机字符和时间戳结构
-        Pattern pattern = Pattern.compile("(_[A-Za-z0-9]+)(_\\d+)+$");
-        Matcher matcher = pattern.matcher(nameWithoutExt);
-
-        if (!matcher.find()) {
-            // 无随机字符和时间戳：添加随机字符+时间戳+.txt后缀
-            String randomStr = generateRandomString();
-            newFileName = newBaseName + "_" + randomStr + "_" + newTimestamp + ".txt";
-        } else {
-            String timestampPart = matcher.group();
-            String[] parts = timestampPart.split("_");
-
-            if (parts.length == 3) {
-                // 随机字符+1个时间戳：增加新时间戳+.txt后缀
-                newFileName = newBaseName + timestampPart + "_" + newTimestamp + ".txt";
-            } else {
-                // 随机字符+2个以上时间戳：刷新最后一个时间戳+.txt后缀
-                String prefix = timestampPart.substring(0, timestampPart.lastIndexOf("_"));
-                newFileName = newBaseName + prefix + "_" + newTimestamp + ".txt";
-            }
-        }
-
-        renameFile(file, newFileName);
-    }
-
-    /**
-     * 格式化TXT文件名用于显示（隐藏随机字符和所有时间戳）
-     * 处理格式：
-     * - 基础名_随机字符_时间戳.txt → 基础名
-     * - 基础名_随机字符_时间戳1_时间戳2.txt → 基础名
+     * 格式化文件名用于显示：
+     * 1. TXT文件去除所有时间戳后缀，显示核心名称；
+     * 2. 其他文件直接返回原名称。
+     *
+     * @param originalFileName 原始文件名
+     * @return 格式化后的显示名称
      */
     private String formatFileNameForDisplay(String originalFileName) {
-        // 只处理TXT文件
         if (!originalFileName.toLowerCase().endsWith(".txt")) {
             return originalFileName;
         }
-
-        // 分离文件名和扩展名
         String nameWithoutExt = originalFileName;
         if (originalFileName.contains(".")) {
             int extIndex = originalFileName.lastIndexOf(".");
             nameWithoutExt = originalFileName.substring(0, extIndex);
         }
-
-        // 关键修复：使用已定义的正则常量，确保匹配所有时间戳格式
-        // 先移除增量格式（随机字符+多个时间戳）
         String processedName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
-        // 再移除基础格式（随机字符+单个时间戳）
         processedName = TARGET_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
-        // 最后处理旧格式（仅时间戳）
         processedName = OLD_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
-
         return processedName;
     }
 
-
     /**
-     * 内部类：用于存储文件及其显示名称
+     * 返回键处理：
+     * 1. 中转站/回收站：返回上级目录或主页；
+     * 2. 搜索模式：退出搜索，恢复文件列表；
+     * 3. 普通目录：返回上级目录，根目录则退出应用。
      */
-    private class FileDisplayItem {
-        private File file;
-        private String displayName;
-
-        public FileDisplayItem(File file, String displayName) {
-            this.file = file;
-            this.displayName = displayName;
-        }
-
-        public File getFile() {
-            return file;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-    }
-
-    // 修改返回键逻辑，在回收站中按返回键退出回收站
     @Override
     public void onBackPressed() {
-        // 处理中转站的返回逻辑（修改部分）
         if (isInTransferStation) {
-            // 检查是否在中转站子文件夹
             if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
-                // 在子文件夹，返回上一级
                 currentDirectory = currentDirectory.getParentFile();
                 loadFileList();
                 updateLevelHint();
             } else {
-                // 在中转站根目录，直接返回主页
                 exitTransferStationToHome();
             }
             return;
         }
-
-        // 处理回收站的返回逻辑（保持之前的修改）
         if (isInRecycleBin) {
-            // 检查是否在回收站子文件夹
             if (currentDirectory != null && !currentDirectory.equals(recycleBinDirectory)) {
-                // 在子文件夹，返回上一级
                 currentDirectory = currentDirectory.getParentFile();
                 loadFileList();
                 updateLevelHint();
             } else {
-                // 在回收站根目录，直接返回主页
                 exitRecycleBinToHome();
             }
             return;
         }
-
-        // 原有的返回键逻辑（保持不变）
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
@@ -1804,124 +1542,87 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    // 新增：从中转站根目录直接返回主页
+    /**
+     * 退出中转站返回主页：
+     * 1. 重置中转站标识，切换到根目录；
+     * 2. 加载文件列表，更新层级提示，保存状态。
+     */
     private void exitTransferStationToHome() {
         isInTransferStation = false;
-        // 直接切换到主页根目录
-        currentDirectory = rootDirectory; // 主页根目录
+        currentDirectory = rootDirectory;
         loadFileList();
         updateLevelHint();
-
-        // 保存状态为首页
         PreferenceUtils.saveLastPageType(this, "main");
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-
         Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
 
-    // 从回收站根目录直接返回主页（保持不变）
+    /**
+     * 退出回收站返回主页：
+     * 1. 重置回收站标识，切换到根目录；
+     * 2. 加载文件列表，更新层级提示，保存状态。
+     */
     private void exitRecycleBinToHome() {
         isInRecycleBin = false;
-        currentDirectory = rootDirectory; // 主页根目录
+        currentDirectory = rootDirectory;
         loadFileList();
         updateLevelHint();
-
         PreferenceUtils.saveLastPageType(this, "main");
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
-
         Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
 
-    // 2. 新增中转站返回处理方法
-    // 2. 完善滑动返回触发的handleTransferStationBack方法
-    private void handleTransferStationBack() {
-        if (currentDirectory.equals(transferStationDirectory)) {
-            // 从中转站根目录滑动返回主页时，强制刷新菜单
-            navigateToRootDirectory();
-            // 额外确保状态已重置（防御性处理）
-            if (isInTransferStation) {
-                isInTransferStation = false;
-            }
-            // 立即刷新菜单
-            invalidateOptionsMenu();
-        } else {
-            // 中转站子目录返回，不影响菜单显示
-            File parentDir = currentDirectory.getParentFile();
-            if (parentDir != null && parentDir.exists() &&
-                    transferStationDirectory.getAbsolutePath().startsWith(parentDir.getAbsolutePath())) {
-                currentDirectory = parentDir;
-                loadFileList();
-                updateLevelHint();
-            } else {
-                currentDirectory = transferStationDirectory;
-                loadFileList();
-                updateLevelHint();
-            }
-        }
-    }
-
-    // 3. 重写onPrepareOptionsMenu确保菜单状态实时更新
-
+    /**
+     * 准备选项菜单：
+     * 1. 根据当前目录（回收站/中转站/普通目录）调整菜单项显示；
+     * 2. 控制中转站/回收站/清空回收站/新建文件夹/压缩按钮的可见性。
+     *
+     * @param menu 菜单对象
+     * @return 是否准备成功
+     */
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
-        // 每次菜单显示前强制更新状态
         if (menu != null) {
-            // 主页状态：显示中转站（原逻辑不变）
             boolean isHome = !isInRecycleBin && !isInTransferStation &&
                     currentDirectory.equals(rootDirectory);
-
-            // 关键修改：中转站菜单项 → 非中转站页面才显示（!isInTransferStation）
-            // 原逻辑：setVisible(isHome) → 仅主页显示
-            // 新逻辑：setVisible(!isInTransferStation) → 所有非中转站页面都显示
             menu.findItem(R.id.action_transfer_station).setVisible(!isInTransferStation);
-
-            // 其他菜单状态处理（保持不变）
             menu.findItem(R.id.action_recycle_bin).setVisible(!isInRecycleBin);
             menu.findItem(R.id.action_clear_recycle_bin).setVisible(isInRecycleBin);
             menu.findItem(R.id.action_new_folder).setVisible(!isInRecycleBin);
-
-            // 压缩菜单项（保持不变：仅中转站页面显示）
             menu.findItem(R.id.yasuo).setVisible(isInTransferStation);
         }
         return super.onPrepareOptionsMenu(menu);
     }
 
-    // 1. 检查showFolderCreateDialog()方法，确保使用当前目录（中转站）
-    // 修改新建文件夹方法，标记创建状态
+    /**
+     * 显示新建文件夹对话框：
+     * 1. 输入文件夹名称，校验非空/已存在；
+     * 2. 中转站创建需检查权限，创建成功后刷新文件列表。
+     */
     private void showFolderCreateDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("新建文件夹");
-
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         builder.setView(input);
-
-        // 确定按钮（保持不变）
         builder.setPositiveButton("创建", (dialog, which) -> {
             String folderName = input.getText().toString().trim();
             if (folderName.isEmpty()) {
                 Toast.makeText(this, "文件夹名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-
             File newFolder = new File(currentDirectory, folderName);
-
-            // 中转站中创建文件夹时标记状态
             if (isInTransferStation) {
                 isCreatingFolderInTransfer = true;
                 if (!checkTransferPermission()) {
-                    // 权限不足时会触发权限请求，后续由权限回调处理
                     return;
                 }
             }
-
-            // 执行创建逻辑（原有代码）
             if (newFolder.exists()) {
                 Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show();
                 isCreatingFolderInTransfer = false; // 重置状态
                 return;
             }
-
             if (newFolder.mkdirs()) {
                 Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
                 loadFileList();
@@ -1930,51 +1631,33 @@ public class MainActivity extends AppCompatActivity {
             }
             isCreatingFolderInTransfer = false; // 重置状态
         });
-
-        // 取消按钮（保持不变）
         builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 isCreatingFolderInTransfer = false; // 取消时重置状态
-                dialog.dismiss(); // 显式关闭对话框
+                dialog.dismiss();
             }
         });
-
-        // 显示对话框并获取AlertDialog实例
         AlertDialog dialog = builder.show();
-
-        // 关键：强制弹出软键盘
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        // 延迟100ms确保对话框已完全显示
         input.postDelayed(() -> {
-            // 强制获取焦点并弹出键盘
             input.requestFocus();
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
         }, 100);
     }
 
-    private void createFolder(String name) {
-        // 使用FileUtils的全局查重方法生成唯一文件夹
-        File newFolder = FileUtils.createUniqueFolder(currentDirectory, name);
-        if (newFolder != null) {
-            Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show();
-            loadFileList();
-        } else {
-            Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // 新建测试文件时添加时间戳（仅新建时）
-    // 新建测试文件（毫秒级时间戳）
+    /**
+     * 创建测试文件：
+     * 1. 生成带随机字符/时间戳的使用说明TXT文件；
+     * 2. 写入软件使用说明内容，保存到当前目录。
+     */
     private void createTestFile() {
-        String randomStr = generateRandomString(); // 生成随机字符串
+        String randomStr = generateRandomString();
         String timestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-        // 文件名格式：标题_随机字符串_时间戳.txt
         File testFile = new File(currentDirectory, "使用说明与注意事项_" + randomStr + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
                 String content = "此软件为无广告的不联网工具软件，主要提供TXT文件的整理、词条搜索、压缩、分享发送，文字编辑阅览等。\n\n右下角加号可以在当前文件夹新增TXT文件。\n\n左上角的标识点击可以打开选项，在当前文件夹创建新的文件夹。\n\n右上角可以搜索关键词搜索当前文件夹内的文件以及文件夹。文件夹里面还可以创建文件夹。\n\n长按模块可以更名，复制，剪切，删除等。\n\n分享文件只支持文件，包括压缩文件。所以要传输文件夹要先压缩成zip文件。传输只在中转站可以。所以要讲压缩文件剪切粘贴到中转站再分享。\n\n“中转站”文件夹在公共存储，别人传输的文件也要打开手机自带的文件管理将文件移动到“中转站”。然后建议将重要文件用本软件从中转站剪切到主页，公共存储的文件会被别的软件浏览甚至删改，我自己使用的时候遇到过。\n\n主页的文件存储在软件私有存储中。这样就不会被其他软件窥视。但是如果卸载软件，数据就会全部丢失。所以要讲数据备份可以分享上传到其他地方。分享上传需要在中转站点击“压缩主页文件”。然后将压缩包分享发送到QQ发送至电脑。分享至QQ直接点击发送至电脑可能有点问题，可以先点击好友，再点击发送至电脑。\n\n从屏幕左边缘向右划返回或退出。编辑状态返回自动保存。编辑的文件一定要从边缘滑动屏幕保存，直接关闭软件不会保存。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件目录结构路径，文件传播过程中可能会暴露此类信息。\n\n排序以序列号优先，包括带小数点的数字。\n\n如果有增加功能的意见，直接找开发者。\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
-
                 FileOutputStream fos = new FileOutputStream(testFile);
                 fos.write(content.getBytes(StandardCharsets.UTF_8));
                 fos.close();
@@ -1985,34 +1668,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 列表显示时移除时间戳（仅显示用，不修改实际文件名）
+    /**
+     * 获取文件显示名称：
+     * 1. 文件夹：直接返回名称；
+     * 2. TXT文件：去除时间戳后缀；
+     * 3. ZIP/图片：去除扩展名；
+     * 4. 其他文件：去除扩展名。
+     *
+     * @param file 目标文件
+     * @return 显示名称
+     */
     private String getDisplayName(File file) {
         String fileName = file.getName();
-
-        // 目录直接返回名称（无后缀）
         if (file.isDirectory()) {
             return fileName;
         }
-
-        // 处理TXT文件：先移除时间戳，再去除后缀
         if (fileName.endsWith(".txt")) {
-            // 移除所有时间戳格式（目标格式+增量格式）
             fileName = MainActivity.INCREMENT_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
             fileName = MainActivity.TARGET_TIMESTAMP_PATTERN.matcher(fileName).replaceAll("");
-            // 去除.txt后缀
             int dotIndex = fileName.lastIndexOf(".");
             if (dotIndex != -1) {
                 fileName = fileName.substring(0, dotIndex);
             }
             return fileName;
         }
-
-        // 处理ZIP文件：只去除.zip后缀
         if (fileName.endsWith(".zip")) {
             return fileName.substring(0, fileName.lastIndexOf("."));
         }
-
-        // 处理图片文件：去除图片后缀（如.jpg/.png等）
         if (isImageFile(file)) {
             int dotIndex = fileName.lastIndexOf(".");
             if (dotIndex != -1) {
@@ -2020,8 +1702,6 @@ public class MainActivity extends AppCompatActivity {
             }
             return fileName;
         }
-
-        // 其他文件类型：统一去除后缀
         int dotIndex = fileName.lastIndexOf(".");
         if (dotIndex != -1) {
             return fileName.substring(0, dotIndex);
@@ -2029,7 +1709,15 @@ public class MainActivity extends AppCompatActivity {
         return fileName;
     }
 
-
+    /**
+     * 获取目录相对路径（相对于根目录）：
+     * 1. 从当前目录向上遍历至根目录，收集路径段；
+     * 2. 反转路径段，拼接为/分隔的相对路径。
+     *
+     * @param dir      目标目录
+     * @param rootName 根目录名称
+     * @return 相对路径
+     */
     public static String getRelativeDirPath(File dir, String rootName) {
         List<String> pathSegments = new ArrayList<>();
         File current = dir;
@@ -2041,6 +1729,13 @@ public class MainActivity extends AppCompatActivity {
         return String.join("/", pathSegments);
     }
 
+    /**
+     * 显示ZIP解压对话框：
+     * 1. 确认解压操作，后台执行解压；
+     * 2. 解压成功后批量修正TXT文件路径，刷新文件列表。
+     *
+     * @param zipFile 待解压的ZIP文件
+     */
     private void showZipExtractDialog(File zipFile) {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -2048,7 +1743,6 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
                     new Thread(() -> {
-                        // 使用FileUtils调用解压，保持逻辑统一
                         boolean result = FileUtils.unzipFile(zipFile, currentDirectory);
                         runOnUiThread(() -> {
                             if (result) {
@@ -2066,84 +1760,41 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-    // 重命名方法，避免与系统方法冲突
-    private void deleteSelectedFile(File file) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("确认删除")
-                .setMessage("确定要删除 " + getDisplayName(file) + " 吗？")
-                .setPositiveButton("删除", (dialog, which) -> {
-                    if (deleteRecursive(file)) {  // 使用本地递归删除方法
-                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
-                        loadFileList();
-                    } else {
-                        Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
 
-    // 递归删除实现
-    private boolean deleteRecursive(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    if (!deleteRecursive(child)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return file.delete();
-    }
+    /**
+     * 显示文件夹操作选项弹窗（重命名、删除、压缩、复制、剪切）
+     */
     private void showFolderOptions(File folder) {
         hidePasteButton();
-
-        // 复用相同的Material风格对话框样式
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
-
-// 显示文件夹名作为标题，并设置为白色
         String folderName = folder.getName();
         SpannableString whiteTitle = new SpannableString(folderName);
-// 设置文字颜色为白色
         whiteTitle.setSpan(
                 new ForegroundColorSpan(ContextCompat.getColor(this, android.R.color.white)),
                 0,
                 folderName.length(),
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE
         );
-        builder.setTitle(whiteTitle); // 应用白色标题
-
-
-        // 定义完整的选项和图标数组
+        builder.setTitle(whiteTitle);
         String[] allOptions = {"重命名", "删除", "压缩为ZIP文件", "复制", "剪切"};
         int[] allIcons = new int[]{
-                R.drawable.ic_rename,    // 重命名图标（复用）
-                R.drawable.ic_delete,    // 删除图标（复用）
-                R.drawable.ic_image_error,       // 新增ZIP压缩图标
-                R.drawable.ic_copy,      // 复制图标（复用）
-                R.drawable.ic_cut        // 剪切图标（复用）
+                R.drawable.ic_rename,
+                R.drawable.ic_delete,
+                R.drawable.ic_image_error,
+                R.drawable.ic_copy,
+                R.drawable.ic_cut
         };
-
-        // 使用列表存储最终需要显示的选项
         List<String> optionsList = new ArrayList<>();
         List<Integer> iconsList = new ArrayList<>();
-
-        // 添加所有选项（当前没有需要隐藏的选项，保持扩展性）
         for (int i = 0; i < allOptions.length; i++) {
             optionsList.add(allOptions[i]);
             iconsList.add(allIcons[i]);
         }
-
-        // 转换为数组
         String[] options = optionsList.toArray(new String[0]);
         int[] icons = new int[iconsList.size()];
         for (int i = 0; i < iconsList.size(); i++) {
             icons[i] = iconsList.get(i);
         }
-
-        // 复用相同的自定义适配器和布局文件
         ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
             @NonNull
             @Override
@@ -2152,28 +1803,19 @@ public class MainActivity extends AppCompatActivity {
                     convertView = LayoutInflater.from(parent.getContext())
                             .inflate(R.layout.file_option_item, parent, false);
                 }
-
-                // 设置文本和图标（与文件选项对话框使用相同的布局控件）
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
-
-                // 检查图标资源是否有效
                 int iconResId = icons[position];
                 if (iconResId != 0) {
                     imageView.setImageResource(iconResId);
                 } else {
-                    // 显示默认图标作为备选
                     imageView.setImageResource(R.drawable.ic_folder);
                 }
-
-                // 设置文字为白色
                 textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
                 textView.setText(options[position]);
-
                 return convertView;
             }
         };
-
         builder.setAdapter(adapter, (dialog, which) -> {
             switch (which) {
                 case 0:
@@ -2193,17 +1835,16 @@ public class MainActivity extends AppCompatActivity {
                     break;
             }
         });
-
         builder.show();
     }
 
-    // 3. 全新的删除确认方法（确保只定义一次）
-    // 修改删除确认方法，根据当前目录决定是移动到回收站还是彻底删除
+    /**
+     * 显示文件删除确认弹窗，区分回收站（移至）和非回收站（永久删除）逻辑
+     */
     private void confirmFileDeletion(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
 
         if (isInRecycleBin) {
-            // 在回收站中，删除是彻底删除
             builder.setTitle("确认彻底删除")
                     .setMessage("确定要永久删除 " + getDisplayName(file) + " 吗？此操作不可恢复。")
                     .setPositiveButton("删除", (dialog, which) -> {
@@ -2215,7 +1856,6 @@ public class MainActivity extends AppCompatActivity {
                         }
                     });
         } else {
-            // 在正常目录中，删除是移动到回收站
             builder.setTitle("确认删除")
                     .setMessage("确定要将 " + getDisplayName(file) + " 移至回收站吗？")
                     .setPositiveButton("删除", (dialog, which) -> {
@@ -2232,35 +1872,25 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 将文件/文件夹移动到回收站
-    // 移动文件/文件夹到回收站（主方法）
+    /**
+     * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
+     */
     private boolean moveToRecycleBin(File file) {
         if (file == null || !file.exists()) {
             return false;
         }
 
         try {
-            // 确保回收站目录存在
             if (!recycleBinDirectory.exists()) {
                 recycleBinDirectory.mkdirs();
             }
-
-            // 1. 生成初始目标文件（使用原文件名）
             File initialTargetFile = new File(recycleBinDirectory, file.getName());
-
-            // 2. 处理重名情况（生成无冲突的文件名）
             File targetFile = getNonConflictFile(initialTargetFile);
-
-            // 3. 根据文件类型执行对应移动逻辑
             if (file.getName().toLowerCase().endsWith(".txt")) {
-                // TXT文件：使用原有时间戳更新逻辑
                 return moveFileWithTimestampUpdate(file, targetFile);
             } else if (file.isDirectory()) {
-                // 关键修改：文件夹移动到回收站时，直接移动到回收站根目录
-                // 不使用moveFolderWithTxtUpdate避免创建嵌套结构，改用专用的回收站移动方法
                 return moveFolderToRecycleBin(file, targetFile);
             } else {
-                // 其他文件（如ZIP）：直接移动
                 return file.renameTo(targetFile);
             }
         } catch (Exception e) {
@@ -2269,29 +1899,25 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 新增：专门用于将文件夹移动到回收站的方法
+    /**
+     * 递归移动文件夹到回收站，处理其中TXT文件的时间戳更新
+     */
     private boolean moveFolderToRecycleBin(File sourceFolder, File targetFolder) throws IOException {
-        // 确保目标文件夹不存在（getNonConflictFile已保证）
         if (!targetFolder.mkdirs()) {
             Log.e("MoveToRecycle", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
             return false;
         }
-
-        // 处理内部文件
         File[] files = sourceFolder.listFiles();
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
-                    // 递归处理子文件夹 - 使用目标文件夹作为父目录，保持原有相对结构
                     File subTargetFolder = new File(targetFolder, file.getName());
                     if (!moveFolderToRecycleBin(file, subTargetFolder)) {
                         return false;
                     }
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // TXT文件：按规则更新文件名
                     String originalName = file.getName();
                     String newFileName = processTxtForCutOperation(originalName);
-
                     File targetFile = new File(targetFolder, newFileName);
                     if (!file.renameTo(targetFile)) {
                         if (copyFileContent(file, targetFile)) {
@@ -2302,7 +1928,6 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    // 非TXT文件直接移动
                     File targetFile = new File(targetFolder, file.getName());
                     if (!file.renameTo(targetFile)) {
                         if (copyFileContent(file, targetFile)) {
@@ -2315,24 +1940,20 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        // 删除原文件夹（确保为空）
         return deleteEmptyDirectory(sourceFolder);
     }
 
-    // 复用并扩展查重逻辑，支持文件和文件夹，保留扩展名
+    /**
+     * 生成不重复的文件名，处理重名时添加序号后缀（如：文件(1).txt）
+     */
     private String getUniqueFileName(File parentDir, String baseName) {
         if (parentDir == null || !parentDir.exists() || !parentDir.isDirectory()) {
             return baseName;
         }
-
-        // 检查基础名称是否已存在
         File baseFile = new File(parentDir, baseName);
         if (!baseFile.exists()) {
             return baseName;
         }
-
-        // 分离文件名和扩展名
         String nameWithoutExt = baseName;
         String extension = "";
         int dotIndex = baseName.lastIndexOf('.');
@@ -2340,13 +1961,9 @@ public class MainActivity extends AppCompatActivity {
             nameWithoutExt = baseName.substring(0, dotIndex);
             extension = baseName.substring(dotIndex);
         }
-
-        // 查找最大序列号
         int maxSerial = 0;
-        // 匹配格式：名称(数字).扩展名 或 名称(数字)
         Pattern pattern = Pattern.compile("^" + Pattern.quote(nameWithoutExt) + "\\((\\d+)\\)" + Pattern.quote(extension) + "$");
         File[] files = parentDir.listFiles();
-
         if (files != null) {
             for (File file : files) {
                 Matcher matcher = pattern.matcher(file.getName());
@@ -2357,15 +1974,16 @@ public class MainActivity extends AppCompatActivity {
                             maxSerial = serial;
                         }
                     } catch (NumberFormatException e) {
-                        // 忽略非数字序列号的文件
                     }
                 }
             }
         }
-
-        // 返回下一个序列号的名称（如"文件(1).zip"）
         return nameWithoutExt + "(" + (maxSerial + 1) + ")" + extension;
     }
+
+    /**
+     * 递归删除文件/文件夹（包括所有子文件和子文件夹）
+     */
     private boolean performRecursiveDeletion(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();
@@ -2380,13 +1998,12 @@ public class MainActivity extends AppCompatActivity {
         return file.delete();
     }
 
-
+    /**
+     * 显示文件操作选项弹窗（重命名、删除、分享、复制、剪切），根据目录隐藏分享选项
+     */
     private void showFileOptions(File file) {
         hidePasteButton();
-
         AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FileOptionsDialogStyle);
-
-        // 标题白色文字设置（不变）
         String fileName = file.getName();
         SpannableString whiteTitle = new SpannableString(fileName);
         whiteTitle.setSpan(
@@ -2396,18 +2013,9 @@ public class MainActivity extends AppCompatActivity {
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE
         );
         builder.setTitle(whiteTitle);
-
-        // --- 核心修改：更新分享选项的隐藏条件 ---
-        // 原来的条件：isInHome || isInRecycle（仅主页/回收站根目录隐藏）
-        // 新条件：
-        // 1. 主页及所有子文件夹 → 隐藏
-        // 2. 回收站及所有子文件夹 → 隐藏
-        // 3. 其他（仅中转站及子文件夹）→ 显示
         boolean isHomeOrHomeSubFolder = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
         boolean isRecycleOrRecycleSubFolder = currentDirectory.getAbsolutePath().startsWith(recycleBinDirectory.getAbsolutePath());
-        boolean shouldHideShare = isHomeOrHomeSubFolder || isRecycleOrRecycleSubFolder; // 满足任一条件就隐藏分享
-
-        // 基础选项数组（不变）
+        boolean shouldHideShare = isHomeOrHomeSubFolder || isRecycleOrRecycleSubFolder;
         String[] allOptions = {"重命名", "删除", "分享", "复制", "剪切"};
         int[] allIcons = {
                 R.drawable.ic_rename,
@@ -2416,28 +2024,21 @@ public class MainActivity extends AppCompatActivity {
                 R.drawable.ic_copy,
                 R.drawable.ic_cut
         };
-
-        // 筛选需要显示的选项（不变，仅使用新的 shouldHideShare 条件）
         List<String> optionsList = new ArrayList<>();
         List<Integer> iconsList = new ArrayList<>();
 
         for (int i = 0; i < allOptions.length; i++) {
-            // 如果是分享选项（i==2）且需要隐藏，则跳过
             if (i == 2 && shouldHideShare) {
                 continue;
             }
             optionsList.add(allOptions[i]);
             iconsList.add(allIcons[i]);
         }
-
-        // 转换为数组（不变）
         String[] options = optionsList.toArray(new String[0]);
         int[] icons = new int[iconsList.size()];
         for (int i = 0; i < iconsList.size(); i++) {
             icons[i] = iconsList.get(i);
         }
-
-        // 自定义适配器（不变）
         ListAdapter adapter = new ArrayAdapter<String>(this, R.layout.file_option_item, options) {
             @NonNull
             @Override
@@ -2446,28 +2047,21 @@ public class MainActivity extends AppCompatActivity {
                     convertView = LayoutInflater.from(parent.getContext())
                             .inflate(R.layout.file_option_item, parent, false);
                 }
-
                 TextView textView = convertView.findViewById(R.id.option_text);
                 ImageView imageView = convertView.findViewById(R.id.option_icon);
-
                 int iconResId = icons[position];
                 if (iconResId != 0) {
                     imageView.setImageResource(iconResId);
                 } else {
                     imageView.setImageResource(R.drawable.ic_file);
                 }
-
                 textView.setTextColor(ContextCompat.getColor(MainActivity.this, android.R.color.white));
                 textView.setText(options[position]);
-
                 return convertView;
             }
         };
-
-        // 选项点击事件（不变）
         builder.setAdapter(adapter, (dialog, which) -> {
             int originalWhich = shouldHideShare && which >= 2 ? which + 1 : which;
-
             switch (originalWhich) {
                 case 0:
                     renameFile(file);
@@ -2486,24 +2080,12 @@ public class MainActivity extends AppCompatActivity {
                     break;
             }
         });
-
         builder.show();
     }
 
-
-
-
-
-
-    // 重命名的删除方法，避免与系统的 deleteFile(String) 冲突
-
-
-    // 重命名删除方法，避免与系统的deleteFile(String)冲突
-
-
-    // 递归删除文件/文件夹的实现
-
-
+    /**
+     * 跳转到FileEditorActivity执行文件夹压缩为ZIP的操作
+     */
     private void zipFolder(File folder) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_ZIP_FOLDER", true);
@@ -2511,6 +2093,9 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
+    /**
+     * 跳转到FileEditorActivity执行文件分享操作
+     */
     private void shareFile(File file) {
         Intent intent = new Intent(this, FileEditorActivity.class);
         intent.putExtra("ACTION_SHARE_FILE", true);
@@ -2518,14 +2103,13 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
 
-    // 【核心】用户手动重命名文件
-    // 【核心】用户手动重命名文件
+    /**
+     * 显示文件/文件夹重命名弹窗，处理TXT文件的特殊命名规则（保留时间戳）
+     */
     private void renameFile(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("重命名");
-
         final EditText input = new EditText(this);
-        // 设置输入框获取焦点
         input.requestFocus();
         final String originalFileName = file.getName();
         String displayName = originalFileName;
@@ -2533,14 +2117,9 @@ public class MainActivity extends AppCompatActivity {
         final boolean isTxtFile;
         final boolean isFolder;
         final String originalTxtCoreName;
-
         isFolder = file.isDirectory();
         isTxtFile = !isFolder && originalFileName.toLowerCase().endsWith(".txt");
-
-        // 关键改进：准确提取TXT文件的核心名称
         originalTxtCoreName = isTxtFile ? extractCoreName(originalFileName) : "";
-
-        // 处理非TXT文件的扩展名
         if (!isTxtFile && !isFolder) {
             int dotIndex = originalFileName.lastIndexOf(".");
             if (dotIndex != -1 && dotIndex < originalFileName.length() - 1) {
@@ -2552,14 +2131,10 @@ public class MainActivity extends AppCompatActivity {
         } else {
             fileExtension = "";
         }
-
-        // 设置显示名称（TXT文件显示核心名称）
         if (isTxtFile) {
             displayName = originalTxtCoreName;
         }
-
         input.setText(displayName);
-        // 选中输入框内容，方便用户直接修改
         input.setSelection(0, displayName.length());
         builder.setView(input);
 
@@ -2569,84 +2144,61 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-
-            // 处理TXT文件重命名逻辑
             if (isTxtFile) {
-                // 提取新名称的核心部分（去除可能的.txt后缀）
                 String newCoreName = newName.toLowerCase().endsWith(".txt")
                         ? newName.substring(0, newName.lastIndexOf("."))
                         : newName;
-
-                // 检查核心名称是否变化
                 if (newCoreName.equals(originalTxtCoreName)) {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
-                // 解析原始文件名中的时间戳结构
                 String nameWithoutExt = originalFileName.substring(0, originalFileName.lastIndexOf("."));
                 String randomStr = "";
                 List<String> timestamps = new ArrayList<>();
                 Matcher targetMatcher = TARGET_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
                 Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
-
-                // 提取现有随机字符和时间戳
                 if (incrementMatcher.find()) {
-                    // 匹配到：_随机字符_时间戳1_时间戳2...
                     String[] parts = incrementMatcher.group().split("_");
                     if (parts.length >= 3) {
-                        randomStr = parts[1]; // 提取随机字符
+                        randomStr = parts[1];
                         for (int i = 2; i < parts.length; i++) {
-                            timestamps.add(parts[i]); // 提取所有时间戳
+                            timestamps.add(parts[i]);
                         }
                     }
                 } else if (targetMatcher.find()) {
-                    // 匹配到：_随机字符_时间戳
                     String[] parts = targetMatcher.group().split("_");
                     if (parts.length >= 3) {
-                        randomStr = parts[1]; // 提取随机字符
-                        timestamps.add(parts[2]); // 提取时间戳
+                        randomStr = parts[1];
+                        timestamps.add(parts[2]);
                     }
                 }
-
-                // 生成新时间戳
                 String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                 StringBuilder timestampSuffix = new StringBuilder();
-
-                // 根据时间戳数量处理不同逻辑
                 if (timestamps.isEmpty()) {
-                    // 无时间戳：添加随机字符+新时间戳
                     randomStr = generateRandomString();
                     timestampSuffix.append("_").append(randomStr).append("_").append(newTimestamp);
                 } else if (timestamps.size() == 1) {
-                    // 有1个时间戳：保留原随机字符和时间戳，添加新时间戳
                     timestampSuffix.append("_").append(randomStr)
                             .append("_").append(timestamps.get(0))
                             .append("_").append(newTimestamp);
                 } else {
-                    // 有2个及以上时间戳：保留原随机字符和前n-1个时间戳，更新最后一个时间戳
                     timestampSuffix.append("_").append(randomStr);
                     for (int i = 0; i < timestamps.size() - 1; i++) {
                         timestampSuffix.append("_").append(timestamps.get(i));
                     }
                     timestampSuffix.append("_").append(newTimestamp);
                 }
-
-                // 生成全局唯一文件名
                 String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
                         rootDirectory,
                         file.getParentFile(),
                         newCoreName,
                         timestampSuffix.toString()
                 );
-
-                // 执行重命名
                 File newFile = new File(file.getParentFile(), uniqueName);
                 if (newFile.exists()) {
                     Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
                 if (file.renameTo(newFile)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
@@ -2654,22 +2206,18 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
                 }
             } else {
-                // 非TXT文件处理逻辑
                 final String finalNewName = (!isFolder && !fileExtension.isEmpty())
                         ? newName + fileExtension
                         : newName;
-
                 if (finalNewName.equals(originalFileName)) {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
                 String uniqueName = FileUtils.generateUniqueFolderName(
                         file.getParentFile(),
                         finalNewName
                 );
                 File newFile = new File(file.getParentFile(), uniqueName);
-
                 if (file.renameTo(newFile)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
@@ -2678,26 +2226,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
         builder.setNegativeButton("取消", (dialog, which) -> {
-            // 取消时隐藏键盘
             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
             imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
         });
-
         AlertDialog dialog = builder.create();
         dialog.show();
-
-        // 显示对话框后自动弹出键盘
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        // 延迟一小段时间确保对话框已显示
         input.postDelayed(() -> imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT), 100);
     }
 
     /**
-     * 提取TXT文件的核心名称
-     * 规则：以下横线+随机字符为界，之前的部分是核心名称
-     * 随机字符定义为6位字母数字组合
+     * 提取TXT文件的核心名称（去除随机字符串和时间戳后缀）
      */
     private String extractCoreName(String fileName) {
         // 先去除文件扩展名
@@ -2705,53 +2245,29 @@ public class MainActivity extends AppCompatActivity {
         if (fileName.toLowerCase().endsWith(".txt")) {
             nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
         }
-
-        // 定义下划线+随机字符的模式（6位字母数字）
         Pattern pattern = Pattern.compile("_[A-Za-z0-9]{6}");
         Matcher matcher = pattern.matcher(nameWithoutExt);
-
-        // 查找第一个匹配的下划线+随机字符模式
         if (matcher.find()) {
-            // 提取模式之前的部分作为核心名称
             String coreName = nameWithoutExt.substring(0, matcher.start());
-            // 处理可能的空值
             return coreName.trim().isEmpty() ? "未命名文件" : coreName;
         } else {
-            // 如果没有找到模式，整个名称都是核心名称
             return nameWithoutExt.trim().isEmpty() ? "未命名文件" : nameWithoutExt;
         }
     }
 
-
-    // 在 FileUtils 类中
-    public static boolean deleteFolder(File file) {  // 将 private 改为 public
-        // 方法实现保持不变
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    if (!deleteFolder(child)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return file.delete();
-    }
-
-    // 修改权限检查方法（私有存储不需要外部存储权限）
+    /**
+     * 检查应用权限，初始化外部存储相关逻辑
+     */
     private void checkPermission() {
-        // 关键修改：应用私有存储不需要请求外部存储权限
-        // 直接初始化存储
         initExternalBrain();
     }
 
-    // 修改onRequestPermissionsResult方法（移除不必要的权限处理）
+    /**
+     * 处理存储权限请求结果，根据Android版本判断权限是否授予成功
+     */
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        // 处理中转站权限回调（中转站仍可能需要外部存储权限）
         if (requestCode == REQUEST_TRANSFER_PERMISSION) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (Environment.isExternalStorageManager()) {
@@ -2769,19 +2285,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 新增：处理中转站权限授予后的逻辑
+    /**
+     * 处理存储权限授予成功后的逻辑，恢复之前的操作（创建文件夹/打开中转站）
+     */
     private void handleTransferPermissionGranted() {
-        // 如果是在创建文件夹时触发的权限请求，重新执行创建
         if (isCreatingFolderInTransfer) {
-            showFolderCreateDialog(); // 重新打开创建对话框
+            showFolderCreateDialog();
         } else {
-            // 否则打开中转站
             openTransferStation();
         }
-        isCreatingFolderInTransfer = false; // 重置状态
+        isCreatingFolderInTransfer = false;
     }
-    // 添加一个临时变量记录是否正在创建文件夹
+
     private boolean isCreatingFolderInTransfer = false;
+
+    /**
+     * 分发触摸事件，点击搜索框外部时隐藏软键盘并清除焦点
+     */
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
@@ -2801,15 +2321,17 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchTouchEvent(ev);
     }
 
-    // 修改copyFileOrFolder方法，明确区分复制和剪切
-    // 6. 修改复制/剪切/粘贴逻辑，支持中转站
+    /**
+     * 复制/剪切文件/文件夹，保存操作状态并显示粘贴按钮
+     *
+     * @param target 目标文件/文件夹
+     * @param isCut  true=剪切，false=复制
+     */
     private void copyFileOrFolder(File target, boolean isCut) {
         if (target == null || !target.exists()) {
             Toast.makeText(this, "文件不存在，无法操作", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 允许从任何位置复制/剪切到中转站，或从中转站复制/剪切到其他位置
         copiedFile = target;
         isCutOperation = isCut;
         showPasteButton();
@@ -2817,20 +2339,24 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, tip + getDisplayName(target), Toast.LENGTH_SHORT).show();
     }
 
+    /**
+     * 显示粘贴按钮，动态添加到界面并设置点击事件
+     */
     private void showPasteButton() {
         if (pasteButton != null && pasteButton.getParent() != null) {
             ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
         }
-
         pasteButton = LayoutInflater.from(this).inflate(R.layout.paste_button, null);
         Button btnPaste = pasteButton.findViewById(R.id.btn_paste);
         btnPaste.setOnClickListener(v -> performPaste());
-
         FrameLayout pasteContainer = findViewById(R.id.paste_container);
         pasteContainer.removeAllViews();
         pasteContainer.addView(pasteButton);
     }
 
+    /**
+     * 隐藏粘贴按钮并重置复制/剪切状态
+     */
     private void hidePasteButton() {
         if (pasteButton != null && pasteButton.getParent() != null) {
             ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
@@ -2840,27 +2366,20 @@ public class MainActivity extends AppCompatActivity {
         pasteButton = null;
     }
 
-    // 新增：带TXT全局查重和时间戳更新的文件夹复制方法
     /**
-     * 复制文件夹（递归处理内部TXT文件，确保全域唯一）
-     * 规则：复制的TXT文件必须包含"_随机字符_时间戳"格式
+     * 生成不重复的文件夹名称，处理重名时添加序号后缀（如：文件夹(1)）
      */
     private String getUniqueFolderName(File parentDir, String baseName) {
         if (parentDir == null || !parentDir.exists() || !parentDir.isDirectory()) {
             return baseName;
         }
-
-        // 检查基础名称是否已存在
         File baseFile = new File(parentDir, baseName);
         if (!baseFile.exists()) {
             return baseName;
         }
-
-        // 查找最大序列号
         int maxSerial = 0;
         Pattern pattern = Pattern.compile("^" + Pattern.quote(baseName) + "\\((\\d+)\\)$");
         File[] files = parentDir.listFiles(File::isDirectory);
-
         if (files != null) {
             for (File file : files) {
                 Matcher matcher = pattern.matcher(file.getName());
@@ -2871,84 +2390,58 @@ public class MainActivity extends AppCompatActivity {
                             maxSerial = serial;
                         }
                     } catch (NumberFormatException e) {
-                        // 忽略非数字序列号的文件夹
                     }
                 }
             }
         }
-
-        // 返回下一个序列号的名称
         return baseName + "(" + (maxSerial + 1) + ")";
     }
+
+    /**
+     * 复制文件夹并处理其中TXT文件的全局唯一命名规则，维护序号避免重复
+     */
     private boolean copyFolderWithTxtGlobalCheck(File sourceFolder, File targetParent) throws IOException {
-        // 生成带序列号的唯一文件夹名
         String baseName = sourceFolder.getName();
         String uniqueFolderName = getUniqueFolderName(targetParent, baseName);
         File targetFolder = new File(targetParent, uniqueFolderName);
-
-        // 创建目标文件夹
         if (!targetFolder.exists() && !targetFolder.mkdirs()) {
             Log.e("CopyFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
             return false;
         }
-
-        // 初始化本次复制的序列号（每次复制操作从0000开始）
         int sequenceNumber = 0;
-
         File[] files = sourceFolder.listFiles();
         if (files == null) {
-            return true; // 空文件夹复制成功
+            return true;
         }
-
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 递归复制子文件夹，传递当前序列号并接收更新后的值
                 sequenceNumber = copySubFolderWithTxtCheck(sourceFile, targetFolder, sequenceNumber);
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                // 处理TXT文件：使用序列号替代时间戳中的小时和分钟
                 String originalName = sourceFile.getName();
                 String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
                 if (cleanName.toLowerCase().endsWith(".txt")) {
                     cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
-
-                // 生成随机字符（6位）
                 String randomStr = UniqueFileNameHandler.generateRandomString();
-
-                // 生成基础时间戳（yyyyMMddHHmmssSSS）
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                // 替换时间戳中的小时和分钟部分（第9-13位：HHmm）为4位序列号
-                // 格式说明：yyyyMMddHHmmssSSS → 前8位是日期，9-12位是小时分钟，后续是秒和毫秒
                 if (baseTimestamp.length() >= 12) {
-                    // 保留前8位（日期）+ 替换9-12位为序列号 + 保留剩余部分（秒和毫秒）
                     String datePart = baseTimestamp.substring(0, 8);
                     String timeRemaining = baseTimestamp.substring(12);
-                    // 格式化序列号为4位数字（0000-9999循环）
                     String sequenceStr = String.format(Locale.getDefault(), "%04d", sequenceNumber % 10000);
-                    // 拼接新时间戳
                     String newTimestamp = datePart + sequenceStr + timeRemaining;
-
-                    // 生成时间戳后缀
                     String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-
-                    // 生成全局唯一文件名
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                             rootDirectory,
                             targetFolder,
                             cleanName,
                             timestampSuffix
                     );
-
                     File targetFile = new File(targetFolder, uniqueFileName);
                     if (!copyFileContent(sourceFile, targetFile)) {
                         return false;
                     }
-
-                    // 序列号自增（超过9999自动循环）
                     sequenceNumber++;
                 } else {
-                    // 时间戳格式异常时使用默认逻辑
                     Log.w("CopyFolder", "时间戳格式异常，使用默认命名");
                     String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
@@ -2963,7 +2456,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } else {
-                // 非TXT文件：当前目录内查重
                 File targetFile = new File(targetFolder, sourceFile.getName());
                 File uniqueTargetFile = getNonConflictFile(targetFile);
                 if (!copyFileContent(sourceFile, uniqueTargetFile)) {
@@ -2973,50 +2465,38 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
+
     /**
-     * 递归复制子文件夹，保持序列号连续
-     * @param sourceFolder 源文件夹
-     * @param targetParent 目标父文件夹
-     * @param startSequence 起始序列号
-     * @return 更新后的序列号
+     * 递归复制子文件夹，处理其中TXT文件并维护序号
      */
     private int copySubFolderWithTxtCheck(File sourceFolder, File targetParent, int startSequence) throws IOException {
         int currentSequence = startSequence;
-
-        // 创建子文件夹
         String uniqueFolderName = getUniqueFolderName(targetParent, sourceFolder.getName());
         File targetFolder = new File(targetParent, uniqueFolderName);
         if (!targetFolder.exists() && !targetFolder.mkdirs()) {
             Log.e("CopySubFolder", "创建子文件夹失败: " + targetFolder.getAbsolutePath());
             return currentSequence;
         }
-
         File[] files = sourceFolder.listFiles();
         if (files == null) {
             return currentSequence;
         }
-
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 递归处理子文件夹，更新序列号
                 currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                // 处理TXT文件，逻辑与父文件夹一致
                 String originalName = sourceFile.getName();
                 String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
                 if (cleanName.toLowerCase().endsWith(".txt")) {
                     cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
-
                 String randomStr = UniqueFileNameHandler.generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
                 if (baseTimestamp.length() >= 12) {
                     String datePart = baseTimestamp.substring(0, 8);
                     String timeRemaining = baseTimestamp.substring(12);
                     String sequenceStr = String.format(Locale.getDefault(), "%04d", currentSequence % 10000);
                     String newTimestamp = datePart + sequenceStr + timeRemaining;
-
                     String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
                     String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
                             rootDirectory,
@@ -3024,10 +2504,9 @@ public class MainActivity extends AppCompatActivity {
                             cleanName,
                             timestampSuffix
                     );
-
                     File targetFile = new File(targetFolder, uniqueFileName);
                     if (copyFileContent(sourceFile, targetFile)) {
-                        currentSequence++; // 仅在复制成功时自增序列号
+                        currentSequence++;
                     }
                 } else {
                     Log.w("CopySubFolder", "时间戳格式异常，使用默认命名");
@@ -3042,23 +2521,17 @@ public class MainActivity extends AppCompatActivity {
                     copyFileContent(sourceFile, targetFile);
                 }
             } else {
-                // 处理非TXT文件
                 File targetFile = new File(targetFolder, sourceFile.getName());
                 File uniqueTargetFile = getNonConflictFile(targetFile);
                 copyFileContent(sourceFile, uniqueTargetFile);
             }
         }
-
         return currentSequence;
     }
 
-
-    // 修改performPaste方法，处理剪切和复制的不同逻辑
-    // 修改performPaste方法中的文件操作逻辑
     /**
-     * 执行粘贴操作（处理复制/剪切逻辑）
+     * 执行粘贴操作，在子线程处理文件/文件夹的复制/剪切，避免ANR
      */
-    // 7. 修改粘贴操作的路径校验（允许与中转站之间的操作）
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -3070,45 +2543,31 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             return;
         }
-
-        // 路径校验：允许在三个区域（主目录/回收站/中转站）之间进行操作
         String originalParentPath = copiedFile.getParentFile().getAbsolutePath();
         String targetPath = currentDirectory.getAbsolutePath();
-
-        // 仅禁止剪切到自身子目录
         if (isCutOperation && copiedFile.isDirectory() &&
                 targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
             Toast.makeText(this, "无法剪切到子目录，避免循环嵌套", Toast.LENGTH_SHORT).show();
             hidePasteButton();
             return;
         }
-
-        // 执行实际操作（复用原有逻辑，支持跨存储操作）
         new Thread(() -> {
             boolean threadSuccess = false;
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
-                        // 剪切文件夹（支持跨存储）
                         threadSuccess = moveFolderWithTxtUpdate(copiedFile, currentDirectory);
                     } else {
-                        // 复制文件夹（支持跨存储）
                         threadSuccess = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
-                    // 单个文件操作（支持跨存储）
                     String targetFileName = copiedFile.getName();
-
-                    // 检查是否重名，如果重名则生成新的文件名
                     if (isCutOperation) {
                         File targetFile = new File(currentDirectory, targetFileName);
                         if (targetFile.exists()) {
-                            // 使用你现有的getUniqueFileName方法获取新的文件名
                             targetFileName = getUniqueFileName(currentDirectory, targetFileName);
                         }
                     }
-
-                    // 创建目标文件对象（这里修正了类型不兼容的问题）
                     File targetFile = new File(currentDirectory, targetFileName);
 
                     if (isCutOperation) {
@@ -3120,7 +2579,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
             final boolean successResult = threadSuccess;
             runOnUiThread(() -> {
                 if (successResult) {
@@ -3136,42 +2594,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 获取唯一的文件名，如果目标文件已存在则添加序列号
-     */
-
-    /**
-     * 移动文件夹并更新内部TXT文件的时间戳
-     * 规则：
-     * 1. 有随机字符+1个时间戳 → 增加一个时间戳
-     * 2. 有随机字符+2个以上时间戳 → 刷新最后一个时间戳
+     * 移动文件夹并更新其中TXT文件的时间戳，处理重名和复制失败的降级逻辑
      */
     private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent) throws IOException {
-        // 生成带序列号的唯一文件夹名（顶层文件夹处理保持不变）
         String baseName = sourceFolder.getName();
         String uniqueFolderName = getUniqueFolderName(targetParent, baseName);
         File targetFolder = new File(targetParent, uniqueFolderName);
-
-        // 确保目标文件夹存在
         if (!targetFolder.exists() && !targetFolder.mkdirs()) {
             Log.e("MoveFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
             return false;
         }
-
-        // 处理内部文件
         File[] files = sourceFolder.listFiles();
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
-                    // 关键修复：子文件夹不再使用file.getName()，而是直接使用当前targetFolder
-                    // 避免在原有名称基础上重复创建
                     if (!moveFolderWithTxtUpdate(file, targetFolder)) {
                         return false;
                     }
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    // TXT文件处理保持不变
                     String originalName = file.getName();
                     String newFileName = processTxtForCutOperation(originalName);
-
                     File targetFile = new File(targetFolder, newFileName);
                     if (!file.renameTo(targetFile)) {
                         if (copyFileContent(file, targetFile)) {
@@ -3182,7 +2624,6 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    // 非TXT文件处理保持不变
                     File targetFile = new File(targetFolder, file.getName());
                     if (!file.renameTo(targetFile)) {
                         if (copyFileContent(file, targetFile)) {
@@ -3195,153 +2636,49 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        // 删除原文件夹
         return deleteEmptyDirectory(sourceFolder);
     }
 
-
+    /**
+     * 删除空目录（仅当目录为空时执行删除）
+     */
     private boolean deleteEmptyDirectory(File dir) {
         if (dir == null || !dir.isDirectory()) {
             return false;
         }
-
         File[] files = dir.listFiles();
         if (files != null && files.length > 0) {
-            return false; // 目录不为空
+            return false;
         }
 
         return dir.delete();
     }
+
     /**
-     * 剪切操作专用：处理TXT文件名的随机字符和时间戳
+     * 处理剪切操作中的TXT文件命名，更新时间戳后缀
      */
     private String processTxtForCutOperation(String fileName) {
         if (!fileName.toLowerCase().endsWith(".txt")) {
             return fileName;
         }
-
         String nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
         String ext = fileName.substring(fileName.lastIndexOf("."));
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-        // 1. 检查是否有随机字符+时间戳结构
         Matcher targetMatcher = TARGET_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
         if (!targetMatcher.find()) {
-            // 无随机字符和时间戳：添加完整结构
             String randomStr = UniqueFileNameHandler.generateRandomString();
             return nameWithoutExt + "_" + randomStr + "_" + newTimestamp + ext;
         }
-
-        // 2. 检查是否有多个时间戳（随机字符+2个以上时间戳）
         Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
         if (incrementMatcher.find()) {
-            // 刷新最后一个时间戳
             return incrementMatcher.replaceAll("$1_" + newTimestamp) + ext;
         }
-
-        // 3. 只有随机字符+1个时间戳：增加一个新时间戳
         return nameWithoutExt + "_" + newTimestamp + ext;
     }
-    /**
-     * 根据规则更新TXT文件名的时间戳
-     */
-    private String updateTxtTimestamp(String fileName) {
-        if (!fileName.toLowerCase().endsWith(".txt")) {
-            return fileName;
-        }
-
-        String nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
-        String ext = fileName.substring(fileName.lastIndexOf("."));
-        String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-        // 匹配增量格式（随机字符+多个时间戳）
-        Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
-        if (incrementMatcher.find()) {
-            // 刷新最后一个时间戳
-            return incrementMatcher.replaceAll("$1_" + newTimestamp) + ext;
-        }
-
-        // 匹配目标格式（随机字符+1个时间戳）
-        Matcher targetMatcher = TARGET_TIMESTAMP_PATTERN.matcher(nameWithoutExt);
-        if (targetMatcher.find()) {
-            // 增加一个时间戳
-            return nameWithoutExt + "_" + newTimestamp + ext;
-        }
-
-        // 不匹配任何格式：添加完整时间戳（随机字符+时间戳）
-        String randomStr = UniqueFileNameHandler.generateRandomString();
-        return nameWithoutExt + "_" + randomStr + "_" + newTimestamp + ext;
-    }
-
-
-
-
 
     /**
-     * 复制文件夹（递归处理内部TXT文件，确保全域唯一）
-     * 复用解压/TXT文件复制的查重逻辑，保持一致性
+     * 生成6位随机字符串（字母+数字组合）
      */
-    private boolean copyFolderWithTxtCheck(File sourceFolder, File targetParent) throws IOException {
-        // 文件夹自身查重逻辑保持不变（当前目录内查重，生成唯一文件夹名）
-        String targetFolderName = FileUtils.generateUniqueFolderName(
-                targetParent,
-                sourceFolder.getName()
-        );
-        File targetFolder = new File(targetParent, targetFolderName);
-        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
-            Log.e("MainActivity", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
-            return false;
-        }
-
-        File[] files = sourceFolder.listFiles();
-        if (files == null) {
-            return true; // 空文件夹复制成功
-        }
-
-        for (File sourceFile : files) {
-            if (sourceFile.isDirectory()) {
-                // 子文件夹查重逻辑完全不变，递归调用保持原有规则
-                if (!copyFolderWithTxtCheck(sourceFile, targetFolder)) {
-                    return false;
-                }
-            } else {
-                // 仅修改TXT文件的处理逻辑
-                if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                    // TXT文件使用全局查重（与单独复制TXT逻辑一致）
-                    String originalName = sourceFile.getName();
-                    String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
-                    if (cleanName.toLowerCase().endsWith(".txt")) {
-                        cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-                    }
-
-                    String randomStr = generateRandomString(); // 生成随机字符串
-                    String newTimestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-                    // 文件名格式：标题_随机字符串_时间戳.txt
-                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDirectory,
-                            targetFolder,
-                            cleanName,
-                            "_" + randomStr + newTimestamp
-                    );
-
-                    File targetFile = new File(targetFolder, uniqueFileName);
-                    if (!copyFileContent(sourceFile, targetFile)) {
-                        return false;
-                    }
-                } else {
-                    // 非TXT文件保持原有查重逻辑不变
-                    File targetFile = new File(targetFolder, sourceFile.getName());
-                    File uniqueTargetFile = getNonConflictFile(targetFile);
-                    if (!copyFileContent(sourceFile, uniqueTargetFile)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
-    }
-    // 生成固定长度的随机字符串（6位字母数字组合）
     private String generateRandomString() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         StringBuilder sb = new StringBuilder(6);
@@ -3353,7 +2690,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 辅助方法：复制文件内容（复用，避免重复代码）
+     * 复制文件内容，使用缓冲区提高读写效率
      */
     private boolean copyFileContent(File source, File target) throws IOException {
         try (InputStream in = new BufferedInputStream(new FileInputStream(source));
@@ -3368,14 +2705,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 辅助方法：非TXT文件的当前文件夹内查重（复用已有逻辑，确保一致性）
+     * 获取无冲突的文件路径，重名时添加序号后缀
      */
-    // 处理重名文件，生成无冲突的文件名（如"文件(1).zip"）
     private File getNonConflictFile(File targetFile) {
         if (!targetFile.exists()) {
             return targetFile;
         }
-
         String baseName = targetFile.getName();
         String extension = "";
         int dotIndex = baseName.lastIndexOf(".");
@@ -3383,7 +2718,6 @@ public class MainActivity extends AppCompatActivity {
             baseName = baseName.substring(0, dotIndex);
             extension = targetFile.getName().substring(dotIndex);
         }
-
         int counter = 1;
         while (true) {
             String newName = baseName + "(" + counter + ")" + extension;
@@ -3394,27 +2728,23 @@ public class MainActivity extends AppCompatActivity {
             counter++;
         }
     }
-    // 打开图片文件
-    // 在打开图片时正确记录状态
-    // 1. 在打开图片时记录状态
+
+    /**
+     * 打开图片文件，使用FileProvider兼容Android 7.0+，保存最后访问记录
+     */
     private void openImageFile(File imageFile) {
         try {
-            // 记录图片查看状态 - 使用正确的方法名
             PreferenceUtils.saveLastPageType(this, "image");
-            PreferenceUtils.saveLastViewedImage(this, imageFile.getAbsolutePath()); // 正确方法
+            PreferenceUtils.saveLastViewedImage(this, imageFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, imageFile.getParentFile().getAbsolutePath());
-
-            // 原有打开图片的代码
             Uri imageUri = FileProvider.getUriForFile(
                     this,
                     getPackageName() + ".fileprovider",
                     imageFile
             );
-
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(imageUri, "image/*");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
@@ -3426,99 +2756,81 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 提示不支持的文件类型
+    /**
+     * 显示不支持的文件类型提示
+     */
     private void showUnsupportedFileMessage() {
         Toast.makeText(this, "暂不支持此文件类型", Toast.LENGTH_SHORT).show();
     }
 
+    /**
+     * 移动文件并更新TXT文件的时间戳，重命名失败时降级为复制+删除
+     */
     private boolean moveFileWithTimestampUpdate(File source, File target) throws IOException {
         if (!source.exists()) return false;
-
-        // 对于TXT文件，按剪切规则处理
         if (source.getName().toLowerCase().endsWith(".txt")) {
             String originalName = source.getName();
             String newFileName = processTxtForCutOperation(originalName);
             File finalTarget = new File(target.getParentFile(), newFileName);
-
-            // 执行移动
             if (source.renameTo(finalTarget)) {
                 return true;
             } else {
-                // 移动失败时尝试复制后删除
                 if (copyFileContent(source, finalTarget)) {
                     return source.delete();
                 }
                 return false;
             }
         }
-
-        // 非TXT文件直接移动
         return source.renameTo(target);
     }
 
-    // 复制文件并确保唯一文件名（复制操作）
-    // 复制文件并确保唯一文件名（复制操作）- 核心修改
+    /**
+     * 复制文件并生成唯一名称，处理TXT文件的特殊命名规则
+     */
     private boolean copyFileWithUniqueName(File source, File target) throws IOException {
         // 检查源文件是否存在
         if (!source.exists()) {
             Log.e("FileCopy", "源文件不存在: " + source.getAbsolutePath());
             return false;
         }
-
-        // 确保目标目录存在
         File parentDir = target.getParentFile();
         if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
             Log.e("FileCopy", "无法创建目标目录: " + parentDir.getAbsolutePath());
             return false;
         }
-
         File finalTargetFile = target;
         String sourceFileName = source.getName();
-
-        // 仅处理TXT文件的时间戳格式和唯一性
         if (sourceFileName.toLowerCase().endsWith(".txt")) {
-            // 1. 按规则处理源文件名（升级旧格式/更新时间戳）
             String processedFileName = UniqueFileNameHandler.TimestampHandler.processTxtFileName(sourceFileName);
-
-            // 2. 提取核心标题（移除所有时间戳相关部分）
             String coreTitle = processedFileName;
             if (coreTitle.toLowerCase().endsWith(".txt")) {
                 coreTitle = coreTitle.substring(0, coreTitle.lastIndexOf("."));
             }
-            // 移除目标格式和增量时间戳
             coreTitle = MainActivity.INCREMENT_TIMESTAMP_PATTERN.matcher(coreTitle).replaceAll("");
             coreTitle = MainActivity.TARGET_TIMESTAMP_PATTERN.matcher(coreTitle).replaceAll("");
-
-            // 3. 生成符合规则的时间戳后缀（_随机字符串_时间戳）
             String randomStr = UniqueFileNameHandler.TimestampHandler.generateRandomString();
             String newTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
             String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-
-            // 4. 全局查重生成唯一文件名
             String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDirectory,  // 全局根目录（流动信息）
-                    parentDir,      // 目标父目录
-                    coreTitle,      // 核心标题（无时间戳）
-                    timestampSuffix // 时间戳后缀（含随机字符串）
+                    rootDirectory,
+                    parentDir,
+                    coreTitle,
+                    timestampSuffix
             );
             finalTargetFile = new File(parentDir, uniqueFileName);
             Log.d("FileCopy", "TXT文件复制 - 原名称: " + sourceFileName + " → 新名称: " + uniqueFileName);
         } else {
-            // 非TXT文件：仅在当前目录查重（不处理时间戳）
             finalTargetFile = getNonConflictFile(target);
             Log.d("FileCopy", "非TXT文件复制 - 原名称: " + sourceFileName + " → 新名称: " + finalTargetFile.getName());
         }
-
-        // 执行文件复制操作
         try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(source));
              BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(finalTargetFile))) {
-
-            byte[] buffer = new byte[1024 * 4]; // 4KB缓冲区
+            byte[] buffer = new byte[1024 * 4];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
             }
-            out.flush(); // 确保所有数据写入磁盘
+            out.flush();
             return true;
         } catch (IOException e) {
             Log.e("FileCopy", "复制文件失败: " + e.getMessage(), e);
@@ -3526,38 +2838,21 @@ public class MainActivity extends AppCompatActivity {
             if (finalTargetFile.exists() && finalTargetFile.length() == 0) {
                 finalTargetFile.delete();
             }
-            throw e; // 向上传递异常，让调用者处理
+            throw e;
         }
     }
 
-    // 辅助方法：非TXT文件的当前目录查重
-
-
-
-
-    // 在MainActivity中添加批量升级方法（可在onCreate或按钮点击时调用）
-    public void batchUpgradeOldTxtFiles() {
-        File rootDir = new File(Environment.getExternalStorageDirectory(), "流动信息");
-        if (!rootDir.exists() || !rootDir.isDirectory()) {
-            Log.d("MainActivity", "根目录不存在，无需升级");
-            return;
-        }
-
-        // 递归遍历所有子目录
-        recursiveUpgradeTxtFiles(rootDir);
-        Toast.makeText(this, "历史TXT文件格式升级完成", Toast.LENGTH_SHORT).show();
-    }
-
-    // 递归处理每个TXT文件
+    /**
+     * 递归升级目录下所有TXT文件的命名格式（更新时间戳规则）
+     */
     private void recursiveUpgradeTxtFiles(File dir) {
         File[] files = dir.listFiles();
         if (files == null) return;
 
         for (File file : files) {
             if (file.isDirectory()) {
-                recursiveUpgradeTxtFiles(file); // 递归子目录
+                recursiveUpgradeTxtFiles(file);
             } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                // 调用处理方法升级格式
                 String oldName = file.getName();
                 String newName = UniqueFileNameHandler.TimestampHandler.processTxtFileName(oldName);
                 if (!oldName.equals(newName)) {
@@ -3572,8 +2867,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 路径修正：仅处理第一行，不干扰中间内容
-    // 提取TXT文件首行的路径信息（保持不变，无需修改）
+    /**
+     * 提取TXT文件第一行中的路径信息（格式：【路径】）
+     */
     private String extractFirstLinePath(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return null;
 
@@ -3592,60 +2888,37 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    // 修正TXT文件中的路径标识
-    // 修正TXT文件中的路径标识（整合逻辑，减少新增方法）
+    /**
+     * 修正TXT文件第一行的路径信息，根据文件所在目录更新路径
+     */
     private boolean correctFilepathInTxt(File file) {
         if (!file.getName().toLowerCase().endsWith(".txt")) return false;
-
         File parentDir = file.getParentFile();
-        // 增加父目录空值判断，避免闪退
         if (parentDir == null) {
             return false;
         }
-
-        // 原有根目录和中转站判断
         boolean isInRootDir = parentDir.equals(rootDirectory);
         boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory);
-
-        // 新增：回收站相关判断
         boolean isInRecycleBinRoot = parentDir.equals(recycleBinDirectory);
-
-        // 无需路径标识的目录：根目录、中转站一级目录、回收站一级目录
         boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot || isInRecycleBinRoot;
-
-        // 判断是否在中转站和回收站的子目录中（不包含一级目录）
         boolean isInTransferStationSubDir = false;
-        boolean isInRecycleBinSubDir = false; // 新增
+        boolean isInRecycleBinSubDir = false;
         String actualPath = "";
-
         try {
-            // 获取标准化路径
             String parentPath = parentDir.getCanonicalPath() + File.separator;
-
-            // 中转站路径判断（原有逻辑）
             String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
             isInTransferStationSubDir = parentPath.startsWith(transferPath) && !isInTransferStationRoot;
-
-            // 新增：回收站路径判断
             String recyclePath = recycleBinDirectory.getCanonicalPath() + File.separator;
             isInRecycleBinSubDir = parentPath.startsWith(recyclePath) && !isInRecycleBinRoot;
-
-            // 计算实际路径（核心逻辑）
             if (isInTransferStationSubDir) {
-                // 中转站子目录：仅显示中转站下级路径
                 actualPath = parentPath.substring(transferPath.length())
                         .replace(File.separator, "/")
                         .replaceAll("/$", "");
-            }
-            // 新增：回收站子目录处理
-            else if (isInRecycleBinSubDir) {
-                // 回收站子目录：仅显示回收站下级路径
+            } else if (isInRecycleBinSubDir) {
                 actualPath = parentPath.substring(recyclePath.length())
                         .replace(File.separator, "/")
                         .replaceAll("/$", "");
-            }
-            // 其他目录：从根目录计算
-            else if (!isInNoPathRequiredDir) {
+            } else if (!isInNoPathRequiredDir) {
                 String rootPath = rootDirectory.getCanonicalPath() + File.separator;
                 actualPath = parentPath.substring(rootPath.length())
                         .replace(File.separator, "/")
@@ -3653,10 +2926,8 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (IOException e) {
             e.printStackTrace();
-            actualPath = parentDir.getName(); // 异常时使用目录名作为 fallback
+            actualPath = parentDir.getName();
         }
-
-        // 以下文件内容处理逻辑保持不变
         List<String> allLines = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
@@ -3668,14 +2939,11 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
             return false;
         }
-
         StringBuilder newContent = new StringBuilder();
         boolean pathProcessed = false;
-
         for (int i = 0; i < allLines.size(); i++) {
             String line = allLines.get(i);
             if (i == 0 && !isInNoPathRequiredDir) {
-                // 非根目录：添加/更新路径标识
                 if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
                     newContent.append("【").append(actualPath).append("】\n");
                 } else {
@@ -3683,7 +2951,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 pathProcessed = true;
             } else if (i == 0 && isInNoPathRequiredDir) {
-                // 根目录/中转站一级/回收站一级：移除路径标识
                 String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
                 newContent.append(processedLine).append("\n");
                 pathProcessed = true;
@@ -3691,12 +2958,9 @@ public class MainActivity extends AppCompatActivity {
                 newContent.append(line).append("\n");
             }
         }
-
-        // 空文件处理
         if (!isInNoPathRequiredDir && allLines.isEmpty()) {
             newContent.append("【").append(actualPath).append("】\n");
         }
-
         try (FileOutputStream fos = new FileOutputStream(file)) {
             String finalContent = newContent.toString().endsWith("\n")
                     ? newContent.toString().substring(0, newContent.length() - 1)
@@ -3709,22 +2973,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 辅助方法：判断文件是否在指定目录或其子目录下（通用方法）
-    private boolean isFileInDirectory(File file, File directory) {
-        if (file == null || directory == null) {
-            return false;
-        }
-        try {
-            String filePath = file.getCanonicalPath() + File.separator;
-            String dirPath = directory.getCanonicalPath() + File.separator;
-            return filePath.startsWith(dirPath);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-
+    /**
+     * 批量修正目录下所有TXT文件的路径信息
+     */
     private void batchCorrectTxtFilepaths(File folder) {
         if (!folder.isDirectory()) return;
 
@@ -3740,36 +2991,43 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 使用Glide加载图片缩略图，优化加载性能
+     */
     private void loadImageThumbnail(File imageFile, ImageView imageView) {
         // 使用Glide库加载缩略图
         Glide.with(MainActivity.this)
                 .load(imageFile)
-                .thumbnail(0.1f) // 加载原图的1/10作为缩略图
+                .thumbnail(0.1f)
                 .centerCrop()
-                .error(R.drawable.ic_image) // 加载失败时显示默认图片图标
+                .error(R.drawable.ic_image)
                 .into(imageView);
     }
 
+    /**
+     * Activity恢复时更新目录状态，刷新菜单
+     */
     @Override
     protected void onResume() {
         super.onResume();
-        // 校验状态与当前目录是否匹配
         if (currentDirectory.equals(transferStationDirectory) && !isInTransferStation) {
             isInTransferStation = true;
         } else if (currentDirectory.equals(rootDirectory) && (isInTransferStation || isInRecycleBin)) {
-            // 当前目录是主页，但状态标识错误，强制重置
             isInTransferStation = false;
             isInRecycleBin = false;
         }
-        // 刷新菜单相关UI
         invalidateOptionsMenu();
     }
 
-    // 文件列表适配器
-    // ========== 完整的FileAdapter类（含图标放大+序列号逻辑） ==========
+    /**
+     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     */
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
+        /**
+         * 更新适配器数据并刷新列表
+         */
         public void setData(List<File> newData) {
             if (newData != null) {
                 mData.clear();
@@ -3789,22 +3047,14 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
-
-            // 严格按类型设置样式（修改：文件夹部分添加放大+序列号）
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
-
-                // ========== 核心修改：放大图标 + 绘制同色序列号 ==========
-                // 1. 放大图标尺寸（24dp → 36dp，可自行调整）
                 int iconSize = dp2px(holder.itemView.getContext(), 36);
                 ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
                 params.width = iconSize;
                 params.height = iconSize;
                 holder.ivIcon.setLayoutParams(params);
-
-                // 2. 绘制带同色（#FFB85C）序列号的文件夹图标
-                drawFolderIconWithNumber(holder.ivIcon, position + 1); // 序列号从1开始
-
+                drawFolderIconWithNumber(holder.ivIcon, position + 1);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
             } else if (file.getName().toLowerCase().endsWith(".zip")) {
                 holder.ivIcon.setImageResource(R.drawable.ic_image_error);
@@ -3823,11 +3073,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
             }
-
-            // 关键修改：使用处理后的显示名称（原有逻辑保留）
             holder.tvName.setText(formatFileNameForDisplay(file.getName()));
-
-            // 保持原有的点击事件逻辑（完全未改）
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -3838,18 +3084,14 @@ public class MainActivity extends AppCompatActivity {
                     etSearch.setText("");
                     currentDirectory = file;
                     loadFileList();
-                    // 记录文件夹浏览状态
                     PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
-                    // 清除其他类型状态
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
                 } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
-                    // 记录文件路径
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-
                     new Thread(() -> {
                         boolean corrected = correctFilepathInTxt(file);
                         runOnUiThread(() -> {
@@ -3865,27 +3107,21 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }).start();
-
-                    // 记录TXT编辑状态（仅在打开编辑页面时）
                     PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
                 } else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
                     openImageFile(file);
-                    // 记录图片查看状态
                     PreferenceUtils.saveLastPageType(MainActivity.this, "image");
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-                    // 清除其他类型状态
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
                 } else {
                     hidePasteButton();
                     showUnsupportedFileMessage();
                 }
             });
-
-            // 保持原有的长按事件逻辑（完全未改）
             holder.itemView.setOnLongClickListener(v -> {
                 if (file.isDirectory()) {
                     showFolderOptions(file);
@@ -3901,6 +3137,9 @@ public class MainActivity extends AppCompatActivity {
             return mData.size();
         }
 
+        /**
+         * 文件列表项ViewHolder，绑定视图控件
+         */
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;
@@ -3912,52 +3151,39 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // ========== 新增：dp转px工具方法（Adapter内部） ==========
+        /**
+         * dp转px，适配不同屏幕密度
+         */
         private int dp2px(Context context, float dp) {
             return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
         }
 
-        // ========== 新增：绘制带同色序列号的文件夹图标 ==========
-        // ========== 修改后的绘制方法（序列号居中） ==========
+        /**
+         * 绘制带序号的文件夹图标
+         */
         private void drawFolderIconWithNumber(ImageView imageView, int number) {
-            // 1. 获取原始ic_folder图标
             Drawable folderDrawable = ContextCompat.getDrawable(imageView.getContext(), R.drawable.ic_folder);
             if (folderDrawable == null) {
-                imageView.setImageResource(R.drawable.ic_folder); // 兜底显示原始图标
+                imageView.setImageResource(R.drawable.ic_folder);
                 return;
             }
-
-            // 2. 创建位图画布
             int drawableWidth = folderDrawable.getIntrinsicWidth();
             int drawableHeight = folderDrawable.getIntrinsicHeight();
             Bitmap bitmap = Bitmap.createBitmap(drawableWidth, drawableHeight, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bitmap);
-
-            // 3. 绘制原始文件夹图标
             folderDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
             folderDrawable.draw(canvas);
-
-            // 4. 绘制序列号（颜色与ic_folder一致：#FFB85C）
             Paint paint = new Paint();
-            paint.setColor(Color.parseColor("#FFB85C")); // 与你的矢量图标颜色一致
-            paint.setTextSize(dp2px(imageView.getContext(), 12)); // 序列号字体大小
+            paint.setColor(Color.parseColor("#FFB85C"));
+            paint.setTextSize(dp2px(imageView.getContext(), 12));
             paint.setTypeface(Typeface.DEFAULT_BOLD); // 加粗
             paint.setTextAlign(Paint.Align.CENTER);
-            paint.setAntiAlias(true); // 抗锯齿
-
-            // ========== 关键修改：序列号居中并向下偏移1/4文字高度 ==========
+            paint.setAntiAlias(true);
             String numberText = String.valueOf(number);
-            // X轴：画布宽度的一半（水平居中）
             float x = canvas.getWidth() / 2f;
-
-            // 计算文字总高度（descent是负数，ascent是正数，总高度=descent - ascent）
             float textHeight = paint.descent() - paint.ascent();
-            // Y轴：居中位置 + 文字高度的1/6（仅改这一行）
             float y = canvas.getHeight() / 2f - (paint.descent() + paint.ascent()) / 2 + textHeight / 6;
-
             canvas.drawText(numberText, x, y, paint);
-
-            // 6. 设置最终图标
             imageView.setImageBitmap(bitmap);
         }
     }

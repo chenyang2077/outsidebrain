@@ -1,8 +1,6 @@
 package com.example.outsidebrain;
-
 import android.os.Environment;
 import android.util.Log;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -12,21 +10,26 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 文件操作工具类文件FileUtils.java
+ * 用途：基于Android外部存储实现"流动信息"应用根目录下的文件/文件夹管理，
+ * 提供全局唯一文件夹命名、文件夹创建/复制/移动、文件复制、解压等核心功能，
+ * 所有操作均限制在应用根目录内，保证数据安全性和命名唯一性。
+ */
 public class FileUtils {
     private static final String TAG = "FileUtils";
-    // 应用根目录名称
     private static final String APP_ROOT_FOLDER = "流动信息";
 
     /**
-     * 获取"流动信息"根目录
+     * 获取应用根目录（外部存储下的"流动信息"文件夹）
+     * @return File 应用根目录文件对象
      */
     public static File getAppRootDirectory() {
         return new File(Environment.getExternalStorageDirectory(), APP_ROOT_FOLDER);
     }
 
     /**
-     * 递归收集"流动信息"根目录下所有文件夹名称（包括所有子文件夹）
-     * 用于全局查重，确保根目录及所有子目录中没有重名文件夹
+     * 递归收集应用根目录下所有文件夹名称（全局去重）
      */
     private static List<String> getAllGlobalFolderNames() {
         List<String> globalFolderNames = new ArrayList<>();
@@ -35,13 +38,12 @@ public class FileUtils {
             Log.e(TAG, "根目录不存在或非目录: " + rootDir.getAbsolutePath());
             return globalFolderNames;
         }
-        // 递归收集所有文件夹名称
         collectFolderNamesRecursive(rootDir, globalFolderNames);
         return globalFolderNames;
     }
 
     /**
-     * 递归收集指定目录下所有子文件夹名称
+     * 递归遍历目录，收集所有子文件夹名称
      */
     private static void collectFolderNamesRecursive(File currentDir, List<String> folderNames) {
         File[] files = currentDir.listFiles();
@@ -49,21 +51,20 @@ public class FileUtils {
             Log.w(TAG, "无法读取目录: " + currentDir.getAbsolutePath());
             return;
         }
-
         for (File file : files) {
             if (file.isDirectory()) {
                 String folderName = file.getName();
                 if (!folderNames.contains(folderName)) {
                     folderNames.add(folderName);
                 }
-                // 递归处理子目录
                 collectFolderNamesRecursive(file, folderNames);
             }
         }
     }
 
     /**
-     * 生成全局唯一的文件夹名称（检查"流动信息"下所有文件夹，包括子文件夹）
+     * 生成全局唯一的文件夹名称（添加数字后缀规避冲突）
+     * @return String 无冲突的文件夹名称
      */
     public static String generateUniqueFolderName(File parentDir, String baseName) {
         // 处理空名称
@@ -71,16 +72,10 @@ public class FileUtils {
             baseName = "新建文件夹";
         }
         baseName = baseName.trim();
-
-        // 获取全局所有已存在的文件夹名称
         List<String> globalExistingNames = getAllGlobalFolderNames();
-
-        // 检查基础名称是否可用
         if (!globalExistingNames.contains(baseName)) {
             return baseName;
         }
-
-        // 生成带序号的唯一名称
         int counter = 1;
         while (true) {
             String newName = baseName + "(" + counter + ")";
@@ -92,15 +87,14 @@ public class FileUtils {
     }
 
     /**
-     * 新建全局唯一的文件夹
+     * 在应用根目录内创建全局唯一的文件夹
+     * @return File 新建的文件夹对象，失败返回null
      */
     public static File createUniqueFolder(File parentDir, String baseName) {
-        // 校验父目录是否在"流动信息"根目录下
         if (!isUnderAppRoot(parentDir)) {
             Log.e(TAG, "父目录不在流动信息根目录下");
             return null;
         }
-
         String uniqueName = generateUniqueFolderName(parentDir, baseName);
         File newFolder = new File(parentDir, uniqueName);
         if (newFolder.mkdirs()) {
@@ -113,47 +107,36 @@ public class FileUtils {
     }
 
     /**
-     * 复制文件夹（需要全局查重）
-     * 复制的文件夹及其子文件夹都会生成全局唯一名称
+     * 复制文件夹（含子文件/子文件夹）到目标目录，自动生成唯一名称
+     * @return boolean 复制是否成功
      */
     public static boolean copyFolder(File sourceFolder, File targetParentDir) {
         if (sourceFolder == null || !sourceFolder.isDirectory()) {
             Log.e(TAG, "源文件夹无效");
             return false;
         }
-
-        // 校验目标目录是否在"流动信息"根目录下
         if (!isUnderAppRoot(targetParentDir)) {
             Log.e(TAG, "目标目录不在流动信息根目录下");
             return false;
         }
-
-        // 生成目标文件夹的全局唯一名称
         String targetUniqueName = generateUniqueFolderName(targetParentDir, sourceFolder.getName());
         File targetFolder = new File(targetParentDir, targetUniqueName);
-
-        // 创建目标文件夹
         if (!targetFolder.mkdirs()) {
             Log.e(TAG, "无法创建目标文件夹: " + targetFolder.getAbsolutePath());
             return false;
         }
-
-        // 复制子文件和子文件夹
         File[] files = sourceFolder.listFiles();
         if (files == null) {
             Log.w(TAG, "源文件夹为空: " + sourceFolder.getAbsolutePath());
             return true;
         }
-
         for (File file : files) {
             if (file.isDirectory()) {
-                // 递归复制子文件夹（会自动处理子文件夹的重名问题）
                 if (!copyFolder(file, targetFolder)) {
                     Log.e(TAG, "复制子文件夹失败: " + file.getAbsolutePath());
                     return false;
                 }
             } else {
-                // 复制文件
                 if (!copyFile(file, new File(targetFolder, file.getName()))) {
                     Log.e(TAG, "复制文件失败: " + file.getAbsolutePath());
                     return false;
@@ -164,38 +147,29 @@ public class FileUtils {
     }
 
     /**
-     * 剪切文件夹（不需要查重，直接移动）
-     * 剪切操作保留原名称，因为只是位置移动，不会产生新的全局重名
+     * 移动文件夹到目标目录（优先重命名，失败则复制后删除源文件）
+     * @return boolean 移动是否成功
      */
     public static boolean moveFolder(File sourceFolder, File targetParentDir) {
         if (sourceFolder == null || !sourceFolder.isDirectory()) {
             Log.e(TAG, "源文件夹无效");
             return false;
         }
-
-        // 校验源目录和目标目录是否都在"流动信息"根目录下
         if (!isUnderAppRoot(sourceFolder) || !isUnderAppRoot(targetParentDir)) {
             Log.e(TAG, "源目录或目标目录不在流动信息根目录下");
             return false;
         }
-
-        // 目标路径（使用原名称，不查重）
         File targetFolder = new File(targetParentDir, sourceFolder.getName());
-
-        // 如果目标位置已存在同名文件夹，删除目标文件夹（或根据需求处理）
         if (targetFolder.exists()) {
             if (!deleteFolder(targetFolder)) {
                 Log.e(TAG, "目标位置已存在同名文件夹且无法删除: " + targetFolder.getAbsolutePath());
                 return false;
             }
         }
-
-        // 执行移动操作
         if (sourceFolder.renameTo(targetFolder)) {
             Log.d(TAG, "剪切文件夹成功: " + sourceFolder.getAbsolutePath() + " -> " + targetFolder.getAbsolutePath());
             return true;
         } else {
-            // 移动失败时尝试复制后删除源文件（应对跨分区移动）
             Log.w(TAG, "直接移动失败，尝试复制后删除源文件");
             if (copyFolder(sourceFolder, targetParentDir)) {
                 if (deleteFolder(sourceFolder)) {
@@ -213,21 +187,19 @@ public class FileUtils {
     }
 
     /**
-     * 复制单个文件
+     * 复制单个文件到目标路径
+     * @return boolean 复制是否成功
      */
     private static boolean copyFile(File sourceFile, File targetFile) {
         if (sourceFile == null || !sourceFile.exists() || !sourceFile.isFile()) {
             Log.e(TAG, "源文件无效: " + (sourceFile != null ? sourceFile.getAbsolutePath() : "null"));
             return false;
         }
-
-        // 确保目标目录存在
         File targetParent = targetFile.getParentFile();
         if (targetParent != null && !targetParent.exists() && !targetParent.mkdirs()) {
             Log.e(TAG, "无法创建目标文件父目录: " + targetParent.getAbsolutePath());
             return false;
         }
-
         try (InputStream in = new FileInputStream(sourceFile);
              OutputStream out = new FileOutputStream(targetFile)) {
             byte[] buffer = new byte[1024 * 4];
@@ -243,13 +215,13 @@ public class FileUtils {
     }
 
     /**
-     * 删除文件夹（递归删除所有内容）
+     * 递归删除文件夹（含所有子文件/子文件夹）
+     * @return boolean 删除是否成功
      */
     private static boolean deleteFolder(File folder) {
         if (folder == null || !folder.exists()) {
             return true;
         }
-
         File[] files = folder.listFiles();
         if (files != null) {
             for (File file : files) {
@@ -264,7 +236,8 @@ public class FileUtils {
     }
 
     /**
-     * 检查目录是否在"流动信息"根目录下
+     * 检查目录是否在应用根目录范围内
+     * @return boolean 是否在根目录内
      */
     private static boolean isUnderAppRoot(File dir) {
         if (dir == null) {
@@ -281,11 +254,11 @@ public class FileUtils {
         }
     }
 
-    // 解压文件方法保持不变（如果需要使用）
+    /**
+     * 解压ZIP文件到目标目录（调用ZipUnzipUtil实现）
+     * @return boolean 解压是否成功
+     */
     public static boolean unzipFile(File zipFile, File targetDir) {
-        // 实际实现中使用ZipUnzipUtil的解压逻辑
         return ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), targetDir.getAbsolutePath());
     }
 }
-
-    
