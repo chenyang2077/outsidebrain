@@ -3,4 +3,8 @@
     <external-path
         name="external_files"
         path="中转站/" />
+    <!-- 适配你的存储权限配置 -->
+    <external-path name="external_files" path="."/>
+    <files-path name="files" path="."/>
+    <external-files-path name="external_files_dir" path="."/>
 </paths>

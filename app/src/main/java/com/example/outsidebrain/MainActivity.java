@@ -90,7 +90,7 @@ import androidx.appcompat.app.AppCompatDelegate;
  * 主界面文件MainActivity.java：实现文件管理器核心功能，包括：
  * 1. 文件/文件夹的浏览、创建、重命名、复制、剪切、粘贴、删除；
  * 2. TXT文件智能命名（含时间戳/随机字符）、路径自动修正、内容搜索；
- * 3. ZIP压缩包解压/文件夹压缩、文件分享；
+ * 3. ZIP压缩包解压/文件夹压缩、文件分享（文件分享是借助手机自带的功能将文件传输到其他本地app）；
  * 4. 回收站/中转站功能，实现文件临时存储与恢复；
  * 5. 图片预览、文件排序（支持数字/时间戳排序）；
  * 6. 搜索功能（文件名/文件内容关键词匹配）；
@@ -353,9 +353,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 文件夹排序（支持小数序号）：
-     * 1. 提取文件夹名称开头的数字（支持小数）；
-     * 2. 按数字升序排序，无数字则按名称字母序排序。
+     * 文件夹排序（支持多级小数序号）：
+     * 1. 提取文件夹名称开头的多级数字序号（如1.25.5.25）；
+     * 2. 按层级逐位比较数字大小（1.25.5.25 < 1.25.22.12）；
+     * 3. 无数字序号则按名称字母序排序。
      *
      * @param folders 待排序的文件夹列表
      */
@@ -365,16 +366,61 @@ public class MainActivity extends AppCompatActivity {
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
-                Double num1 = extractLeadingNumberFromName(name1);
-                Double num2 = extractLeadingNumberFromName(name2);
-                if (num1 != null && num2 != null) {
-                    return Double.compare(num1, num2);
-                } else if (num1 != null) {
+
+                // 提取多级数字序号数组（如"1.25.5.25" → [1,25,5,25]）
+                List<Long> numList1 = extractMultiLevelNumberFromName(name1);
+                List<Long> numList2 = extractMultiLevelNumberFromName(name2);
+
+                // 有数字序号的优先，且按多级数字比较
+                if (!numList1.isEmpty() && !numList2.isEmpty()) {
+                    int minSize = Math.min(numList1.size(), numList2.size());
+                    // 逐层级比较数字
+                    for (int i = 0; i < minSize; i++) {
+                        long num1 = numList1.get(i);
+                        long num2 = numList2.get(i);
+                        if (num1 != num2) {
+                            return Long.compare(num1, num2);
+                        }
+                    }
+                    // 前面层级都相同，长度短的排前面（如1.25 < 1.25.1）
+                    return Integer.compare(numList1.size(), numList2.size());
+                } else if (!numList1.isEmpty()) {
+                    // 只有第一个文件有数字序号，排前面
                     return -1;
-                } else if (num2 != null) {
+                } else if (!numList2.isEmpty()) {
+                    // 只有第二个文件有数字序号，排前面
                     return 1;
                 }
+                // 都无数字序号，按名称字母序排序
                 return name1.compareTo(name2);
+            }
+
+            /**
+             * 提取文件名开头的多级数字序号（支持任意层级小数点）
+             * @param fileName 文件名
+             * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
+             */
+            private List<Long> extractMultiLevelNumberFromName(String fileName) {
+                List<Long> numList = new ArrayList<>();
+                if (fileName == null || fileName.isEmpty()) {
+                    return numList;
+                }
+                // 匹配开头的多级数字序号（如1.25.5.25、3.14.159、0.1.2.3）
+                Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
+                Matcher matcher = pattern.matcher(fileName);
+                if (matcher.find()) {
+                    String numStr = matcher.group(1);
+                    String[] numParts = numStr.split("\\.");
+                    for (String part : numParts) {
+                        try {
+                            numList.add(Long.parseLong(part));
+                        } catch (NumberFormatException e) {
+                            // 解析失败则终止，返回已解析的部分
+                            break;
+                        }
+                    }
+                }
+                return numList;
             }
         });
     }
@@ -1089,7 +1135,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 排序搜索结果：
      * 1. 按类型分组（文件夹→ZIP→TXT→图片→其他）；
-     * 2. 文件夹按名称排序，TXT按时间戳排序，其余按修改时间排序。
+     * 2. 文件夹按名称排序，TXT/图片按时间戳排序，其余按修改时间排序。
      */
     private void sortSearchResult() {
         if (searchResultList.isEmpty()) return;
@@ -1114,16 +1160,16 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        Collections.sort(folders, new Comparator<File>() {
-            @Override
-            public int compare(File file1, File file2) {
-                return file1.getName().compareTo(file2.getName());
-            }
-        });
+        // 1. 文件夹：按名称排序
+        Collections.sort(folders, (file1, file2) -> file1.getName().compareTo(file2.getName()));
+        // 2. TXT/图片：按时间戳排序（共用同一个比较器）
         Collections.sort(txtFiles, new TxtTimestampComparator());
+        Collections.sort(imageFiles, new TxtTimestampComparator());
+        // 3. ZIP/其他文件：按修改时间倒序
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-        Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+
+        // 重新组装排序后的列表
         searchResultList.clear();
         searchResultList.addAll(folders);
         searchResultList.addAll(zipFiles);
@@ -1297,7 +1343,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 加载文件列表：
      * 1. 按类型分组（文件夹→ZIP→TXT→图片→其他）；
-     * 2. 文件夹按小数序号排序，TXT按数字/时间戳排序；
+     * 2. 文件夹按小数序号排序，TXT/图片按数字/时间戳排序；
      * 3. 更新适配器数据，刷新UI。
      */
     private void loadFileList() {
@@ -1324,7 +1370,9 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             sortFoldersWithDecimalSupport(folders);
-            Collections.sort(txtFiles, new Comparator<File>() {
+
+            // 提取TXT/图片共用的排序比较器（避免代码重复）
+            Comparator<File> txtImageComparator = new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
                     String name1 = file1.getName();
@@ -1361,7 +1409,13 @@ public class MainActivity extends AppCompatActivity {
                     if (fileName == null || fileName.length() <= 4) {
                         return 0;
                     }
-                    String nameWithoutExtension = fileName.substring(0, fileName.length() - 4);
+                    // 适配图片扩展名（不止.txt，需动态截取扩展名）
+                    String nameWithoutExtension = fileName;
+                    int lastDotIndex = fileName.lastIndexOf(".");
+                    if (lastDotIndex > 0) {
+                        nameWithoutExtension = fileName.substring(0, lastDotIndex);
+                    }
+
                     Pattern pattern = Pattern.compile("(\\d{17})$");
                     Matcher matcher = pattern.matcher(nameWithoutExtension);
                     if (matcher.find()) {
@@ -1373,10 +1427,16 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return 0;
                 }
-            });
+            };
+
+            // TXT和图片使用相同的排序规则
+            Collections.sort(txtFiles, txtImageComparator);
+            Collections.sort(imageFiles, txtImageComparator);
+
+            // 其他文件排序规则不变
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-            Collections.sort(imageFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+
             fileList.addAll(folders);
             fileList.addAll(zipFiles);
             fileList.addAll(txtFiles);
@@ -2730,32 +2790,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 打开图片文件，使用FileProvider兼容Android 7.0+，保存最后访问记录
+     * 打开图片文件（使用自建查看器，支持上下滑动切换）
      */
     private void openImageFile(File imageFile) {
         try {
+            // 原有记录保存逻辑
             PreferenceUtils.saveLastPageType(this, "image");
             PreferenceUtils.saveLastViewedImage(this, imageFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, imageFile.getParentFile().getAbsolutePath());
-            Uri imageUri = FileProvider.getUriForFile(
-                    this,
-                    getPackageName() + ".fileprovider",
-                    imageFile
-            );
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(imageUri, "image/*");
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-            } else {
-                Toast.makeText(this, "没有找到可以打开图片的应用", Toast.LENGTH_SHORT).show();
-            }
+
+            // 跳转到自建图片查看器
+            Intent intent = new Intent(this, ImageViewerActivity.class);
+            intent.putExtra("IMAGE_PATH", imageFile.getAbsolutePath());
+            intent.putExtra("FOLDER_PATH", imageFile.getParentFile().getAbsolutePath());
+            startActivity(intent);
+
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(this, "打开图片失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 显示不支持的文件类型提示
      */

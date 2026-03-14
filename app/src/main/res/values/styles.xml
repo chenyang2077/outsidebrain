@@ -31,7 +31,13 @@
         <!-- 菜单项高度 -->
         <item name="android:listPreferredItemHeightSmall">48dp</item>
     </style>
-
+    <!-- 图片查看器全屏主题 -->
+    <style name="Theme.OutsideBrain.NoActionBar.Fullscreen" parent="Theme.OutsideBrain.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
 
     <style name="MenuTextStyle" parent="TextAppearance.AppCompat.Menu">
         <item name="android:textColor">@color/black</item>

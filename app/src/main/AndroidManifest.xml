@@ -24,6 +24,14 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".ImageViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OutsideBrain.NoActionBar.Fullscreen">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        <activity
             android:name=".FileEditorActivity"
             android:exported="false"
             android:theme="@style/Theme.OutsideBrain.NoActionBar" />

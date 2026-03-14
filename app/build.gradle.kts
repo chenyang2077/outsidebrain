@@ -1,5 +1,4 @@
 plugins {
-
     alias(libs.plugins.android.application)
 }
 
@@ -33,14 +32,18 @@ android {
 }
 
 dependencies {
-
+    // 基础依赖（保留原有）
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
+
+    // 测试依赖（保留原有）
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
-    implementation("com.github.bumptech.glide:glide:4.12.0")
-    annotationProcessor("com.github.bumptech.glide:compiler:4.12.0")
+
+    // Glide依赖（统一版本+Kotlin DSL正确写法）
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
 }
