@@ -90,6 +90,17 @@ import java.util.zip.ZipOutputStream;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import androidx.appcompat.app.AppCompatDelegate;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import android.content.Context;
+import android.os.Environment;
+import android.widget.Toast;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
@@ -1604,21 +1615,26 @@ public class MainActivity extends AppCompatActivity {
      */
     private void createTestFile() {
         String randomStr = generateRandomString();
+        DateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS");
         String timestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
+        File currentDirectory = getFilesDir();
         File testFile = new File(currentDirectory, "使用说明与注意事项_" + randomStr + timestamp + ".txt");
         try {
             if (testFile.createNewFile()) {
-                String content = "此软件为无广告的不联网工具软件，主要提供TXT文件的整理、词条搜索、压缩、分享发送，文字编辑阅览等。\n\n右下角加号可以在当前文件夹新增TXT文件。\n\n左上角的标识点击可以打开选项，在当前文件夹创建新的文件夹。\n\n右上角可以搜索关键词搜索当前文件夹内的文件以及文件夹。文件夹里面还可以创建文件夹。\n\n长按模块可以更名，复制，剪切，删除等。\n\n分享文件只支持文件，包括压缩文件。所以要传输文件夹要先压缩成zip文件。传输只在中转站可以。所以要讲压缩文件剪切粘贴到中转站再分享。\n\n“中转站”文件夹在公共存储，别人传输的文件也要打开手机自带的文件管理将文件移动到“中转站”。然后建议将重要文件用本软件从中转站剪切到主页，公共存储的文件会被别的软件浏览甚至删改，我自己使用的时候遇到过。\n\n主页的文件存储在软件私有存储中。这样就不会被其他软件窥视。但是如果卸载软件，数据就会全部丢失。所以要讲数据备份可以分享上传到其他地方。分享上传需要在中转站点击“压缩主页文件”。然后将压缩包分享发送到QQ发送至电脑。分享至QQ直接点击发送至电脑可能有点问题，可以先点击好友，再点击发送至电脑。\n\n从屏幕左边缘向右划返回或退出。编辑状态返回自动保存。编辑的文件一定要从边缘滑动屏幕保存，直接关闭软件不会保存。\n\n此文件编辑软件会自动增加每次修改的时间戳和文件目录结构路径，文件传播过程中可能会暴露此类信息。\n\n排序以序列号优先，包括带小数点的数字。\n\n如果有增加功能的意见，直接找开发者。\n开发者各自媒体网名：“陈阳2077”邮箱必回：“137903874@qq.com”";
-                FileOutputStream fos = new FileOutputStream(testFile);
-                fos.write(content.getBytes(StandardCharsets.UTF_8));
-                fos.close();
+                String content = getResources().getString(R.string.app_usage_instructions);
+                try (BufferedWriter writer = new BufferedWriter(
+                        new OutputStreamWriter(
+                                new FileOutputStream(testFile),
+                                StandardCharsets.UTF_8)
+                )) {
+                    writer.write(content);
+                }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
-            Toast.makeText(this, "创建测试文件失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "创建测试文件失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 获取文件显示名称：
      * 1. 文件夹：直接返回名称；
