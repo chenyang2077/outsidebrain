@@ -1,3 +1,10 @@
+/*
+软件名称：流动信息文件管理系统
+版本号：V1.0
+功能描述：基于Android外部存储实现应用根目录下的文件/文件夹管理，提供唯一命名、创建/复制/移动、文件复制、解压等核心功能，保障数据安全和命名唯一
+所属模块：文件操作模块
+开发语言：Java
+*/
 package com.example.outsidebrain;
 import android.os.Environment;
 import android.util.Log;
@@ -9,17 +16,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-
 /**
- * 文件操作工具类文件FileUtils.java
- * 用途：基于Android外部存储实现"流动信息"应用根目录下的文件/文件夹管理，
- * 提供全局唯一文件夹命名、文件夹创建/复制/移动、文件复制、解压等核心功能，
- * 所有操作均限制在应用根目录内，保证数据安全性和命名唯一性。
+ * 文件操作工具类：基于Android外部存储实现应用根目录下的文件/文件夹管理，提供唯一命名、创建/复制/移动、文件复制、解压等核心功能
  */
 public class FileUtils {
     private static final String TAG = "FileUtils";
     private static final String APP_ROOT_FOLDER = "流动信息";
-
     /**
      * 获取应用根目录（外部存储下的"流动信息"文件夹）
      * @return File 应用根目录文件对象
@@ -27,7 +29,6 @@ public class FileUtils {
     public static File getAppRootDirectory() {
         return new File(Environment.getExternalStorageDirectory(), APP_ROOT_FOLDER);
     }
-
     /**
      * 递归收集应用根目录下所有文件夹名称（全局去重）
      */
@@ -41,7 +42,6 @@ public class FileUtils {
         collectFolderNamesRecursive(rootDir, globalFolderNames);
         return globalFolderNames;
     }
-
     /**
      * 递归遍历目录，收集所有子文件夹名称
      */
@@ -61,13 +61,11 @@ public class FileUtils {
             }
         }
     }
-
     /**
      * 生成全局唯一的文件夹名称（添加数字后缀规避冲突）
      * @return String 无冲突的文件夹名称
      */
     public static String generateUniqueFolderName(File parentDir, String baseName) {
-        // 处理空名称
         if (baseName == null || baseName.trim().isEmpty()) {
             baseName = "新建文件夹";
         }
@@ -85,7 +83,6 @@ public class FileUtils {
             counter++;
         }
     }
-
     /**
      * 在应用根目录内创建全局唯一的文件夹
      * @return File 新建的文件夹对象，失败返回null
@@ -105,7 +102,6 @@ public class FileUtils {
             return null;
         }
     }
-
     /**
      * 复制文件夹（含子文件/子文件夹）到目标目录，自动生成唯一名称
      * @return boolean 复制是否成功
@@ -145,7 +141,6 @@ public class FileUtils {
         }
         return true;
     }
-
     /**
      * 移动文件夹到目标目录（优先重命名，失败则复制后删除源文件）
      * @return boolean 移动是否成功
@@ -185,7 +180,6 @@ public class FileUtils {
             }
         }
     }
-
     /**
      * 复制单个文件到目标路径
      * @return boolean 复制是否成功
@@ -213,7 +207,6 @@ public class FileUtils {
             return false;
         }
     }
-
     /**
      * 递归删除文件夹（含所有子文件/子文件夹）
      * @return boolean 删除是否成功
@@ -234,7 +227,6 @@ public class FileUtils {
         }
         return folder.delete();
     }
-
     /**
      * 检查目录是否在应用根目录范围内
      * @return boolean 是否在根目录内
@@ -253,7 +245,6 @@ public class FileUtils {
             return false;
         }
     }
-
     /**
      * 解压ZIP文件到目标目录（调用ZipUnzipUtil实现）
      * @return boolean 解压是否成功

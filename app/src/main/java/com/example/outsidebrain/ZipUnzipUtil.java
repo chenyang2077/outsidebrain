@@ -1,5 +1,11 @@
+/*
+软件名称：流动信息文件管理系统
+版本号：V1.0
+功能描述：实现ZIP压缩包智能解压、文件夹冲突自动规避、TXT文件唯一命名、压缩包结构分析
+所属模块：文件解压模块
+开发语言：Java
+*/
 package com.example.outsidebrain;
-
 import android.os.Environment;
 import android.util.Log;
 import java.io.*;
@@ -8,9 +14,8 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-
 /**
- * 压缩包解压工具类文件ZipUnzipUtil.java：实现ZIP包智能解压，处理TXT文件重命名、文件夹冲突规避、压缩包结构分析
+ * 压缩包解压工具类：实现ZIP包智能解压，处理TXT文件重命名、文件夹冲突规避、压缩包结构分析
  */
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
@@ -23,7 +28,6 @@ public class ZipUnzipUtil {
             Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}");
     private static final Pattern OLD_TIMESTAMP_PATTERN =
             Pattern.compile("_\\d{13,17}");
-
     /**
      * 核心解压方法：将ZIP文件解压到目标目录，自动处理文件夹冲突和TXT文件重命名
      * @param zipFilePath ZIP压缩包完整路径
@@ -82,7 +86,6 @@ public class ZipUnzipUtil {
             return false;
         }
     }
-
     /**
      * 处理压缩包目录项，创建解压目录（规避文件夹名称冲突）
      */
@@ -116,7 +119,6 @@ public class ZipUnzipUtil {
             Log.e(TAG, "创建文件夹失败: " + uniqueTargetDir.getAbsolutePath());
         }
     }
-
     /**
      * 处理压缩包文件项，解压文件并对TXT文件进行智能重命名
      * @return int 更新后的序列号
@@ -126,13 +128,11 @@ public class ZipUnzipUtil {
                                         Set<String> existingTxtCleanNames, int sequenceNumber) throws IOException {
         String entryName = entry.getName().replace("\\", "/");
         String relativePath;
-
         if (rootDirInfo.hasSingleRootFolder) {
             relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
         } else {
             relativePath = entryName;
         }
-
         File targetFile = new File(rootTargetDir, relativePath);
         File parentDir = targetFile.getParentFile();
 
@@ -147,7 +147,6 @@ public class ZipUnzipUtil {
             }
             targetFile = new File(parentDir, targetFile.getName());
         }
-
         try (InputStream is = zipFile.getInputStream(entry);
              OutputStream os = new FileOutputStream(targetFile)) {
             byte[] buffer = new byte[1024 * 4];
@@ -156,15 +155,12 @@ public class ZipUnzipUtil {
                 os.write(buffer, 0, len);
             }
         }
-
         if (targetFile.getName().toLowerCase().endsWith(".txt")) {
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
             return processTxtFile(targetFile, rootDir, existingTxtCleanNames, sequenceNumber);
         }
-
         return sequenceNumber;
     }
-
     /**
      * 处理TXT文件重命名，生成唯一的带时间戳和随机字符的文件名
      * @return int 更新后的序列号
@@ -174,7 +170,6 @@ public class ZipUnzipUtil {
         if (txtFile == null || !txtFile.exists() || !txtFile.getName().toLowerCase().endsWith(".txt")) {
             return sequenceNumber;
         }
-
         try {
             String originalName = txtFile.getName();
             String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf("."));
@@ -186,10 +181,8 @@ public class ZipUnzipUtil {
             if (cleanName.trim().isEmpty()) {
                 cleanName = "未命名文件";
             }
-
             String uniqueBaseName = findUniqueBaseName(cleanName, existingTxtCleanNames);
             existingTxtCleanNames.add(uniqueBaseName);
-
             String randomStr = generateRandomString();
             String datePart = BASE_TIMESTAMP_FORMAT.format(new Date());
             String sequenceStr = String.format("%04d", sequenceNumber % 10000);
@@ -198,12 +191,10 @@ public class ZipUnzipUtil {
             String newTimestamp = datePart + sequenceStr + timeSuffix;
             String newFileName = uniqueBaseName + "_" + randomStr + "_" + newTimestamp + ".txt";
             File targetFile = new File(txtFile.getParentFile(), newFileName);
-
             if (txtFile.renameTo(targetFile)) {
                 Log.d(TAG, "TXT文件处理成功: " + originalName + " → " + newFileName);
                 return (sequenceNumber + 1) % 10000;
             }
-
             if (copyFileContent(txtFile, targetFile)) {
                 txtFile.delete();
                 Log.d(TAG, "TXT文件复制并重命名成功: " + originalName + " → " + newFileName);
@@ -251,7 +242,6 @@ public class ZipUnzipUtil {
             counter++;
         }
     }
-
     /**
      * 递归收集指定目录下所有TXT文件的清洁名称（去时间戳）
      */
@@ -282,7 +272,6 @@ public class ZipUnzipUtil {
             }
         }
     }
-
     /**
      * 复制文件内容，用于TXT文件重命名失败时的兜底方案
      * @return boolean 复制是否成功
@@ -302,7 +291,6 @@ public class ZipUnzipUtil {
         }
         return true;
     }
-
     /**
      * 分析压缩包根目录结构，判断是否有单一根文件夹
      * @return RootDirInfo 根目录分析结果
@@ -341,7 +329,6 @@ public class ZipUnzipUtil {
             return new RootDirInfo(false, zipFileName);
         }
     }
-
     /**
      * 获取无冲突的文件夹名称，添加中文括号后缀规避冲突
      * @return String 无冲突的文件夹名称
@@ -352,7 +339,6 @@ public class ZipUnzipUtil {
         if (!targetFolder.exists()) {
             return baseName;
         }
-
         int suffix = 1;
         while (true) {
             String newName = baseName + "（" + suffix + "）";
@@ -363,7 +349,6 @@ public class ZipUnzipUtil {
             suffix++;
         }
     }
-
     /**
      * 内部数据类：存储压缩包根目录分析结果，用于传递根目录结构信息
      */

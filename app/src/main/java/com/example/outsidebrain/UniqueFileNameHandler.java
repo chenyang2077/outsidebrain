@@ -1,5 +1,11 @@
+/*
+软件名称：流动信息文件管理系统
+版本号：V1.0
+功能描述：生成无冲突文件名、清理文件名中的时间戳、解析文件名结构，保障文件命名唯一性
+所属模块：文件命名模块
+开发语言：Java
+*/
 package com.example.outsidebrain;
-
 import android.text.TextUtils;
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -10,16 +16,14 @@ import java.util.Locale;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 /**
- * 唯一文件名处理工具类文件UniqueFileNameHandler.java：生成无冲突文件名、清理时间戳、解析文件名结构
+ * 唯一文件名处理工具类：生成无冲突文件名、清理时间戳、解析文件名结构
  */
 public class UniqueFileNameHandler {
     private static final String TAG = "UniqueFileNameHandler";
     private static final Pattern SUFFIX_PATTERN = Pattern.compile("^(.*?)\\((\\d+)\\)$");
     private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
-
     /**
      * 生成6位随机字符串（包含大小写字母和数字）
      * @return String 6位随机字符串
@@ -33,7 +37,6 @@ public class UniqueFileNameHandler {
         }
         return sb.toString();
     }
-
     /**
      * 生成全局唯一的TXT文件名，自动规避命名冲突
      * @return String 无冲突的唯一文件名
@@ -58,7 +61,6 @@ public class UniqueFileNameHandler {
         }
         return buildFileName(coreName, suffix, timestamp);
     }
-
     /**
      * 清理文件名中的各类时间戳，返回纯文本标题
      * @return String 清理后的文件名
@@ -74,7 +76,6 @@ public class UniqueFileNameHandler {
         }
         return cleaned.trim();
     }
-
     /**
      * 解析文件名结构，提取核心名称和数字后缀
      * @return NameParts 文件名解析结果
@@ -92,7 +93,6 @@ public class UniqueFileNameHandler {
         }
         return new NameParts(fileName, 0);
     }
-
     /**
      * 构建最终文件名，拼接核心名称、后缀和时间戳
      * @return String 完整文件名
@@ -104,7 +104,6 @@ public class UniqueFileNameHandler {
             return coreName + "(" + suffix + ")" + timestamp + ".txt";
         }
     }
-
     /**
      * 移除文件名中的所有时间戳（含旧版格式）
      * @return String 去时间戳后的文件名
@@ -116,7 +115,6 @@ public class UniqueFileNameHandler {
         }
         return cleaned;
     }
-
     /**
      * 查找指定根目录下所有与核心名称冲突的TXT文件
      * @return List<File> 冲突文件列表
@@ -129,7 +127,6 @@ public class UniqueFileNameHandler {
         searchFiles(rootDir, coreName, result);
         return result;
     }
-
     /**
      * 递归搜索目录下的冲突TXT文件
      */
@@ -151,7 +148,6 @@ public class UniqueFileNameHandler {
             }
         }
     }
-
     /**
      * 内部数据类：存储文件名解析结果（核心名称、数字后缀）
      */
@@ -164,7 +160,6 @@ public class UniqueFileNameHandler {
             this.suffix = suffix;
         }
     }
-
     /**
      * 时间戳处理内部类：生成时间戳、处理TXT文件名时间戳更新
      */
@@ -172,19 +167,9 @@ public class UniqueFileNameHandler {
         public static String generateRandomString() {
             return UniqueFileNameHandler.generateRandomString(); // 复用外部方法
         }
-
-        /**
-         * 生成毫秒级时间戳（yyyyMMddHHmmssSSS）
-         * @return String 毫秒级时间戳字符串
-         */
         public static String generateMillisTimestamp() {
             return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
         }
-
-        /**
-         * 处理TXT文件名，更新/添加时间戳保证唯一性
-         * @return String 处理后的文件名
-         */
         public static String processTxtFileName(String originalFileName) {
             if (!originalFileName.toLowerCase().endsWith(".txt")) {
                 return originalFileName;

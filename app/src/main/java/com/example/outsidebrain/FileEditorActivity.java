@@ -1,3 +1,10 @@
+/*
+软件名称：流动信息文件管理系统
+版本号：V1.0
+功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，提供文件夹压缩、文件分享功能，限制操作范围保障数据安全
+所属模块：文件编辑模块
+开发语言：Java
+*/
 package com.example.outsidebrain;
 import android.widget.Toast;
 import java.io.*;
@@ -28,12 +35,8 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import android.content.SharedPreferences;
-
 /**
- * 文件编辑页面文件FileEditorActivity.java
- * 用途：实现TXT文件的编辑、保存、重命名，支持自动处理时间戳、路径标识、命名冲突，
- * 同时提供文件夹压缩、文件分享等辅助功能，所有操作均限制在"流动信息"应用根目录内，
- * 自动保存用户编辑内容并记录操作历史。
+ * 文件编辑页面：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，提供文件夹压缩、文件分享功能
  */
 public class FileEditorActivity extends AppCompatActivity {
     private static final int BUFFER_SIZE = 8192;
@@ -55,7 +58,6 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
     private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -69,7 +71,6 @@ public class FileEditorActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         searchKeyword = sp.getString("current_keyword", "").trim();
         handleZipAndShareIntent();
-
         if (!isPreEdit && filePath != null) {
             targetFile = new File(filePath);
             if (targetFile.exists()) {
@@ -78,7 +79,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
             }
         }
-
         if (isPreEdit) {
             currentDir = new File(currentDirPath);
             etFileName.setHint(":标题");
@@ -115,13 +115,11 @@ public class FileEditorActivity extends AppCompatActivity {
                 }, 100);
             }
         }
-
         if (etContent != null && TextUtils.isEmpty(etContent.getText().toString())) {
             etContent.post(() -> showKeyboard(etContent));
         }
         setupTextChangeListeners();
     }
-
     /**
      * 弹出软键盘并聚焦指定输入框
      */
@@ -132,14 +130,12 @@ public class FileEditorActivity extends AppCompatActivity {
             imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
         }
     }
-
     /**
      * 解析文件名中的时间戳结构，提取随机字符串和时间戳列表
      * @return String[] 索引0为随机字符串，后续为时间戳
      */
     private String[] parseTimestampStructure(String fileNameWithoutExt) {
         if (TextUtils.isEmpty(fileNameWithoutExt)) return new String[0];
-
         Matcher fullMatcher = FULL_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
         if (!fullMatcher.find()) {
             return new String[0];
@@ -170,7 +166,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         return result;
     }
-
     /**
      * 移除文件名中的所有时间戳格式字符
      * @return String 清理后的文件名
@@ -185,7 +180,6 @@ public class FileEditorActivity extends AppCompatActivity {
         result = result.replaceAll("_+$", "");
         return result;
     }
-
     /**
      * 加载已有文件的名称和内容到编辑框
      */
@@ -225,7 +219,6 @@ public class FileEditorActivity extends AppCompatActivity {
             Toast.makeText(this, "加载内容失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 设置文本变化监听，标记未保存状态并清理文件名中的时间戳
      */
@@ -259,7 +252,6 @@ public class FileEditorActivity extends AppCompatActivity {
             public void afterTextChanged(android.text.Editable s) {}
         });
     }
-
     /**
      * 自动保存编辑内容，处理新建/编辑文件的命名、路径、时间戳逻辑
      */
@@ -277,7 +269,6 @@ public class FileEditorActivity extends AppCompatActivity {
             finish();
             return;
         }
-
         if (isPreEdit) {
             boolean isTitleEmpty = TextUtils.isEmpty(inputTitle.trim());
             boolean isContentEmpty = TextUtils.isEmpty(content.trim());
@@ -420,7 +411,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 setResult(RESULT_REFRESH);
             }
         }
-
         if (!isPreEdit && targetFile != null && targetFile.exists()) {
             PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
@@ -428,7 +418,6 @@ public class FileEditorActivity extends AppCompatActivity {
         hideSoftInput();
         finish();
     }
-
     /**
      * 清理文件名中的非法字符（\ / : * ? " < > |）
      * @return String 合法的文件名
@@ -436,7 +425,6 @@ public class FileEditorActivity extends AppCompatActivity {
     private String cleanFileName(String fileName) {
         return fileName.replaceAll("[\\\\/:*?\"<>|]", "");
     }
-
     /**
      * 解析文件内容第一行的路径标识，返回对应的目录
      * @return File 解析后的目录，失败返回根目录
@@ -459,7 +447,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         return rootDir;
     }
-
     /**
      * 处理保存内容，添加路径标识和时间戳
      * @return String 处理后的文件内容
@@ -485,7 +472,6 @@ public class FileEditorActivity extends AppCompatActivity {
         String contentWithTimestamp = addContentTimestamp(restContent);
         return pathLine + "\n" + contentWithTimestamp;
     }
-
     /**
      * 读取文件内容
      * @return String 文件内容
@@ -501,7 +487,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         return content.toString();
     }
-
     /**
      * 从内容中提取副标题（用于无标题文件命名）
      * @return String 内容副标题
@@ -513,7 +498,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 ? trimmedContent
                 : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
     }
-
     /**
      * 写入内容到文件
      */
@@ -525,7 +509,6 @@ public class FileEditorActivity extends AppCompatActivity {
             Toast.makeText(this, "写入内容失败", Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 为文件内容添加日期时间戳（最后一行）
      * @return String 添加时间戳后的内容
@@ -559,7 +542,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         return TextUtils.join("\n", lineList);
     }
-
     /**
      * 处理压缩文件夹和分享文件的意图
      */
@@ -575,7 +557,6 @@ public class FileEditorActivity extends AppCompatActivity {
             finish();
         }
     }
-
     /**
      * 压缩文件夹为ZIP文件（自动处理命名冲突）
      */
@@ -586,7 +567,6 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         String zipFileName = folder.getName() + ".zip";
         File zipFile = new File(folder.getParentFile(), zipFileName);
-
         int counter = 1;
         while (zipFile.exists()) {
             zipFileName = folder.getName() + "(" + counter + ").zip";
@@ -613,14 +593,13 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     /**
      * 递归添加文件夹内容到ZIP输出流
      * @throws IOException ZIP写入异常
      */
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
         ZipEntry dirEntry = new ZipEntry(parentEntryName + "/");
-        dirEntry.setTime(folder.lastModified()); // 保留修改时间
+        dirEntry.setTime(folder.lastModified());
         zos.putNextEntry(dirEntry);
         zos.closeEntry();
         File[] files = folder.listFiles();
@@ -643,7 +622,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         }
     }
-
     /**
      * 分享文件到其他应用（基于FileProvider）
      */
@@ -674,14 +652,12 @@ public class FileEditorActivity extends AppCompatActivity {
             Toast.makeText(this, "分享失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 根据文件名获取MIME类型
      * @return String MIME类型
      */
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
-
         String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase(Locale.getDefault());
         switch (extension) {
             case "txt":
@@ -692,7 +668,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 return "application/octet-stream";
         }
     }
-
     /**
      * 隐藏软键盘
      */
@@ -702,13 +677,11 @@ public class FileEditorActivity extends AppCompatActivity {
             imm.hideSoftInputFromWindow(etContent.getWindowToken(), 0);
         }
     }
-
     @Override
     public void onBackPressed() {
         autoSave();
         super.onBackPressed();
     }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();

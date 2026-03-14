@@ -1,5 +1,11 @@
+/*
+软件名称：流动信息文件管理系统
+版本号：V1.0
+功能描述：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
+所属模块：主界面模块
+开发语言：Java
+*/
 package com.example.outsidebrain;
-
 import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
@@ -58,7 +64,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
@@ -85,77 +90,40 @@ import java.util.zip.ZipOutputStream;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import androidx.appcompat.app.AppCompatDelegate;
-
 /**
- * 主界面文件MainActivity.java：实现文件管理器核心功能，包括：
- * 1. 文件/文件夹的浏览、创建、重命名、复制、剪切、粘贴、删除；
- * 2. TXT文件智能命名（含时间戳/随机字符）、路径自动修正、内容搜索；
- * 3. ZIP压缩包解压/文件夹压缩、文件分享（文件分享是借助手机自带的功能将文件传输到其他本地app）；
- * 4. 回收站/中转站功能，实现文件临时存储与恢复；
- * 5. 图片预览、文件排序（支持数字/时间戳排序）；
- * 6. 搜索功能（文件名/文件内容关键词匹配）；
- * 7. 状态恢复（上次打开的目录/文件/图片）。
+ * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
 public class MainActivity extends AppCompatActivity {
-    // 复制/剪切的目标文件
     private File copiedFile;
-    // 是否为剪切操作标识
     private boolean isCutOperation;
-    // 文件编辑请求码
     private static final int REQUEST_EDIT_FILE = 101;
-    // 文件列表RecyclerView
     private RecyclerView fileRecyclerView;
-    // 文件列表适配器
     private FileAdapter fileAdapter;
-    // 当前目录下的文件列表
     private List<File> fileList;
-    // 搜索结果文件列表
     private List<File> searchResultList;
-    // 当前浏览的目录
     private File currentDirectory;
-    // 应用根目录（流动信息）
     private File rootDirectory;
-    // 搜索输入框
     private EditText etSearch;
-    // 搜索按钮
     private Button btnSearch;
-    // 是否处于搜索模式标识
     private boolean isInSearchMode = false;
-    // 新增/编辑文件悬浮按钮
     private FloatingActionButton preEditFileBtn;
-    // 压缩任务异步处理对象
     private CompressTask compressTask;
-    // 根文件夹固定名称：流动信息
     private static final String ROOT_FOLDER_NAME = "流动信息";
-    // 中转站目录
     private File transferStationDirectory;
-    // 中转站权限请求码
     private static final int REQUEST_TRANSFER_PERMISSION = 101;
-    // 是否处于中转站目录标识
     private boolean isInTransferStation = false;
-    // 回收站目录
     private File recycleBinDirectory;
-    // 是否处于回收站目录标识
     private boolean isInRecycleBin = false;
-    // 毫秒级时间戳格式化器：yyyyMMddHHmmssSSS（17位）
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
-    // 文件毫秒时间戳正则：匹配_6位随机字符_17位数字
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    // TXT文件首行路径正则：匹配【任意字符】格式
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
-    // 目标时间戳正则：匹配_6位随机字符_17位数字
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    // 增量时间戳正则：匹配(_6位随机字符_17位数字)(_17位数字)+格式
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
-    // 旧版时间戳正则：匹配_(14位数字|17位数字)结尾格式
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
-    // 粘贴按钮视图
     private View pasteButton;
-    // 图片文件扩展名数组
     private static final String[] IMAGE_EXTENSIONS = {
             ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"
     };
-
     /**
      * 页面创建初始化：
      * 1. 绑定布局控件，初始化视图组件；
@@ -366,15 +334,10 @@ public class MainActivity extends AppCompatActivity {
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
-
-                // 提取多级数字序号数组（如"1.25.5.25" → [1,25,5,25]）
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
-
-                // 有数字序号的优先，且按多级数字比较
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
                     int minSize = Math.min(numList1.size(), numList2.size());
-                    // 逐层级比较数字
                     for (int i = 0; i < minSize; i++) {
                         long num1 = numList1.get(i);
                         long num2 = numList2.get(i);
@@ -382,47 +345,41 @@ public class MainActivity extends AppCompatActivity {
                             return Long.compare(num1, num2);
                         }
                     }
-                    // 前面层级都相同，长度短的排前面（如1.25 < 1.25.1）
                     return Integer.compare(numList1.size(), numList2.size());
                 } else if (!numList1.isEmpty()) {
-                    // 只有第一个文件有数字序号，排前面
                     return -1;
                 } else if (!numList2.isEmpty()) {
-                    // 只有第二个文件有数字序号，排前面
                     return 1;
                 }
-                // 都无数字序号，按名称字母序排序
                 return name1.compareTo(name2);
             }
 
-            /**
-             * 提取文件名开头的多级数字序号（支持任意层级小数点）
-             * @param fileName 文件名
-             * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
-             */
-            private List<Long> extractMultiLevelNumberFromName(String fileName) {
-                List<Long> numList = new ArrayList<>();
-                if (fileName == null || fileName.isEmpty()) {
-                    return numList;
-                }
-                // 匹配开头的多级数字序号（如1.25.5.25、3.14.159、0.1.2.3）
-                Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
-                Matcher matcher = pattern.matcher(fileName);
-                if (matcher.find()) {
-                    String numStr = matcher.group(1);
-                    String[] numParts = numStr.split("\\.");
-                    for (String part : numParts) {
-                        try {
-                            numList.add(Long.parseLong(part));
-                        } catch (NumberFormatException e) {
-                            // 解析失败则终止，返回已解析的部分
-                            break;
-                        }
-                    }
-                }
-                return numList;
-            }
         });
+    }
+    /**
+     * 提取文件名开头的多级数字序号（支持任意层级小数点）
+     * @param fileName 文件名
+     * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
+     */
+    private List<Long> extractMultiLevelNumberFromName(String fileName) {
+        List<Long> numList = new ArrayList<>();
+        if (fileName == null || fileName.isEmpty()) {
+            return numList;
+        }
+        Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
+        Matcher matcher = pattern.matcher(fileName);
+        if (matcher.find()) {
+            String numStr = matcher.group(1);
+            String[] numParts = numStr.split("\\.");
+            for (String part : numParts) {
+                try {
+                    numList.add(Long.parseLong(part));
+                } catch (NumberFormatException e) {
+                    break;
+                }
+            }
+        }
+        return numList;
     }
 
     /**
@@ -470,7 +427,6 @@ public class MainActivity extends AppCompatActivity {
                 .setCancelable(true)
                 .show();
     }
-
     /**
      * 异步压缩任务：
      * 1. 后台执行文件夹压缩，显示进度对话框；
@@ -478,31 +434,14 @@ public class MainActivity extends AppCompatActivity {
      * 3. 压缩完成后更新UI，提示结果。
      */
     private class CompressTask extends AsyncTask<File, Integer, Boolean> {
-        // 源目录
         private File sourceDir;
-        // 目标ZIP文件
         private File destZipFile;
-        // 错误信息
         private String errorMessage;
-
-        /**
-         * 压缩前准备：显示进度对话框，提示"正在压缩..."
-         */
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
             showProgressDialog("正在压缩...");
         }
-
-        /**
-         * 后台压缩逻辑：
-         * 1. 校验源目录/目标目录权限；
-         * 2. 创建ZipOutputStream，递归添加文件/文件夹到压缩包；
-         * 3. 返回压缩结果（成功/失败）。
-         *
-         * @param params 参数数组：params[0]=源目录，params[1]=目标ZIP文件
-         * @return 压缩是否成功
-         */
         @Override
         protected Boolean doInBackground(File... params) {
             sourceDir = params[0];
@@ -549,26 +488,11 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        /**
-         * 更新压缩进度：更新进度对话框的进度值
-         *
-         * @param values 进度值数组
-         */
         @Override
         protected void onProgressUpdate(Integer... values) {
             super.onProgressUpdate(values);
             updateProgressDialog(values[0]);
         }
-
-        /**
-         * 压缩完成处理：
-         * 1. 关闭进度对话框；
-         * 2. 提示压缩结果，加载文件列表；
-         * 3. 失败时删除无效压缩包。
-         *
-         * @param result 压缩结果
-         */
         @Override
         protected void onPostExecute(Boolean result) {
             super.onPostExecute(result);
@@ -584,18 +508,6 @@ public class MainActivity extends AppCompatActivity {
             }
             compressTask = null;
         }
-
-        /**
-         * 递归添加文件/文件夹到压缩包：
-         * 1. 处理文件夹：创建目录Entry，递归添加子项；
-         * 2. 处理文件：创建文件Entry，写入文件内容；
-         * 3. 发布进度更新。
-         *
-         * @param file    当前处理的文件/文件夹
-         * @param rootDir 根目录
-         * @param zos     Zip输出流
-         * @throws IOException IO异常
-         */
         private void addToZip(File file, File rootDir, ZipOutputStream zos) throws IOException {
             Log.d("CompressDebug", "处理条目：" + file.getAbsolutePath()
                     + " | 是否文件夹：" + file.isDirectory()
@@ -637,17 +549,6 @@ public class MainActivity extends AppCompatActivity {
                 publishProgress(0);
             }
         }
-
-        /**
-         * 获取文件相对路径：
-         * 1. 计算文件相对于根目录的路径；
-         * 2. 处理路径分隔符，返回标准化相对路径。
-         *
-         * @param rootDir 根目录
-         * @param file    目标文件
-         * @return 相对路径
-         * @throws IOException IO异常
-         */
         private String getRelativePath(File rootDir, File file) throws IOException {
             String rootPath = rootDir.getCanonicalPath();
             String filePath = file.getCanonicalPath();
@@ -1370,46 +1271,39 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             sortFoldersWithDecimalSupport(folders);
-
-            // 提取TXT/图片共用的排序比较器（避免代码重复）
             Comparator<File> txtImageComparator = new Comparator<File>() {
                 @Override
                 public int compare(File file1, File file2) {
                     String name1 = file1.getName();
                     String name2 = file2.getName();
-                    Double num1 = extractLeadingNumberFromName(name1);
-                    Double num2 = extractLeadingNumberFromName(name2);
-                    if (num1 != null && num2 != null) {
-                        return Double.compare(num1, num2);
-                    } else if (num1 != null) {
-                        return -1;
-                    } else if (num2 != null) {
-                        return 1;
-                    } else {
-                        long time1 = extractTimestampIgnoreLast4(name1);
-                        long time2 = extractTimestampIgnoreLast4(name2);
-                        if (time1 > time2) {
-                            return -1;
-                        } else if (time1 < time2) {
-                            return 1;
-                        } else {
-                            return 0;
+                    List<Long> numList1 = extractMultiLevelNumberFromName(name1);
+                    List<Long> numList2 = extractMultiLevelNumberFromName(name2);
+                    if (!numList1.isEmpty() && !numList2.isEmpty()) {
+                        int minSize = Math.min(numList1.size(), numList2.size());
+                        for (int i = 0; i < minSize; i++) {
+                            long num1 = numList1.get(i);
+                            long num2 = numList2.get(i);
+                            if (num1 != num2) {
+                                return Long.compare(num1, num2);
+                            }
                         }
+                        return Integer.compare(numList1.size(), numList2.size());
+                    } else if (!numList1.isEmpty()) {
+                        return -1;
+                    } else if (!numList2.isEmpty()) {
+                        return 1;
                     }
+                    long time1 = extractTimestampIgnoreLast4(name1);
+                    long time2 = extractTimestampIgnoreLast4(name2);
+                    if (time1 != time2) {
+                        return Long.compare(time2, time1);
+                    }
+                    return name1.compareTo(name2);
                 }
-
-                /**
-                 * 提取文件名末尾的17位时间戳（忽略最后4位）：
-                 * 1. 去除文件扩展名，匹配末尾17位数字；
-                 * 2. 返回解析后的数字，失败返回0。
-                 * @param fileName 文件名
-                 * @return 时间戳数字
-                 */
                 private long extractTimestampIgnoreLast4(String fileName) {
                     if (fileName == null || fileName.length() <= 4) {
                         return 0;
                     }
-                    // 适配图片扩展名（不止.txt，需动态截取扩展名）
                     String nameWithoutExtension = fileName;
                     int lastDotIndex = fileName.lastIndexOf(".");
                     if (lastDotIndex > 0) {
@@ -1428,12 +1322,8 @@ public class MainActivity extends AppCompatActivity {
                     return 0;
                 }
             };
-
-            // TXT和图片使用相同的排序规则
             Collections.sort(txtFiles, txtImageComparator);
             Collections.sort(imageFiles, txtImageComparator);
-
-            // 其他文件排序规则不变
             Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
             Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
@@ -1450,6 +1340,7 @@ public class MainActivity extends AppCompatActivity {
             updateLevelHint();
         }
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
+
             hidePasteButton();
         }
     }
