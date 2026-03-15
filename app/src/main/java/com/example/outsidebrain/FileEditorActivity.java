@@ -1,5 +1,5 @@
 /*
-软件名称：流动信息文件管理系统
+软件名称：快乐文字
 版本号：V1.0
 功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，提供文件夹压缩、文件分享功能，限制操作范围保障数据安全
 所属模块：文件编辑模块
@@ -48,7 +48,7 @@ public class FileEditorActivity extends AppCompatActivity {
     private File targetFile;
     private boolean isSaved = true;
     private static final int MAX_TITLE_LEN = 31;
-    private static final String ROOT_FOLDER_NAME = "流动信息";
+    private static final String ROOT_FOLDER_NAME = "主页根目录";
     private String searchKeyword;
     private static final Pattern RANDOM_STR_PATTERN = Pattern.compile("[A-Za-z0-9]{6}");
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\d{17}");

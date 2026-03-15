@@ -1,5 +1,5 @@
 /*
-软件名称：流动信息文件管理系统
+软件名称：快乐文字
 版本号：V1.0
 功能描述：基于Android外部存储实现应用根目录下的文件/文件夹管理，提供唯一命名、创建/复制/移动、文件复制、解压等核心功能，保障数据安全和命名唯一
 所属模块：文件操作模块
@@ -21,9 +21,9 @@ import java.util.List;
  */
 public class FileUtils {
     private static final String TAG = "FileUtils";
-    private static final String APP_ROOT_FOLDER = "流动信息";
+    private static final String APP_ROOT_FOLDER = "主页根目录";
     /**
-     * 获取应用根目录（外部存储下的"流动信息"文件夹）
+     * 获取应用根目录（外部存储下的"主页根目录"文件夹）
      * @return File 应用根目录文件对象
      */
     public static File getAppRootDirectory() {
@@ -89,7 +89,7 @@ public class FileUtils {
      */
     public static File createUniqueFolder(File parentDir, String baseName) {
         if (!isUnderAppRoot(parentDir)) {
-            Log.e(TAG, "父目录不在流动信息根目录下");
+            Log.e(TAG, "父目录不在主页根目录根目录下");
             return null;
         }
         String uniqueName = generateUniqueFolderName(parentDir, baseName);
@@ -112,7 +112,7 @@ public class FileUtils {
             return false;
         }
         if (!isUnderAppRoot(targetParentDir)) {
-            Log.e(TAG, "目标目录不在流动信息根目录下");
+            Log.e(TAG, "目标目录不在主页根目录根目录下");
             return false;
         }
         String targetUniqueName = generateUniqueFolderName(targetParentDir, sourceFolder.getName());
@@ -151,7 +151,7 @@ public class FileUtils {
             return false;
         }
         if (!isUnderAppRoot(sourceFolder) || !isUnderAppRoot(targetParentDir)) {
-            Log.e(TAG, "源目录或目标目录不在流动信息根目录下");
+            Log.e(TAG, "源目录或目标目录不在主页根目录根目录下");
             return false;
         }
         File targetFolder = new File(targetParentDir, sourceFolder.getName());

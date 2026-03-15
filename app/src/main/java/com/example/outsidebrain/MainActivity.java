@@ -1,5 +1,5 @@
 /*
-软件名称：流动信息文件管理系统
+软件名称：快乐文字
 版本号：V1.0
 功能描述：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
 所属模块：主界面模块
@@ -91,6 +91,16 @@ import android.content.Context;
 import android.view.ContextThemeWrapper;
 import androidx.appcompat.app.AppCompatDelegate;
 import java.io.BufferedWriter;
+
+import android.text.TextUtils;
+import android.icu.text.Transliterator;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -119,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInSearchMode = false;
     private FloatingActionButton preEditFileBtn;
     private CompressTask compressTask;
-    private static final String ROOT_FOLDER_NAME = "流动信息";
+    private static final String ROOT_FOLDER_NAME = "主页根目录";
     private File transferStationDirectory;
     private static final int REQUEST_TRANSFER_PERMISSION = 101;
     private boolean isInTransferStation = false;
@@ -328,21 +338,25 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
-
     /**
-     * 文件夹排序（支持多级小数序号）：
+     * 文件夹排序（支持多级小数序号+汉字拼音首字母排序）：
      * 1. 提取文件夹名称开头的多级数字序号（如1.25.5.25）；
      * 2. 按层级逐位比较数字大小（1.25.5.25 < 1.25.22.12）；
-     * 3. 无数字序号则按名称字母序排序。
+     * 3. 无数字序号则按「完整名称拼音（去声调）+ 原名字母序」排序（兼容中英文/汉字）。
      *
      * @param folders 待排序的文件夹列表
      */
     private void sortFoldersWithDecimalSupport(List<File> folders) {
+        // 初始化拼音转换器（Han-Latin/Names：更适配汉字转拼音，去声调）
+        Transliterator transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower");
+
         Collections.sort(folders, new Comparator<File>() {
             @Override
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
+
+                // 步骤1：提取多级数字序号并比较（保留原逻辑）
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
@@ -356,14 +370,51 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return Integer.compare(numList1.size(), numList2.size());
                 } else if (!numList1.isEmpty()) {
-                    return -1;
+                    return -1; // 有数字序号的排前面
                 } else if (!numList2.isEmpty()) {
                     return 1;
                 }
+
+                // 步骤2：无数字序号 → 按完整名称的拼音排序（核心修复）
+                String pinyin1 = convertToPinyin(name1, transliterator);
+                String pinyin2 = convertToPinyin(name2, transliterator);
+
+                // 先按拼音比较，拼音相同再按原名称比较
+                int pinyinCompare = pinyin1.compareTo(pinyin2);
+                if (pinyinCompare != 0) {
+                    return pinyinCompare;
+                }
                 return name1.compareTo(name2);
             }
-
         });
+    }
+
+    /**
+     * 将完整名称转换为拼音（去声调/特殊字符，统一小写）
+     * 核心修复：对整个名称做拼音转换，而非仅首个字符
+     */
+    private String convertToPinyin(String name, Transliterator transliterator) {
+        if (TextUtils.isEmpty(name)) {
+            return "";
+        }
+        try {
+            // 1. 汉字转拼音（Han-Latin）+ 移除特殊字符 + 统一小写
+            String pinyin = transliterator.transliterate(name);
+            // 2. 过滤掉所有非字母/数字的字符（保留核心排序字符）
+            pinyin = pinyin.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+            // 3. 兜底：拼音为空则返回原名称的小写
+            return TextUtils.isEmpty(pinyin) ? name.toLowerCase() : pinyin;
+        } catch (Exception e) {
+            // 转换异常 → 降级为原名称小写
+            return name.toLowerCase();
+        }
+    }
+
+    /**
+     * 判断是否为汉字（保留原逻辑，备用）
+     */
+    private boolean isChineseChar(char c) {
+        return Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS;
     }
     /**
      * 提取文件名开头的多级数字序号（支持任意层级小数点）
@@ -1075,7 +1126,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 初始化外部存储（根目录）：
-     * 1. 创建应用私有存储的根目录（流动信息）；
+     * 1. 创建应用私有存储的根目录（主页根目录）；
      * 2. 目录创建失败时使用兼容模式；
      * 3. 创建测试文件，加载文件列表，恢复上次状态。
      */
@@ -1124,6 +1175,47 @@ public class MainActivity extends AppCompatActivity {
         loadFileList();
         updateLevelHint();
         restoreLastState();
+    }
+    /**
+     * 创建测试文件：
+     * 1. 生成使用说明TXT文件；
+     * 2. 写入软件使用说明内容，保存到当前目录。
+     */
+    private void createTestFile() {
+        // 修复核心：使用全局的currentDirectory（主页根目录），而非直接getFilesDir()
+        if (currentDirectory == null || !currentDirectory.canWrite()) {
+            Toast.makeText(this, "创建测试文件失败：目标目录不可写", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 简化：固定文件名，移除随机字符和时间戳
+        File testFile = new File(currentDirectory, "使用说明与注意事项.txt");
+
+        try {
+            // 检查文件是否已存在，避免重复创建
+            if (testFile.exists()) {
+                Toast.makeText(this, "测试文件已存在，无需重复创建", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 创建文件并写入内容
+            if (testFile.createNewFile()) {
+                String content = getResources().getString(R.string.app_usage_instructions);
+                // 确保字符编码为UTF-8，避免乱码
+                try (BufferedWriter writer = new BufferedWriter(
+                        new OutputStreamWriter(
+                                new FileOutputStream(testFile),
+                                StandardCharsets.UTF_8)
+                )) {
+                    writer.write(content);
+                }
+            } else {
+                Toast.makeText(this, "测试文件创建失败：无法新建文件", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "创建测试文件失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     /**
@@ -1579,33 +1671,7 @@ public class MainActivity extends AppCompatActivity {
         }, 100);
     }
 
-    /**
-     * 创建测试文件：
-     * 1. 生成带随机字符/时间戳的使用说明TXT文件；
-     * 2. 写入软件使用说明内容，保存到当前目录。
-     */
-    private void createTestFile() {
-        String randomStr = generateRandomString();
-        DateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS");
-        String timestamp = "_" + MILLIS_TIMESTAMP_FORMAT.format(new Date());
-        File currentDirectory = getFilesDir();
-        File testFile = new File(currentDirectory, "使用说明与注意事项_" + randomStr + timestamp + ".txt");
-        try {
-            if (testFile.createNewFile()) {
-                String content = getResources().getString(R.string.app_usage_instructions);
-                try (BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(
-                                new FileOutputStream(testFile),
-                                StandardCharsets.UTF_8)
-                )) {
-                    writer.write(content);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(this, "创建测试文件失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
+
     /**
      * 获取文件显示名称：
      * 1. 文件夹：直接返回名称；
