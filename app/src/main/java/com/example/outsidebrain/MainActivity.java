@@ -27,6 +27,7 @@ import java.util.regex.Pattern;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import java.util.Random;
 import android.content.Intent;
@@ -48,6 +49,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -1512,15 +1514,18 @@ public class MainActivity extends AppCompatActivity {
         processedName = OLD_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
         return processedName;
     }
-
     /**
-     * 返回键处理：
-     * 1. 中转站/回收站：返回上级目录或主页；
-     * 2. 搜索模式：退出搜索，恢复文件列表；
-     * 3. 普通目录：返回上级目录，根目录则退出应用。
+     * 返回键处理（流畅滑动+底部精准定位版）：
+     * 1. 快速平滑滑动（从顶部往下滑），解决卡顿问题；
+     * 2. 最后几个文件夹（≤6个到末尾）直接滑到底部；
+     * 3. 中间文件夹精准定位到第6位，无卡顿/漂移。
      */
     @Override
     public void onBackPressed() {
+        final File targetFileForScroll = currentDirectory;
+        boolean needScroll = true;
+        final int TARGET_VISUAL_POS = 5; // 视觉第6位（索引5）
+
         if (isInTransferStation) {
             if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
                 currentDirectory = currentDirectory.getParentFile();
@@ -1528,20 +1533,18 @@ public class MainActivity extends AppCompatActivity {
                 updateLevelHint();
             } else {
                 exitTransferStationToHome();
+                needScroll = false;
             }
-            return;
-        }
-        if (isInRecycleBin) {
+        } else if (isInRecycleBin) {
             if (currentDirectory != null && !currentDirectory.equals(recycleBinDirectory)) {
                 currentDirectory = currentDirectory.getParentFile();
                 loadFileList();
                 updateLevelHint();
             } else {
                 exitRecycleBinToHome();
+                needScroll = false;
             }
-            return;
-        }
-        if (isInSearchMode) {
+        } else if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
             etSearch.clearFocus();
@@ -1553,19 +1556,153 @@ public class MainActivity extends AppCompatActivity {
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
+            needScroll = false;
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
+            final File childFolder = currentDirectory;
             currentDirectory = currentDirectory.getParentFile();
             etSearch.clearFocus();
             loadFileList();
+            fileAdapter.notifyDataSetChanged();
             PreferenceUtils.saveLastPageType(this, "main");
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
+            // 延迟缩短至200ms，提升响应速度
+            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(childFolder, TARGET_VISUAL_POS), 200);
+            needScroll = false;
         } else {
             super.onBackPressed();
+            needScroll = false;
         }
 
+        if (needScroll && targetFileForScroll != null) {
+            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(targetFileForScroll, TARGET_VISUAL_POS), 200);
+        }
     }
+
+    /**
+     * 流畅滑动定位（核心优化：快速平滑滑动+底部精准定位）
+     * @param targetFile 目标文件夹
+     * @param targetVisualPos 视觉第6位（索引5）
+     */
+    private void smoothScrollToTarget(final File targetFile, final int targetVisualPos) {
+        if (targetFile == null || fileRecyclerView == null || fileAdapter == null || isInSearchMode) {
+            return;
+        }
+
+        final List<File> currentFileList = fileList;
+        if (currentFileList == null || currentFileList.isEmpty()) {
+            return;
+        }
+
+        // 1. 查找目标绝对位置
+        int targetAbsPos = -1;
+        for (int i = 0; i < currentFileList.size(); i++) {
+            if (currentFileList.get(i).getAbsolutePath().equals(targetFile.getAbsolutePath())) {
+                targetAbsPos = i;
+                break;
+            }
+        }
+        if (targetAbsPos == -1) return;
+
+        final LinearLayoutManager layoutManager = (LinearLayoutManager) fileRecyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+
+        final int totalItemCount = currentFileList.size();
+        final int finalTargetAbsPos = targetAbsPos;
+
+        // 2. 核心规则优化
+        // 规则1：≤5 → 不滑动（顶部）
+        if (finalTargetAbsPos <= targetVisualPos) {
+            return;
+        }
+        // 规则2：最后6个（30-36）→ 直接滑到底部
+        if (finalTargetAbsPos >= totalItemCount - (targetVisualPos + 1)) {
+            scrollToBottom(layoutManager, totalItemCount);
+            return;
+        }
+        // 规则3：中间区域 → 快速平滑滑动到第6位
+        final int scrollToAbsPos = finalTargetAbsPos - targetVisualPos;
+
+        // 3. 快速平滑滑动（从顶部往下滑，解决卡顿）
+        SmoothScroller smoothScroller = new SmoothScroller(this) {
+            @Override
+            protected int getVerticalSnapPreference() {
+                return SNAP_TO_START; // 置顶对齐
+            }
+
+            @Override
+            protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
+                // 快速滑动：数值越小，滑动越快（默认100，这里设为50）
+                return 50f / displayMetrics.densityDpi;
+            }
+        };
+        smoothScroller.setTargetPosition(scrollToAbsPos);
+        layoutManager.startSmoothScroll(smoothScroller);
+
+        // 4. 轻量级缓存（解决卡顿，避免全量缓存）
+        fileRecyclerView.setItemViewCacheSize(10);
+        fileRecyclerView.postDelayed(() -> {
+            fileRecyclerView.setItemViewCacheSize(20);
+        }, 300);
+    }
+
+    /**
+     * 快速滑到底部（针对最后6个文件夹）
+     */
+    private void scrollToBottom(final LinearLayoutManager layoutManager, final int totalItemCount) {
+        // 快速平滑滑到底部
+        SmoothScroller bottomScroller = new SmoothScroller(this) {
+            @Override
+            protected int getVerticalSnapPreference() {
+                return SNAP_TO_END; // 底部对齐
+            }
+
+            @Override
+            protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
+                return 50f / displayMetrics.densityDpi; // 快速滑动
+            }
+        };
+        bottomScroller.setTargetPosition(totalItemCount - 1);
+        layoutManager.startSmoothScroll(bottomScroller);
+    }
+
+    // 初始化RecyclerView（优化滑动性能）
+    private void initRecyclerView() {
+        fileRecyclerView = findViewById(R.id.file_list);
+        final LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        // 禁用预加载，提升滑动流畅度
+        layoutManager.setInitialPrefetchItemCount(0);
+        // 开启快速滚动
+        layoutManager.setSmoothScrollbarEnabled(true);
+        fileRecyclerView.setHasFixedSize(true);
+        fileRecyclerView.setNestedScrollingEnabled(false);
+        // 优化绘制性能，解决卡顿
+        fileRecyclerView.setItemViewCacheSize(10);
+        fileRecyclerView.setDrawingCacheEnabled(true);
+        fileRecyclerView.setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH);
+        fileRecyclerView.setLayoutManager(layoutManager);
+        fileRecyclerView.setAdapter(fileAdapter);
+    }
+
+    // 自定义SmoothScroller（快速滑动）
+    private static class SmoothScroller extends androidx.recyclerview.widget.LinearSmoothScroller {
+        public SmoothScroller(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
+            return super.calculateSpeedPerPixel(displayMetrics);
+        }
+
+        @Override
+        protected int getVerticalSnapPreference() {
+            return super.getVerticalSnapPreference();
+        }
+    }
+
+
 
     /**
      * 退出中转站返回主页：
