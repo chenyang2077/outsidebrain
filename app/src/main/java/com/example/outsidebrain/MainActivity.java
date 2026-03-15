@@ -3548,6 +3548,10 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
      */
+    /**
+     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     * 新增：图片文件单独的文件名处理逻辑（去时间戳/随机字符串，保留后缀）
+     */
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
 
@@ -3573,6 +3577,8 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
+            String displayFileName = file.getName(); // 初始化显示文件名
+
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 int iconSize = dp2px(holder.itemView.getContext(), 36);
@@ -3590,16 +3596,25 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+                // TXT文件：沿用原有formatFileNameForDisplay逻辑（不改动）
+                displayFileName = formatFileNameForDisplay(file.getName());
             } else if (isImageFile(file)) {
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
                 loadImageThumbnail(file, holder.ivIcon);
+                // ========== 核心新增：图片文件专属处理逻辑 ==========
+                displayFileName = formatImageFileName(file.getName());
             } else {
                 holder.ivIcon.setImageResource(R.drawable.ic_other_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+                // 其他文件：沿用原有formatFileNameForDisplay逻辑
+                displayFileName = formatFileNameForDisplay(file.getName());
             }
-            holder.tvName.setText(formatFileNameForDisplay(file.getName()));
+
+            // 统一设置处理后的文件名
+            holder.tvName.setText(displayFileName);
+
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -3661,6 +3676,33 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public int getItemCount() {
             return mData.size();
+        }
+
+        /**
+         * 新增：图片文件专属文件名处理逻辑
+         * 功能：去除时间戳+随机字符串，保留文件后缀（.jpg/.png等）
+         */
+        private String formatImageFileName(String originalFileName) {
+            // 1. 分离文件名和后缀
+            String extension = "";
+            String nameWithoutExt = originalFileName;
+            int lastDotIndex = originalFileName.lastIndexOf(".");
+            if (lastDotIndex != -1) {
+                extension = originalFileName.substring(lastDotIndex); // 保留后缀（含.）
+                nameWithoutExt = originalFileName.substring(0, lastDotIndex); // 纯文件名（无后缀）
+            }
+
+            // 2. 去除纯文件名中的时间戳（根据你的格式调整正则）
+            // 示例1：匹配 "_202403151230" 或 "_abc123xyz" 格式的时间戳/随机字符串
+            String timestampRegex = "_\\d{8,14}"; // 时间戳：下划线+8-14位数字
+            String randomStrRegex = "_[a-zA-Z0-9]{6,16}"; // 随机字符串：下划线+6-16位字母数字
+
+            // 先去时间戳，再去随机字符串
+            String cleanName = nameWithoutExt.replaceAll(timestampRegex, "")
+                    .replaceAll(randomStrRegex, "");
+
+            // 3. 拼接回后缀（确保后缀不丢失）
+            return cleanName + extension;
         }
 
         /**

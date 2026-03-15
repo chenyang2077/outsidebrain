@@ -17,6 +17,7 @@ import java.util.zip.ZipFile;
 
 /**
  * 压缩包解压工具类：实现ZIP包智能解压，处理TXT/图片文件重命名、文件夹冲突规避、压缩包结构分析
+ * 修复：解决解压出多余空文件夹（如文件夹（1））的问题
  */
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
@@ -59,9 +60,15 @@ public class ZipUnzipUtil {
                 return false;
             }
 
+            // 核心修改1：根文件夹仅创建一次，不重复生成序号
             String targetRootFolder = getNonConflictFolderName(targetDir, rootDirInfo.rootFolderName);
-            String finalTargetPath = new File(targetDir, targetRootFolder).getAbsolutePath();
-            File rootTargetDir = new File(finalTargetPath);
+            File rootTargetDir = new File(targetDir, targetRootFolder);
+            // 确保根文件夹存在（仅创建，不重复生成序号）
+            if (!rootTargetDir.exists() && !rootTargetDir.mkdirs()) {
+                Log.e(TAG, "创建根解压目录失败: " + rootTargetDir.getAbsolutePath());
+                return false;
+            }
+            String finalTargetPath = rootTargetDir.getAbsolutePath();
 
             Set<ZipEntry> dirEntries = new HashSet<>();
             Set<ZipEntry> fileEntries = new HashSet<>();
@@ -76,6 +83,7 @@ public class ZipUnzipUtil {
                 }
             }
 
+            // 核心修改2：目录项仅校验路径，不主动创建带序号的文件夹（保留原空文件夹）
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
             }
@@ -100,7 +108,7 @@ public class ZipUnzipUtil {
     }
 
     /**
-     * 处理压缩包目录项，创建解压目录（规避文件夹名称冲突）
+     * 处理压缩包目录项：仅创建原压缩包内的空文件夹，不生成带序号的冲突文件夹
      */
     private static void processDirectoryEntry(ZipFile zipFile, ZipEntry entry,
                                               RootDirInfo rootDirInfo, File rootTargetDir) throws IOException {
@@ -117,19 +125,11 @@ public class ZipUnzipUtil {
             return;
         }
 
+        // 核心修改3：直接创建原名称文件夹（保留压缩包内的空文件夹），不生成序号
         File targetDir = new File(rootTargetDir, relativePath);
-        File parentDir = targetDir.getParentFile();
-
-        if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
-            Log.e(TAG, "创建父文件夹失败: " + parentDir.getAbsolutePath());
-            return;
-        }
-
-        String uniqueDirName = getNonConflictFolderName(parentDir.getAbsolutePath(),
-                targetDir.getName());
-        File uniqueTargetDir = new File(parentDir, uniqueDirName);
-        if (!uniqueTargetDir.exists() && !uniqueTargetDir.mkdirs()) {
-            Log.e(TAG, "创建文件夹失败: " + uniqueTargetDir.getAbsolutePath());
+        // 仅当文件夹不存在时创建（保留原空文件夹逻辑）
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            Log.w(TAG, "创建压缩包内空文件夹失败: " + targetDir.getAbsolutePath());
         }
     }
 
@@ -150,17 +150,16 @@ public class ZipUnzipUtil {
         File targetFile = new File(rootTargetDir, relativePath);
         File parentDir = targetFile.getParentFile();
 
+        // 核心修改4：仅创建文件的父文件夹（无序号），确保文件能存放即可
         if (parentDir != null && !parentDir.exists()) {
-            String uniqueParentName = getNonConflictFolderName(
-                    parentDir.getParentFile().getAbsolutePath(),
-                    parentDir.getName());
-            parentDir = new File(parentDir.getParentFile(), uniqueParentName);
+            // 直接创建原名称父文件夹，不生成冲突序号
             if (!parentDir.mkdirs()) {
-                Log.e(TAG, "创建父文件夹失败: " + parentDir.getAbsolutePath());
+                Log.e(TAG, "创建文件父文件夹失败: " + parentDir.getAbsolutePath());
                 return sequenceNumber;
             }
-            targetFile = new File(parentDir, targetFile.getName());
         }
+
+        // 解压文件内容（逻辑不变）
         try (InputStream is = zipFile.getInputStream(entry);
              OutputStream os = new FileOutputStream(targetFile)) {
             byte[] buffer = new byte[1024 * 4];
@@ -384,7 +383,7 @@ public class ZipUnzipUtil {
     }
 
     /**
-     * 获取无冲突的文件夹名称，添加中文括号后缀规避冲突
+     * 获取无冲突的文件夹名称，添加中文括号后缀规避冲突（仅根文件夹使用）
      * @return String 无冲突的文件夹名称
      */
     public static String getNonConflictFolderName(String targetDir, String originalName) {
