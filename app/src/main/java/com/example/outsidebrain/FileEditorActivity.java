@@ -58,6 +58,9 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
     private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
+    private int cursorPosition = 0;
+    private String savedNewFilePath = "";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -453,24 +456,31 @@ public class FileEditorActivity extends AppCompatActivity {
      */
     private String processContentForSaving(String content, File targetDir, String rootFolderName, boolean isRootDirectory) {
         if (isRootDirectory) {
-            return addContentTimestamp(content);
+            // 根目录：直接返回原始内容（不加时间戳）
+            return content;
         }
+        // 非根目录：仅添加路径标识，不处理时间戳
         String dirPath = MainActivity.getRelativeDirPath(targetDir, rootFolderName);
         String safeDirPath = dirPath.replace("/", "_slash_");
         String pathLine = "【" + safeDirPath + "】";
+
         boolean hasPathIdentifier = false;
         String[] lines = content.split("\n", 2);
         if (lines.length > 0 && !TextUtils.isEmpty(lines[0])) {
             hasPathIdentifier = FIRST_LINE_PATH_PATTERN.matcher(lines[0]).matches();
         }
+
         String restContent;
         if (hasPathIdentifier) {
+            // 已有路径标识：保留除第一行外的原始内容（不加时间戳）
             restContent = lines.length > 1 ? lines[1] : "";
         } else {
+            // 无路径标识：保留全部原始内容（不加时间戳）
             restContent = content;
         }
-        String contentWithTimestamp = addContentTimestamp(restContent);
-        return pathLine + "\n" + contentWithTimestamp;
+
+        // 核心修改：直接返回「路径行 + 换行 + 原始内容」，不再调用addContentTimestamp
+        return pathLine + "\n" + restContent;
     }
     /**
      * 读取文件内容
@@ -750,6 +760,11 @@ public class FileEditorActivity extends AppCompatActivity {
                     fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
                     fos.flush(); // 强制刷出缓冲区
                     fos.close(); // 立即关闭流，确保内容落地
+
+                    // ===== 仅新增这2行：记录新建文件的光标位置和保存路径 =====
+                    cursorPosition = etContent.getSelectionStart(); // 记录光标字符位置
+                    savedNewFilePath = targetFile.getAbsolutePath(); // 记录文件路径
+
                     isSaved = true;
                 }
 
@@ -832,7 +847,8 @@ public class FileEditorActivity extends AppCompatActivity {
             // 即使异常，也标记为已保存（避免重复尝试）
             isSaved = true;
         }
-        // ===== 新增：保存完成后，强制录入新文件名路径 =====
+
+        // ===== 保存完成后，强制录入新文件名路径 =====
         if (targetFile != null && targetFile.exists()) {
             // 录入编辑页标记
             PreferenceUtils.saveLastPageType(this, "editor");
@@ -842,6 +858,57 @@ public class FileEditorActivity extends AppCompatActivity {
             PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
             Log.d("FileEditor", "保存完成，录入新文件名路径：" + targetFile.getAbsolutePath());
         }
+    }
+
+    // ===== 新增onResume方法（仅处理新建文件切回前台的光标定位）=====
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 仅处理「新建文件后台保存后重新打开」的特例场景
+        if (!TextUtils.isEmpty(savedNewFilePath) && new File(savedNewFilePath).exists()) {
+            isPreEdit = false; // 转为编辑已有文件模式
+            targetFile = new File(savedNewFilePath);
+
+            // 1. 调用原有加载方法（完全不改动你的loadExistingFileData）
+            loadExistingFileData(getIntent().getBooleanExtra("need_handle_timestamp", true));
+
+            // 2. 仅此时执行：替换_slash_为/ + 定位到第一个】后换行位置
+            etContent.postDelayed(() -> {
+                // 步骤1：替换_slash_为/（仅前台显示）
+                String originalContent = etContent.getText().toString();
+                String realContent = originalContent.replace("_slash_", "/");
+                etContent.setText(realContent);
+
+                // 步骤2：找第一个】的字符位置（纯字符数）
+                int firstEndSymbolPos = realContent.indexOf("】");
+                if (firstEndSymbolPos != -1) {
+                    // 步骤3：找】后的第一个换行符
+                    int nextNewLinePos = realContent.indexOf("\n", firstEndSymbolPos);
+                    // 步骤4：计算光标位置（换行后1位 或 】后1位）
+                    int targetCursorPos = nextNewLinePos != -1 ? nextNewLinePos + 1 : firstEndSymbolPos + 1;
+                    targetCursorPos = Math.min(targetCursorPos, realContent.length());
+                    // 步骤5：定位光标（纯字符数）
+                    etContent.setSelection(targetCursorPos);
+                    Log.d("FileEditor", "新建文件切回：光标定位到字符数" + targetCursorPos);
+                } else {
+                    // 无】时，用保存时的光标位置
+                    int finalPos = Math.min(cursorPosition, realContent.length());
+                    etContent.setSelection(finalPos);
+                }
+            }, 100);
+
+            // 清空标记，避免重复处理
+            savedNewFilePath = "";
+        }
+    }
+
+
+    private String replaceSlashSymbol(String content) {
+        if (TextUtils.isEmpty(content)) {
+            return "";
+        }
+        // 仅在新建文件切回前台时，临时替换 _slash_ 为 /
+        return content.replace("_slash_", "/");
     }
 
 
