@@ -1,7 +1,9 @@
 /*
 软件名称：快乐文字
 版本号：V1.0
-功能描述：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
+功能描述：1. 基础文件管理：支持TXT文件/文件夹整理、ZIP压缩解压、文件/文件夹复制与移动；
+        2. 文件浏览编辑：支持TXT文件/图片浏览、TXT文件编辑；
+        3. 辅助功能：文件分享至第三方APP、按文件名/TXT内容检索文件。
 所属模块：主界面模块
 开发语言：Java
 */
@@ -49,7 +51,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -93,26 +94,8 @@ import android.content.Context;
 import android.view.ContextThemeWrapper;
 import androidx.appcompat.app.AppCompatDelegate;
 import java.io.BufferedWriter;
-
-import android.text.TextUtils;
 import android.icu.text.Transliterator;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import android.content.Context;
-import android.os.Environment;
-import android.widget.Toast;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
@@ -147,11 +130,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
-     * 1. 绑定布局控件，初始化视图组件；
-     * 2. 设置夜间模式、文件列表适配器；
-     * 3. 初始化回收站/中转站目录；
-     * 4. 设置搜索框/菜单按钮/新增按钮点击事件；
-     * 5. 检查存储权限，初始化根目录。
+     * 1. 绑定布局控件，初始化视图组件；2. 设置夜间模式、文件列表适配器；3. 初始化回收站/中转站目录； 4. 设置搜索框/菜单按钮/新增按钮点击事件； 5. 检查存储权限，初始化根目录。
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -220,20 +199,11 @@ public class MainActivity extends AppCompatActivity {
             startFilePreEdit();
         });
     }
-
     /**
      * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
-     */
-    /**
-     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
-     * 新增：图片文件单独的文件名处理逻辑（去时间戳/随机字符串，保留后缀）
      */
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
-
-        /**
-         * 更新适配器数据并刷新列表
-         */
         public void setData(List<File> newData) {
             if (newData != null) {
                 mData.clear();
@@ -241,7 +211,6 @@ public class MainActivity extends AppCompatActivity {
                 notifyDataSetChanged();
             }
         }
-
         @NonNull
         @Override
         public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -249,11 +218,10 @@ public class MainActivity extends AppCompatActivity {
                     .inflate(R.layout.item_file, parent, false);
             return new FileViewHolder(itemView);
         }
-
         @Override
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
-            String displayFileName = file.getName(); // 初始化显示文件名
+            String displayFileName = file.getName();
 
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
@@ -272,19 +240,16 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                // TXT文件：沿用原有formatFileNameForDisplay逻辑（不改动）
                 displayFileName = formatFileNameForDisplay(file.getName());
             } else if (isImageFile(file)) {
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
                 loadImageThumbnail(file, holder.ivIcon);
-                // ========== 核心新增：图片文件专属处理逻辑 ==========
                 displayFileName = formatImageFileName(file.getName());
             } else {
                 holder.ivIcon.setImageResource(R.drawable.ic_other_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                // 其他文件：沿用原有formatFileNameForDisplay逻辑
                 displayFileName = formatFileNameForDisplay(file.getName());
             }
 
@@ -348,60 +313,42 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             });
         }
-
         @Override
         public int getItemCount() {
             return mData.size();
         }
-
-        /**
-         * 新增：图片文件专属文件名处理逻辑
-         * 功能：去除时间戳+随机字符串，保留文件后缀（.jpg/.png等）
-         */
         private String formatImageFileName(String originalFileName) {
-            // 1. 分离文件名和后缀
             String extension = "";
             String nameWithoutExt = originalFileName;
             int lastDotIndex = originalFileName.lastIndexOf(".");
             if (lastDotIndex != -1) {
-                extension = originalFileName.substring(lastDotIndex); // 保留后缀（含.）
-                nameWithoutExt = originalFileName.substring(0, lastDotIndex); // 纯文件名（无后缀）
+                extension = originalFileName.substring(lastDotIndex);
+                nameWithoutExt = originalFileName.substring(0, lastDotIndex);
             }
-
-            // 2. 去除纯文件名中的时间戳（根据你的格式调整正则）
-            // 示例1：匹配 "_202403151230" 或 "_abc123xyz" 格式的时间戳/随机字符串
-            String timestampRegex = "_\\d{8,14}"; // 时间戳：下划线+8-14位数字
-            String randomStrRegex = "_[a-zA-Z0-9]{6,16}"; // 随机字符串：下划线+6-16位字母数字
-
-            // 先去时间戳，再去随机字符串
+            String timestampRegex = "_\\d{8,14}";
+            String randomStrRegex = "_[a-zA-Z0-9]{6,16}";
             String cleanName = nameWithoutExt.replaceAll(timestampRegex, "")
                     .replaceAll(randomStrRegex, "");
-
-            // 3. 拼接回后缀（确保后缀不丢失）
             return cleanName + extension;
         }
-
         /**
          * 文件列表项ViewHolder，绑定视图控件
          */
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;
-
             public FileViewHolder(@NonNull View itemView) {
                 super(itemView);
                 ivIcon = itemView.findViewById(R.id.icon);
                 tvName = itemView.findViewById(R.id.name);
             }
         }
-
         /**
          * dp转px，适配不同屏幕密度
          */
         private int dp2px(Context context, float dp) {
             return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
         }
-
         /**
          * 绘制带序号的文件夹图标
          */
@@ -431,13 +378,8 @@ public class MainActivity extends AppCompatActivity {
             imageView.setImageBitmap(bitmap);
         }
     }
-
     /**
-     * 导航至根目录：
-     * 1. 退出搜索模式，清空搜索框；
-     * 2. 重置回收站/中转站标识；
-     * 3. 加载根目录文件列表，更新层级提示；
-     * 4. 保存页面状态，延迟修正TXT文件路径。
+     * 导航至根目录：1. 退出搜索模式，清空搜索框； 2. 重置回收站/中转站标识； 3. 加载根目录文件列表，更新层级提示； 4. 保存页面状态，延迟修正TXT文件路径。
      */
     private void navigateToRootDirectory() {
         if (rootDirectory != null && rootDirectory.exists() && rootDirectory.isDirectory()) {
@@ -463,11 +405,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
-     * 初始化回收站：
-     * 1. 创建应用内部存储的回收站目录；
-     * 2. 打印创建结果日志，失败时提示权限问题。
+     * 初始化回收站： 1. 创建应用内部存储的回收站目录； 2. 打印创建结果日志，失败时提示权限问题。
      */
     private void initRecycleBin() {
         recycleBinDirectory = new File(getFilesDir(), "回收站");
@@ -481,11 +420,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     /**
-     * TXT文件时间戳比较器：
-     * 1. 优先按文件名中的17位时间戳降序排序；
-     * 2. 无时间戳时按文件最后修改时间降序排序。
+     * TXT文件时间戳比较器：1. 优先按文件名中的17位时间戳降序排序； 2. 无时间戳时按文件最后修改时间降序排序。
      */
     private class TxtTimestampComparator implements Comparator<File> {
         @Override
@@ -2268,7 +2204,6 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra("FOLDER_PATH", folder.getAbsolutePath());
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
-
     /**
      * 跳转到FileEditorActivity执行文件分享操作
      */
@@ -2296,26 +2231,17 @@ public class MainActivity extends AppCompatActivity {
         final boolean isImageFileFlag;
         final boolean isFolder;
         final String originalCoreName;
-        final String imgExt; // 图片原后缀（如.png/.jpg）
-
-        // 基础文件类型判断
+        final String imgExt;
         isFolder = file.isDirectory();
         isTxtFile = !isFolder && originalFileName.toLowerCase().endsWith(".txt");
         isImageFileFlag = !isFolder && isImageFile(file);
         boolean isSpecialFile = isTxtFile || isImageFileFlag;
-
-        // ========== 修复核心：适配双时间戳的纯核心名提取 ==========
         originalCoreName = extractPureCoreNameForDisplay(originalFileName);
-        // ========== 修复结束 ==========
-
-        // 提取图片真实后缀，移除所有非图片后缀（如.txt）
         if (isImageFileFlag) {
             imgExt = getPureImageExtension(originalFileName);
         } else {
             imgExt = "";
         }
-
-        // 普通文件后缀处理
         if (!isSpecialFile && !isFolder) {
             int dotIndex = originalFileName.lastIndexOf(".");
             if (dotIndex != -1 && dotIndex < originalFileName.length() - 1) {
@@ -2327,34 +2253,25 @@ public class MainActivity extends AppCompatActivity {
         } else {
             fileExtension = "";
         }
-
-        // 编辑框只显示纯核心名（无任何随机串/时间戳）
         if (isSpecialFile) {
             displayName = originalCoreName;
         }
         input.setText(displayName);
         input.setSelection(0, displayName.length());
         builder.setView(input);
-
         builder.setPositiveButton("确认", (dialog, which) -> {
             String newName = input.getText().toString().trim();
             if (newName.isEmpty()) {
                 Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-
             if (isSpecialFile) {
                 String newCoreName = newName;
-
-                // 清理用户输入中的所有后缀（仅保留纯核心名）
                 newCoreName = removeAllExtensions(newCoreName);
-
                 if (newCoreName.equals(originalCoreName)) {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
-                // 双时间戳生成逻辑（原有逻辑不变）
                 String nameWithoutExt = originalFileName;
                 int lastDot = originalFileName.lastIndexOf(".");
                 if (lastDot > 0) {
@@ -2369,7 +2286,6 @@ public class MainActivity extends AppCompatActivity {
                     String[] parts = incrementMatcher.group().split("_");
                     if (parts.length >= 3) {
                         randomStr = parts[1];
-                        // 遍历提取所有时间戳（支持1个/2个）
                         for (int i = 2; i < parts.length; i++) {
                             timestamps.add(parts[i]);
                         }
@@ -2381,7 +2297,6 @@ public class MainActivity extends AppCompatActivity {
                         timestamps.add(parts[2]);
                     }
                 }
-
                 String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                 StringBuilder timestampSuffix = new StringBuilder();
                 if (timestamps.isEmpty()) {
@@ -2517,29 +2432,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return fileName;
     }
-
-
-
-
-
-    /**
-     * 提取TXT文件的核心名称（去除随机字符串和时间戳后缀）
-     */
-    private String extractCoreName(String fileName) {
-        String nameWithoutExt = fileName;
-        if (fileName.toLowerCase().endsWith(".txt")) {
-            nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
-        }
-        Pattern pattern = Pattern.compile("_[A-Za-z0-9]{6}");
-        Matcher matcher = pattern.matcher(nameWithoutExt);
-        if (matcher.find()) {
-            String coreName = nameWithoutExt.substring(0, matcher.start());
-            return coreName.trim().isEmpty() ? "未命名文件" : coreName;
-        } else {
-            return nameWithoutExt.trim().isEmpty() ? "未命名文件" : nameWithoutExt;
-        }
-    }
-
     /**
      * 检查应用权限，初始化外部存储相关逻辑
      */
@@ -2700,7 +2592,6 @@ public class MainActivity extends AppCompatActivity {
         }
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 子文件夹：全域查重
                 sequenceNumber = copySubFolderWithTxtCheck(sourceFile, targetFolder, sequenceNumber);
             }
             else if (sourceFile.getName().toLowerCase().endsWith(".txt") || isImageFile(sourceFile)) {
@@ -2828,26 +2719,18 @@ public class MainActivity extends AppCompatActivity {
         return currentSequence;
     }
     /**
-     * 执行粘贴操作，在子线程处理文件/文件夹的复制/剪切，避免ANR
-     */
-    // ========== 核心通用方法：解决后缀重复问题 ==========
-    /**
      * 移除名称中所有后缀，仅保留纯核心名（防重复加.txt）
      */
-
     private String removeAllExtensions(String name) {
         int lastDot = name.lastIndexOf(".");
-        // 只有满足以下条件，才判定为「后缀」并删除：
-        // 1. 有小数点；2. 小数点不在开头；3. 小数点后字符数≤4（后缀长度）；4. 小数点后无小数点（避免误判）
         if (lastDot > 0 && (name.length() - lastDot - 1) <= 4 && name.substring(lastDot + 1).indexOf(".") == -1) {
-            // 额外校验：小数点后是否是常见后缀（避免误删如「1.2345」这种长数字）
             String afterDot = name.substring(lastDot + 1).toLowerCase();
             if (afterDot.equals("txt") || afterDot.equals("png") || afterDot.equals("jpg") ||
                     afterDot.equals("jpeg") || afterDot.equals("gif") || afterDot.equals("bmp")) {
                 return name.substring(0, lastDot);
             }
         }
-        return name; // 不是后缀 → 保留所有内容（包括合法小数点）
+        return name;
     }
 
     /**
@@ -2861,8 +2744,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return ext;
     }
-
-    // ========== 核心通用方法：解析/更新时间戳 ==========
     /**
      * 解析文件名中的随机串+时间戳结构
      * 返回数组：[0]纯核心名, [1]随机串, [2]时间戳1, [3]时间戳2
@@ -2874,30 +2755,22 @@ public class MainActivity extends AppCompatActivity {
         // 步骤1：去掉后缀
         String nameWithoutExt = removeAllExtensions(fileName);
         String[] parts = new String[4];
-        parts[0] = nameWithoutExt; // 默认纯核心名=完整名称（无时间戳）
-        parts[1] = null; // 随机串
-        parts[2] = null; // 时间戳1
-        parts[3] = null; // 时间戳2
-
-        // 步骤2：匹配「_随机串_时间戳」或「_随机串_时间戳_时间戳」格式
-        // 正则：_([a-zA-Z0-9]+)_(\d+)_?(\d+)? → 分组1=随机串，分组2=时间戳1，分组3=时间戳2
+        parts[0] = nameWithoutExt;
+        parts[1] = null;
+        parts[2] = null;
+        parts[3] = null;
         Pattern pattern = Pattern.compile("_([a-zA-Z0-9]+)_(\\d+)(_?(\\d+))?$");
         Matcher matcher = pattern.matcher(nameWithoutExt);
         if (matcher.find()) {
-            // 提取纯核心名（去掉随机串+时间戳部分）
             parts[0] = nameWithoutExt.substring(0, matcher.start());
-            // 提取随机串
             parts[1] = matcher.group(1);
-            // 提取时间戳1
             parts[2] = matcher.group(2);
-            // 提取时间戳2（可选）
             if (matcher.group(4) != null) {
                 parts[3] = matcher.group(4);
             }
         }
         return parts;
     }
-
     /**
      * 生成新的时间戳后缀（按剪切规则）
      */
@@ -2906,22 +2779,17 @@ public class MainActivity extends AppCompatActivity {
         String ts1 = parsedParts[2];
         String ts2 = parsedParts[3];
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-        // 规则1：无时间戳 → 加随机串+新时间戳
         if (randomStr == null || ts1 == null) {
             randomStr = UniqueFileNameHandler.generateRandomString();
             return "_" + randomStr + "_" + newTimestamp;
         }
-        // 规则2：1个随机串+1个时间戳 → 加第2个时间戳
         else if (ts2 == null) {
             return "_" + randomStr + "_" + ts1 + "_" + newTimestamp;
         }
-        // 规则3：1个随机串+2个时间戳 → 更新最后1个时间戳
         else {
             return "_" + randomStr + "_" + ts1 + "_" + newTimestamp;
         }
     }
-
     private void performPaste() {
         if (copiedFile == null || !copiedFile.exists()) {
             Toast.makeText(this, "粘贴内容已失效", Toast.LENGTH_SHORT).show();
@@ -2933,7 +2801,6 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             return;
         }
-
         String targetPath = currentDirectory.getAbsolutePath();
         if (isCutOperation && copiedFile.isDirectory() &&
                 targetPath.startsWith(copiedFile.getAbsolutePath() + File.separator)) {
@@ -2941,9 +2808,7 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             return;
         }
-
         final boolean[] result = {false};
-
         new Thread(() -> {
             try {
                 if (copiedFile.isDirectory()) {
@@ -3046,9 +2911,8 @@ public class MainActivity extends AppCompatActivity {
     private String getUniqueFolderNameInCurrentDir(File targetParent, String folderName) {
         File tempFolder = new File(targetParent, folderName);
         if (!tempFolder.exists()) {
-            return folderName; // 无重名 → 返回原名
+            return folderName;
         }
-        // 重名 → 生成带序号的名称（如「文档夹(1)」）
         int counter = 1;
         String newFolderName;
         do {
@@ -3058,31 +2922,11 @@ public class MainActivity extends AppCompatActivity {
         } while (tempFolder.exists());
         return newFolderName;
     }
-
-// ========== 其余原有方法（moveFolderWithTxtUpdate/copyFolderWithTxtGlobalCheck等）完全保留 ==========
-
     /**
      * 移动文件夹并更新其中TXT/图片文件的时间戳，处理重名和复制失败的降级逻辑
      */
-    /**
-     * @param useGlobalCheck：是否启用全域查重（剪切=false，复制=true）
-     * @param isCutUpdateTs：是否更新时间戳（剪切=false，复制=true）
-     */
-    /**
-     * 修复：删除未使用的 isCutUpdateTs 参数
-     * @param useGlobalCheck：是否启用全域查重（剪切=false，复制=true）
-     */
-    /**
-     * 剪切文件夹：
-     * 1. 解决多一层文件夹问题；
-     * 2. 内部文件按规则更新时间戳（无→加，1个→加，2个→更最后一个）；
-     * 3. 仅当前目录查重，不全域查重。
-     * @param useGlobalCheck：是否启用全域查重（剪切=false，复制=true）
-     */
     private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent, boolean useGlobalCheck) throws IOException {
-        // 步骤1：创建目标文件夹（仅一层）
         File targetFolder = new File(targetParent, sourceFolder.getName());
-        // 仅当前目录查重（重名时加序号，不全域查重）
         if (targetFolder.exists()) {
             String uniqueName = getUniqueFolderNameInCurrentDir(targetParent, sourceFolder.getName());
             targetFolder = new File(targetParent, uniqueName);
@@ -3091,33 +2935,24 @@ public class MainActivity extends AppCompatActivity {
             Log.e("MoveFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
             return false;
         }
-
-        // 步骤2：遍历并移动内部文件/子文件夹
         File[] files = sourceFolder.listFiles();
         if (files == null) {
             return true;
         }
-
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                // 递归处理子文件夹：直接传入当前 targetFolder，不重复生成名称
                 moveFolderWithTxtUpdate(sourceFile, targetFolder, false);
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt") || isImageFile(sourceFile)) {
-                // 剪切文件：更新时间戳（无→加，1个→加，2个→更最后一个）
                 String originalName = sourceFile.getName();
                 String originalExt = getOriginalExtension(originalName);
                 String[] parsed = parseFileName(originalName);
                 String newTsSuffix = generateNewTimestampSuffix(parsed);
                 String newFileName = parsed[0] + newTsSuffix + originalExt;
-
                 File targetFile = new File(targetFolder, newFileName);
-                // 仅当前目录查重（重名加序号）
                 if (targetFile.exists()) {
                     String uniqueFileName = getUniqueFileNameInDir(targetFile);
                     targetFile = new File(targetFolder, uniqueFileName);
                 }
-
-                // 移动文件
                 if (!sourceFile.renameTo(targetFile)) {
                     if (copyFileContent(sourceFile, targetFile)) {
                         sourceFile.delete();
@@ -3126,7 +2961,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } else {
-                // 普通文件：直接移动，仅当前目录查重
                 File targetFile = new File(targetFolder, sourceFile.getName());
                 if (targetFile.exists()) {
                     targetFile = new File(targetFolder, getUniqueFileNameInDir(targetFile));
@@ -3140,15 +2974,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
-        // 步骤3：删除原空文件夹
         return deleteEmptyDirectory(sourceFolder);
-    }
-
-
-    // 兼容原有调用
-    private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent) throws IOException {
-        return moveFolderWithTxtUpdate(sourceFolder, targetParent, true);
     }
     /**
      * 修复：确保方法是 private（Activity 内可访问），参数为 File，返回 String
@@ -3159,7 +2985,6 @@ public class MainActivity extends AppCompatActivity {
         // 修复：调用正确的后缀处理方法
         String coreName = removeAllExtensions(fileName);
         String ext = getOriginalExtension(fileName);
-
         int count = 1;
         String newFileName = coreName + "(" + count + ")" + ext;
         File newFile = new File(targetFile.getParentFile(), newFileName);
@@ -3183,8 +3008,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-
-
     /**
      * 统一更新文件名的时间戳（TXT/图片通用，避免乱码）
      * @param originalFile 原文件
@@ -3194,17 +3017,13 @@ public class MainActivity extends AppCompatActivity {
         String originalName = originalFile.getName();
         boolean isTxtFile = originalName.toLowerCase().endsWith(".txt");
         boolean isImageFile = isImageFile(originalFile);
-
-        // 步骤1：提取核心名 + 存储原后缀（统一逻辑）
         String coreName = originalName;
         String originalExt = "";
         int lastDot = originalName.lastIndexOf(".");
         if (lastDot > 0) {
-            coreName = originalName.substring(0, lastDot); // 纯核心名（无后缀）
-            originalExt = originalName.substring(lastDot); // 原后缀（.txt/.png等）
+            coreName = originalName.substring(0, lastDot);
+            originalExt = originalName.substring(lastDot);
         }
-
-        // 步骤2：移除原有时间戳（避免叠加，统一逻辑）
         Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(coreName);
         if (incrementMatcher.find()) {
             coreName = coreName.replace(incrementMatcher.group(), "");
@@ -3213,14 +3032,10 @@ public class MainActivity extends AppCompatActivity {
         if (targetMatcher.find()) {
             coreName = coreName.replace(targetMatcher.group(), "");
         }
-        coreName = coreName.replaceAll("_+$", ""); // 清理多余下划线
-
-        // 步骤3：统一生成新时间戳后缀（只含随机串+时间戳，无后缀）
+        coreName = coreName.replaceAll("_+$", "");
         String randomStr = generateRandomString();
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
         String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-
-        // 步骤4：拼接最终文件名（核心名+时间戳+原后缀）
         return coreName + timestampSuffix + originalExt;
     }
 
@@ -3252,28 +3067,18 @@ public class MainActivity extends AppCompatActivity {
      * @param isImageFile 是否为图片文件（true=图片，false=TXT）
      * @return 带时间戳的新文件名（图片不加.txt，TXT加.txt）
      */
-
-
-
     private String processTxtForCutOperation(String originalName, boolean isImageFile) {
-        // 1. 提取核心名（去掉原后缀）
         String coreName = originalName;
         int lastDot = originalName.lastIndexOf(".");
         if (lastDot > 0) {
             coreName = originalName.substring(0, lastDot);
         }
-
-        // 2. 原有时间戳逻辑完全保留（随机串+时间戳）
         String randomStr = UniqueFileNameHandler.generateRandomString();
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
         String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-
-        // 3. 关键：根据文件类型决定是否加.txt
         if (isImageFile) {
-            // 图片：只返回 核心名+时间戳（无.txt）
             return coreName + timestampSuffix;
         } else {
-            // TXT：返回 核心名+时间戳+.txt
             return coreName + timestampSuffix + ".txt";
         }
     }
@@ -3556,7 +3361,6 @@ public class MainActivity extends AppCompatActivity {
      * 使用Glide加载图片缩略图，优化加载性能
      */
     private void loadImageThumbnail(File imageFile, ImageView imageView) {
-        // 使用Glide库加载缩略图
         Glide.with(MainActivity.this)
                 .load(imageFile)
                 .thumbnail(0.1f)
@@ -3579,7 +3383,6 @@ public class MainActivity extends AppCompatActivity {
         }
         invalidateOptionsMenu();
     }
-
     /**
      * 返回键处理（流畅滑动+底部精准定位版）：
      * 1. 快速平滑滑动（从顶部往下滑），解决卡顿问题；
@@ -3591,8 +3394,7 @@ public class MainActivity extends AppCompatActivity {
     public void onBackPressed() {
         final File targetFileForScroll = currentDirectory;
         boolean needScroll = true;
-        final int TARGET_VISUAL_POS = 5; // 视觉第6位（索引5）
-
+        final int TARGET_VISUAL_POS = 5;
         if (isInTransferStation) {
             if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
                 currentDirectory = currentDirectory.getParentFile();
@@ -3634,21 +3436,18 @@ public class MainActivity extends AppCompatActivity {
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
-            // 延迟缩短至200ms，提升响应速度
             fileRecyclerView.postDelayed(() -> smoothScrollToTarget(childFolder, TARGET_VISUAL_POS), 200);
             needScroll = false;
         } else {
             super.onBackPressed();
             needScroll = false;
         }
-
         if (needScroll && targetFileForScroll != null) {
             fileRecyclerView.postDelayed(() -> smoothScrollToTarget(targetFileForScroll, TARGET_VISUAL_POS), 200);
         }
     }
-
     /**
-     * 流畅滑动定位（核心优化：固定0.5秒滑动+前排显示不滑动+底部精准定位）
+     * 流畅滑动定位（核心优化：固定0.1秒滑动+前排显示不滑动+底部精准定位）
      * @param targetFile 目标文件夹
      * @param targetVisualPos 视觉第6位（索引5）
      */
@@ -3656,13 +3455,10 @@ public class MainActivity extends AppCompatActivity {
         if (targetFile == null || fileRecyclerView == null || fileAdapter == null || isInSearchMode) {
             return;
         }
-
         final List<File> currentFileList = fileList;
         if (currentFileList == null || currentFileList.isEmpty()) {
             return;
         }
-
-        // 1. 查找目标绝对位置
         int targetAbsPos = -1;
         for (int i = 0; i < currentFileList.size(); i++) {
             if (currentFileList.get(i).getAbsolutePath().equals(targetFile.getAbsolutePath())) {
@@ -3671,115 +3467,63 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         if (targetAbsPos == -1) return;
-
         final LinearLayoutManager layoutManager = (LinearLayoutManager) fileRecyclerView.getLayoutManager();
         if (layoutManager == null) return;
-
         final int totalItemCount = currentFileList.size();
         final int finalTargetAbsPos = targetAbsPos;
-
-        // ========== 新增：判断目标项是否已完全显示在屏幕内 ==========
         if (isItemFullyVisible(layoutManager, finalTargetAbsPos)) {
-            return; // 已完全显示，不滑动
+            return;
         }
-
-        // 2. 核心规则优化
-        // 规则1：≤5 → 不滑动（顶部）
         if (finalTargetAbsPos <= targetVisualPos) {
             return;
         }
-        // 规则2：最后6个 → 直接滑到底部
         if (finalTargetAbsPos >= totalItemCount - (targetVisualPos + 1)) {
             scrollToBottom(layoutManager, totalItemCount);
             return;
         }
-        // 规则3：中间区域 → 固定0.5秒滑动到第6位
         final int scrollToAbsPos = finalTargetAbsPos - targetVisualPos;
-
-        // 3. 固定时长平滑滑动（0.5秒到位）
         FixedDurationSmoothScroller smoothScroller = new FixedDurationSmoothScroller(this);
         smoothScroller.setTargetPosition(scrollToAbsPos);
         layoutManager.startSmoothScroll(smoothScroller);
-
-        // 4. 轻量级缓存（解决卡顿，避免全量缓存）
         fileRecyclerView.setItemViewCacheSize(10);
         fileRecyclerView.postDelayed(() -> {
             fileRecyclerView.setItemViewCacheSize(20);
         }, 300);
     }
-
     /**
      * 判断Item是否完全显示在屏幕内
      */
     private boolean isItemFullyVisible(LinearLayoutManager layoutManager, int position) {
-        // 获取Item的可见状态
         int visiblePos = layoutManager.findFirstCompletelyVisibleItemPosition();
         int lastVisiblePos = layoutManager.findLastCompletelyVisibleItemPosition();
-        // 位置在完全可见区间内 → 已完全显示
         return position >= visiblePos && position <= lastVisiblePos;
     }
-
-    /**
-     * 快速滑到底部（固定0.5秒到位）
-     */
     private void scrollToBottom(final LinearLayoutManager layoutManager, final int totalItemCount) {
-        // 固定0.5秒滑到底部
         FixedDurationSmoothScroller bottomScroller = new FixedDurationSmoothScroller(this);
         bottomScroller.setTargetPosition(totalItemCount - 1);
         layoutManager.startSmoothScroll(bottomScroller);
     }
-
     /**
-     * 自定义固定时长SmoothScroller（强制0.5秒滑动到位）
+     * 自定义固定时长SmoothScroller（强制0.1秒滑动到位）
      */
     private static class FixedDurationSmoothScroller extends androidx.recyclerview.widget.LinearSmoothScroller {
-        private static final int FIXED_SCROLL_DURATION = 100; // 固定0.5秒
+        private static final int FIXED_SCROLL_DURATION = 100;
 
         public FixedDurationSmoothScroller(Context context) {
             super(context);
         }
-
-        /**
-         * 核心修改：重写滑动时长计算，强制返回500ms
-         */
         @Override
         protected int calculateTimeForScrolling(int dx) {
-            // 忽略滑动距离，固定返回500ms
             return FIXED_SCROLL_DURATION;
         }
-
         @Override
         protected int getVerticalSnapPreference() {
-            return SNAP_TO_START; // 置顶对齐（底部滑动时会自动适配SNAP_TO_END）
+            return SNAP_TO_START;
         }
-
-        /**
-         * 保留像素速度计算，但优先级低于calculateTimeForScrolling
-         */
         @Override
         protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
-            return 50f / displayMetrics.densityDpi; // 快速滑动基础值
+            return 50f / displayMetrics.densityDpi;
         }
     }
-
-    // 初始化RecyclerView（优化滑动性能）
-    private void initRecyclerView() {
-        fileRecyclerView = findViewById(R.id.file_list);
-        final LinearLayoutManager layoutManager = new LinearLayoutManager(this);
-        // 禁用预加载，提升滑动流畅度
-        layoutManager.setInitialPrefetchItemCount(0);
-        // 开启快速滚动
-        layoutManager.setSmoothScrollbarEnabled(true);
-        fileRecyclerView.setHasFixedSize(true);
-        fileRecyclerView.setNestedScrollingEnabled(false);
-        // 优化绘制性能，解决卡顿
-        fileRecyclerView.setItemViewCacheSize(10);
-        fileRecyclerView.setDrawingCacheEnabled(true);
-        fileRecyclerView.setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH);
-        fileRecyclerView.setLayoutManager(layoutManager);
-        fileRecyclerView.setAdapter(fileAdapter);
-    }
-
-
 
 }
