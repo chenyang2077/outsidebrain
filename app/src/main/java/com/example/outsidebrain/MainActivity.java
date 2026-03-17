@@ -222,6 +222,217 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     */
+    /**
+     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     * 新增：图片文件单独的文件名处理逻辑（去时间戳/随机字符串，保留后缀）
+     */
+    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
+        private List<File> mData = new ArrayList<>();
+
+        /**
+         * 更新适配器数据并刷新列表
+         */
+        public void setData(List<File> newData) {
+            if (newData != null) {
+                mData.clear();
+                mData.addAll(newData);
+                notifyDataSetChanged();
+            }
+        }
+
+        @NonNull
+        @Override
+        public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View itemView = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_file, parent, false);
+            return new FileViewHolder(itemView);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
+            File file = mData.get(position);
+            String displayFileName = file.getName(); // 初始化显示文件名
+
+            if (file.isDirectory()) {
+                holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
+                int iconSize = dp2px(holder.itemView.getContext(), 36);
+                ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
+                params.width = iconSize;
+                params.height = iconSize;
+                holder.ivIcon.setLayoutParams(params);
+                drawFolderIconWithNumber(holder.ivIcon, position + 1);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
+            } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                holder.ivIcon.setImageResource(R.drawable.ic_image_error);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                holder.ivIcon.setImageResource(R.drawable.ic_file);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+                // TXT文件：沿用原有formatFileNameForDisplay逻辑（不改动）
+                displayFileName = formatFileNameForDisplay(file.getName());
+            } else if (isImageFile(file)) {
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+                loadImageThumbnail(file, holder.ivIcon);
+                // ========== 核心新增：图片文件专属处理逻辑 ==========
+                displayFileName = formatImageFileName(file.getName());
+            } else {
+                holder.ivIcon.setImageResource(R.drawable.ic_other_file);
+                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
+                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
+                // 其他文件：沿用原有formatFileNameForDisplay逻辑
+                displayFileName = formatFileNameForDisplay(file.getName());
+            }
+
+            // 统一设置处理后的文件名
+            holder.tvName.setText(displayFileName);
+
+            holder.itemView.setOnClickListener(v -> {
+                if (file.isDirectory()) {
+                    if (copiedFile != null && file.equals(copiedFile)) {
+                        hidePasteButton(); // 隐藏粘贴按钮
+                        Toast.makeText(MainActivity.this, "禁止在当前复制/剪切的文件夹内粘贴，已自动隐藏粘贴功能", Toast.LENGTH_SHORT).show();
+                    }
+                    isInSearchMode = false;
+                    etSearch.setText("");
+                    currentDirectory = file;
+                    loadFileList();
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "main");
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                    hidePasteButton();
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+                    new Thread(() -> {
+                        boolean corrected = correctFilepathInTxt(file);
+                        runOnUiThread(() -> {
+                            if (corrected) {
+                                Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
+                                editIntent.putExtra("file_path", file.getAbsolutePath());
+                                editIntent.putExtra("is_pre_edit", false);
+                                editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
+                                editIntent.putExtra("is_root_directory", file.getParentFile().equals(rootDirectory));
+                                startActivityForResult(editIntent, REQUEST_EDIT_FILE);
+                            } else {
+                                Toast.makeText(MainActivity.this, "文件路径修正失败，无法打开", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
+                } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                    showZipExtractDialog(file);
+                } else if (isImageFile(file)) {
+                    hidePasteButton();
+                    openImageFile(file);
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "image");
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                } else {
+                    hidePasteButton();
+                    showUnsupportedFileMessage();
+                }
+            });
+            holder.itemView.setOnLongClickListener(v -> {
+                if (file.isDirectory()) {
+                    showFolderOptions(file);
+                } else {
+                    showFileOptions(file);
+                }
+                return true;
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return mData.size();
+        }
+
+        /**
+         * 新增：图片文件专属文件名处理逻辑
+         * 功能：去除时间戳+随机字符串，保留文件后缀（.jpg/.png等）
+         */
+        private String formatImageFileName(String originalFileName) {
+            // 1. 分离文件名和后缀
+            String extension = "";
+            String nameWithoutExt = originalFileName;
+            int lastDotIndex = originalFileName.lastIndexOf(".");
+            if (lastDotIndex != -1) {
+                extension = originalFileName.substring(lastDotIndex); // 保留后缀（含.）
+                nameWithoutExt = originalFileName.substring(0, lastDotIndex); // 纯文件名（无后缀）
+            }
+
+            // 2. 去除纯文件名中的时间戳（根据你的格式调整正则）
+            // 示例1：匹配 "_202403151230" 或 "_abc123xyz" 格式的时间戳/随机字符串
+            String timestampRegex = "_\\d{8,14}"; // 时间戳：下划线+8-14位数字
+            String randomStrRegex = "_[a-zA-Z0-9]{6,16}"; // 随机字符串：下划线+6-16位字母数字
+
+            // 先去时间戳，再去随机字符串
+            String cleanName = nameWithoutExt.replaceAll(timestampRegex, "")
+                    .replaceAll(randomStrRegex, "");
+
+            // 3. 拼接回后缀（确保后缀不丢失）
+            return cleanName + extension;
+        }
+
+        /**
+         * 文件列表项ViewHolder，绑定视图控件
+         */
+        class FileViewHolder extends RecyclerView.ViewHolder {
+            ImageView ivIcon;
+            TextView tvName;
+
+            public FileViewHolder(@NonNull View itemView) {
+                super(itemView);
+                ivIcon = itemView.findViewById(R.id.icon);
+                tvName = itemView.findViewById(R.id.name);
+            }
+        }
+
+        /**
+         * dp转px，适配不同屏幕密度
+         */
+        private int dp2px(Context context, float dp) {
+            return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
+        }
+
+        /**
+         * 绘制带序号的文件夹图标
+         */
+        private void drawFolderIconWithNumber(ImageView imageView, int number) {
+            Drawable folderDrawable = ContextCompat.getDrawable(imageView.getContext(), R.drawable.ic_folder);
+            if (folderDrawable == null) {
+                imageView.setImageResource(R.drawable.ic_folder);
+                return;
+            }
+            int drawableWidth = folderDrawable.getIntrinsicWidth();
+            int drawableHeight = folderDrawable.getIntrinsicHeight();
+            Bitmap bitmap = Bitmap.createBitmap(drawableWidth, drawableHeight, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            folderDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+            folderDrawable.draw(canvas);
+            Paint paint = new Paint();
+            paint.setColor(Color.parseColor("#FFB85C"));
+            paint.setTextSize(dp2px(imageView.getContext(), 12));
+            paint.setTypeface(Typeface.DEFAULT_BOLD); // 加粗
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setAntiAlias(true);
+            String numberText = String.valueOf(number);
+            float x = canvas.getWidth() / 2f;
+            float textHeight = paint.descent() - paint.ascent();
+            float y = canvas.getHeight() / 2f - (paint.descent() + paint.ascent()) / 2 + textHeight / 6;
+            canvas.drawText(numberText, x, y, paint);
+            imageView.setImageBitmap(bitmap);
+        }
+    }
+
+    /**
      * 导航至根目录：
      * 1. 退出搜索模式，清空搜索框；
      * 2. 重置回收站/中转站标识；
@@ -1526,194 +1737,6 @@ public class MainActivity extends AppCompatActivity {
         processedName = OLD_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
         return processedName;
     }
-    /**
-     * 返回键处理（流畅滑动+底部精准定位版）：
-     * 1. 快速平滑滑动（从顶部往下滑），解决卡顿问题；
-     * 2. 最后几个文件夹（≤6个到末尾）直接滑到底部；
-     * 3. 中间文件夹精准定位到第6位，无卡顿/漂移。
-     */
-    @Override
-    public void onBackPressed() {
-        final File targetFileForScroll = currentDirectory;
-        boolean needScroll = true;
-        final int TARGET_VISUAL_POS = 5; // 视觉第6位（索引5）
-
-        if (isInTransferStation) {
-            if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
-                currentDirectory = currentDirectory.getParentFile();
-                loadFileList();
-                updateLevelHint();
-            } else {
-                exitTransferStationToHome();
-                needScroll = false;
-            }
-        } else if (isInRecycleBin) {
-            if (currentDirectory != null && !currentDirectory.equals(recycleBinDirectory)) {
-                currentDirectory = currentDirectory.getParentFile();
-                loadFileList();
-                updateLevelHint();
-            } else {
-                exitRecycleBinToHome();
-                needScroll = false;
-            }
-        } else if (isInSearchMode) {
-            isInSearchMode = false;
-            etSearch.setText("");
-            etSearch.clearFocus();
-            fileAdapter.setData(fileList);
-            clearSearchKeyword();
-            Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
-            hidePasteButton();
-            PreferenceUtils.saveLastPageType(this, "main");
-            if (currentDirectory != null && currentDirectory.exists()) {
-                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
-            }
-            needScroll = false;
-        } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
-            final File childFolder = currentDirectory;
-            currentDirectory = currentDirectory.getParentFile();
-            etSearch.clearFocus();
-            loadFileList();
-            fileAdapter.notifyDataSetChanged();
-            PreferenceUtils.saveLastPageType(this, "main");
-            if (currentDirectory != null && currentDirectory.exists()) {
-                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
-            }
-            // 延迟缩短至200ms，提升响应速度
-            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(childFolder, TARGET_VISUAL_POS), 200);
-            needScroll = false;
-        } else {
-            super.onBackPressed();
-            needScroll = false;
-        }
-
-        if (needScroll && targetFileForScroll != null) {
-            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(targetFileForScroll, TARGET_VISUAL_POS), 200);
-        }
-    }
-
-    /**
-     * 流畅滑动定位（核心优化：快速平滑滑动+底部精准定位）
-     * @param targetFile 目标文件夹
-     * @param targetVisualPos 视觉第6位（索引5）
-     */
-    private void smoothScrollToTarget(final File targetFile, final int targetVisualPos) {
-        if (targetFile == null || fileRecyclerView == null || fileAdapter == null || isInSearchMode) {
-            return;
-        }
-
-        final List<File> currentFileList = fileList;
-        if (currentFileList == null || currentFileList.isEmpty()) {
-            return;
-        }
-
-        // 1. 查找目标绝对位置
-        int targetAbsPos = -1;
-        for (int i = 0; i < currentFileList.size(); i++) {
-            if (currentFileList.get(i).getAbsolutePath().equals(targetFile.getAbsolutePath())) {
-                targetAbsPos = i;
-                break;
-            }
-        }
-        if (targetAbsPos == -1) return;
-
-        final LinearLayoutManager layoutManager = (LinearLayoutManager) fileRecyclerView.getLayoutManager();
-        if (layoutManager == null) return;
-
-        final int totalItemCount = currentFileList.size();
-        final int finalTargetAbsPos = targetAbsPos;
-
-        // 2. 核心规则优化
-        // 规则1：≤5 → 不滑动（顶部）
-        if (finalTargetAbsPos <= targetVisualPos) {
-            return;
-        }
-        // 规则2：最后6个（30-36）→ 直接滑到底部
-        if (finalTargetAbsPos >= totalItemCount - (targetVisualPos + 1)) {
-            scrollToBottom(layoutManager, totalItemCount);
-            return;
-        }
-        // 规则3：中间区域 → 快速平滑滑动到第6位
-        final int scrollToAbsPos = finalTargetAbsPos - targetVisualPos;
-
-        // 3. 快速平滑滑动（从顶部往下滑，解决卡顿）
-        SmoothScroller smoothScroller = new SmoothScroller(this) {
-            @Override
-            protected int getVerticalSnapPreference() {
-                return SNAP_TO_START; // 置顶对齐
-            }
-
-            @Override
-            protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
-                // 快速滑动：数值越小，滑动越快（默认100，这里设为50）
-                return 50f / displayMetrics.densityDpi;
-            }
-        };
-        smoothScroller.setTargetPosition(scrollToAbsPos);
-        layoutManager.startSmoothScroll(smoothScroller);
-
-        // 4. 轻量级缓存（解决卡顿，避免全量缓存）
-        fileRecyclerView.setItemViewCacheSize(10);
-        fileRecyclerView.postDelayed(() -> {
-            fileRecyclerView.setItemViewCacheSize(20);
-        }, 300);
-    }
-
-    /**
-     * 快速滑到底部（针对最后6个文件夹）
-     */
-    private void scrollToBottom(final LinearLayoutManager layoutManager, final int totalItemCount) {
-        // 快速平滑滑到底部
-        SmoothScroller bottomScroller = new SmoothScroller(this) {
-            @Override
-            protected int getVerticalSnapPreference() {
-                return SNAP_TO_END; // 底部对齐
-            }
-
-            @Override
-            protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
-                return 50f / displayMetrics.densityDpi; // 快速滑动
-            }
-        };
-        bottomScroller.setTargetPosition(totalItemCount - 1);
-        layoutManager.startSmoothScroll(bottomScroller);
-    }
-
-    // 初始化RecyclerView（优化滑动性能）
-    private void initRecyclerView() {
-        fileRecyclerView = findViewById(R.id.file_list);
-        final LinearLayoutManager layoutManager = new LinearLayoutManager(this);
-        // 禁用预加载，提升滑动流畅度
-        layoutManager.setInitialPrefetchItemCount(0);
-        // 开启快速滚动
-        layoutManager.setSmoothScrollbarEnabled(true);
-        fileRecyclerView.setHasFixedSize(true);
-        fileRecyclerView.setNestedScrollingEnabled(false);
-        // 优化绘制性能，解决卡顿
-        fileRecyclerView.setItemViewCacheSize(10);
-        fileRecyclerView.setDrawingCacheEnabled(true);
-        fileRecyclerView.setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH);
-        fileRecyclerView.setLayoutManager(layoutManager);
-        fileRecyclerView.setAdapter(fileAdapter);
-    }
-
-    // 自定义SmoothScroller（快速滑动）
-    private static class SmoothScroller extends androidx.recyclerview.widget.LinearSmoothScroller {
-        public SmoothScroller(Context context) {
-            super(context);
-        }
-
-        @Override
-        protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
-            return super.calculateSpeedPerPixel(displayMetrics);
-        }
-
-        @Override
-        protected int getVerticalSnapPreference() {
-            return super.getVerticalSnapPreference();
-        }
-    }
-
 
 
     /**
@@ -3558,213 +3581,205 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     * 返回键处理（流畅滑动+底部精准定位版）：
+     * 1. 快速平滑滑动（从顶部往下滑），解决卡顿问题；
+     * 2. 最后几个文件夹（≤6个到末尾）直接滑到底部；
+     * 3. 中间文件夹精准定位到第6位，无卡顿/漂移；
+     * 4. 新增：滑动时长固定0.5秒 + 前排显示不滑动
      */
-    /**
-     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
-     * 新增：图片文件单独的文件名处理逻辑（去时间戳/随机字符串，保留后缀）
-     */
-    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
-        private List<File> mData = new ArrayList<>();
+    @Override
+    public void onBackPressed() {
+        final File targetFileForScroll = currentDirectory;
+        boolean needScroll = true;
+        final int TARGET_VISUAL_POS = 5; // 视觉第6位（索引5）
 
-        /**
-         * 更新适配器数据并刷新列表
-         */
-        public void setData(List<File> newData) {
-            if (newData != null) {
-                mData.clear();
-                mData.addAll(newData);
-                notifyDataSetChanged();
-            }
-        }
-
-        @NonNull
-        @Override
-        public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View itemView = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_file, parent, false);
-            return new FileViewHolder(itemView);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
-            File file = mData.get(position);
-            String displayFileName = file.getName(); // 初始化显示文件名
-
-            if (file.isDirectory()) {
-                holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
-                int iconSize = dp2px(holder.itemView.getContext(), 36);
-                ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
-                params.width = iconSize;
-                params.height = iconSize;
-                holder.ivIcon.setLayoutParams(params);
-                drawFolderIconWithNumber(holder.ivIcon, position + 1);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.black));
-            } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                holder.ivIcon.setImageResource(R.drawable.ic_image_error);
-                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
-            } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                holder.ivIcon.setImageResource(R.drawable.ic_file);
-                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                // TXT文件：沿用原有formatFileNameForDisplay逻辑（不改动）
-                displayFileName = formatFileNameForDisplay(file.getName());
-            } else if (isImageFile(file)) {
-                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                loadImageThumbnail(file, holder.ivIcon);
-                // ========== 核心新增：图片文件专属处理逻辑 ==========
-                displayFileName = formatImageFileName(file.getName());
+        if (isInTransferStation) {
+            if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
+                currentDirectory = currentDirectory.getParentFile();
+                loadFileList();
+                updateLevelHint();
             } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_other_file);
-                holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
-                holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
-                // 其他文件：沿用原有formatFileNameForDisplay逻辑
-                displayFileName = formatFileNameForDisplay(file.getName());
+                exitTransferStationToHome();
+                needScroll = false;
             }
-
-            // 统一设置处理后的文件名
-            holder.tvName.setText(displayFileName);
-
-            holder.itemView.setOnClickListener(v -> {
-                if (file.isDirectory()) {
-                    if (copiedFile != null && file.equals(copiedFile)) {
-                        hidePasteButton(); // 隐藏粘贴按钮
-                        Toast.makeText(MainActivity.this, "禁止在当前复制/剪切的文件夹内粘贴，已自动隐藏粘贴功能", Toast.LENGTH_SHORT).show();
-                    }
-                    isInSearchMode = false;
-                    etSearch.setText("");
-                    currentDirectory = file;
-                    loadFileList();
-                    PreferenceUtils.saveLastPageType(MainActivity.this, "main");
-                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
-                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
-                } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                    hidePasteButton();
-                    PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
-                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-                    new Thread(() -> {
-                        boolean corrected = correctFilepathInTxt(file);
-                        runOnUiThread(() -> {
-                            if (corrected) {
-                                Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
-                                editIntent.putExtra("file_path", file.getAbsolutePath());
-                                editIntent.putExtra("is_pre_edit", false);
-                                editIntent.putExtra("root_folder_name", ROOT_FOLDER_NAME);
-                                editIntent.putExtra("is_root_directory", file.getParentFile().equals(rootDirectory));
-                                startActivityForResult(editIntent, REQUEST_EDIT_FILE);
-                            } else {
-                                Toast.makeText(MainActivity.this, "文件路径修正失败，无法打开", Toast.LENGTH_SHORT).show();
-                            }
-                        });
-                    }).start();
-                    PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
-                } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    showZipExtractDialog(file);
-                } else if (isImageFile(file)) {
-                    hidePasteButton();
-                    openImageFile(file);
-                    PreferenceUtils.saveLastPageType(MainActivity.this, "image");
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
-                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
-                } else {
-                    hidePasteButton();
-                    showUnsupportedFileMessage();
-                }
-            });
-            holder.itemView.setOnLongClickListener(v -> {
-                if (file.isDirectory()) {
-                    showFolderOptions(file);
-                } else {
-                    showFileOptions(file);
-                }
-                return true;
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return mData.size();
-        }
-
-        /**
-         * 新增：图片文件专属文件名处理逻辑
-         * 功能：去除时间戳+随机字符串，保留文件后缀（.jpg/.png等）
-         */
-        private String formatImageFileName(String originalFileName) {
-            // 1. 分离文件名和后缀
-            String extension = "";
-            String nameWithoutExt = originalFileName;
-            int lastDotIndex = originalFileName.lastIndexOf(".");
-            if (lastDotIndex != -1) {
-                extension = originalFileName.substring(lastDotIndex); // 保留后缀（含.）
-                nameWithoutExt = originalFileName.substring(0, lastDotIndex); // 纯文件名（无后缀）
+        } else if (isInRecycleBin) {
+            if (currentDirectory != null && !currentDirectory.equals(recycleBinDirectory)) {
+                currentDirectory = currentDirectory.getParentFile();
+                loadFileList();
+                updateLevelHint();
+            } else {
+                exitRecycleBinToHome();
+                needScroll = false;
             }
-
-            // 2. 去除纯文件名中的时间戳（根据你的格式调整正则）
-            // 示例1：匹配 "_202403151230" 或 "_abc123xyz" 格式的时间戳/随机字符串
-            String timestampRegex = "_\\d{8,14}"; // 时间戳：下划线+8-14位数字
-            String randomStrRegex = "_[a-zA-Z0-9]{6,16}"; // 随机字符串：下划线+6-16位字母数字
-
-            // 先去时间戳，再去随机字符串
-            String cleanName = nameWithoutExt.replaceAll(timestampRegex, "")
-                    .replaceAll(randomStrRegex, "");
-
-            // 3. 拼接回后缀（确保后缀不丢失）
-            return cleanName + extension;
-        }
-
-        /**
-         * 文件列表项ViewHolder，绑定视图控件
-         */
-        class FileViewHolder extends RecyclerView.ViewHolder {
-            ImageView ivIcon;
-            TextView tvName;
-
-            public FileViewHolder(@NonNull View itemView) {
-                super(itemView);
-                ivIcon = itemView.findViewById(R.id.icon);
-                tvName = itemView.findViewById(R.id.name);
+        } else if (isInSearchMode) {
+            isInSearchMode = false;
+            etSearch.setText("");
+            etSearch.clearFocus();
+            fileAdapter.setData(fileList);
+            clearSearchKeyword();
+            Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            PreferenceUtils.saveLastPageType(this, "main");
+            if (currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
-        }
-
-        /**
-         * dp转px，适配不同屏幕密度
-         */
-        private int dp2px(Context context, float dp) {
-            return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
-        }
-
-        /**
-         * 绘制带序号的文件夹图标
-         */
-        private void drawFolderIconWithNumber(ImageView imageView, int number) {
-            Drawable folderDrawable = ContextCompat.getDrawable(imageView.getContext(), R.drawable.ic_folder);
-            if (folderDrawable == null) {
-                imageView.setImageResource(R.drawable.ic_folder);
-                return;
+            needScroll = false;
+        } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
+            final File childFolder = currentDirectory;
+            currentDirectory = currentDirectory.getParentFile();
+            etSearch.clearFocus();
+            loadFileList();
+            fileAdapter.notifyDataSetChanged();
+            PreferenceUtils.saveLastPageType(this, "main");
+            if (currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
             }
-            int drawableWidth = folderDrawable.getIntrinsicWidth();
-            int drawableHeight = folderDrawable.getIntrinsicHeight();
-            Bitmap bitmap = Bitmap.createBitmap(drawableWidth, drawableHeight, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(bitmap);
-            folderDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-            folderDrawable.draw(canvas);
-            Paint paint = new Paint();
-            paint.setColor(Color.parseColor("#FFB85C"));
-            paint.setTextSize(dp2px(imageView.getContext(), 12));
-            paint.setTypeface(Typeface.DEFAULT_BOLD); // 加粗
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setAntiAlias(true);
-            String numberText = String.valueOf(number);
-            float x = canvas.getWidth() / 2f;
-            float textHeight = paint.descent() - paint.ascent();
-            float y = canvas.getHeight() / 2f - (paint.descent() + paint.ascent()) / 2 + textHeight / 6;
-            canvas.drawText(numberText, x, y, paint);
-            imageView.setImageBitmap(bitmap);
+            // 延迟缩短至200ms，提升响应速度
+            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(childFolder, TARGET_VISUAL_POS), 200);
+            needScroll = false;
+        } else {
+            super.onBackPressed();
+            needScroll = false;
+        }
+
+        if (needScroll && targetFileForScroll != null) {
+            fileRecyclerView.postDelayed(() -> smoothScrollToTarget(targetFileForScroll, TARGET_VISUAL_POS), 200);
         }
     }
+
+    /**
+     * 流畅滑动定位（核心优化：固定0.5秒滑动+前排显示不滑动+底部精准定位）
+     * @param targetFile 目标文件夹
+     * @param targetVisualPos 视觉第6位（索引5）
+     */
+    private void smoothScrollToTarget(final File targetFile, final int targetVisualPos) {
+        if (targetFile == null || fileRecyclerView == null || fileAdapter == null || isInSearchMode) {
+            return;
+        }
+
+        final List<File> currentFileList = fileList;
+        if (currentFileList == null || currentFileList.isEmpty()) {
+            return;
+        }
+
+        // 1. 查找目标绝对位置
+        int targetAbsPos = -1;
+        for (int i = 0; i < currentFileList.size(); i++) {
+            if (currentFileList.get(i).getAbsolutePath().equals(targetFile.getAbsolutePath())) {
+                targetAbsPos = i;
+                break;
+            }
+        }
+        if (targetAbsPos == -1) return;
+
+        final LinearLayoutManager layoutManager = (LinearLayoutManager) fileRecyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+
+        final int totalItemCount = currentFileList.size();
+        final int finalTargetAbsPos = targetAbsPos;
+
+        // ========== 新增：判断目标项是否已完全显示在屏幕内 ==========
+        if (isItemFullyVisible(layoutManager, finalTargetAbsPos)) {
+            return; // 已完全显示，不滑动
+        }
+
+        // 2. 核心规则优化
+        // 规则1：≤5 → 不滑动（顶部）
+        if (finalTargetAbsPos <= targetVisualPos) {
+            return;
+        }
+        // 规则2：最后6个 → 直接滑到底部
+        if (finalTargetAbsPos >= totalItemCount - (targetVisualPos + 1)) {
+            scrollToBottom(layoutManager, totalItemCount);
+            return;
+        }
+        // 规则3：中间区域 → 固定0.5秒滑动到第6位
+        final int scrollToAbsPos = finalTargetAbsPos - targetVisualPos;
+
+        // 3. 固定时长平滑滑动（0.5秒到位）
+        FixedDurationSmoothScroller smoothScroller = new FixedDurationSmoothScroller(this);
+        smoothScroller.setTargetPosition(scrollToAbsPos);
+        layoutManager.startSmoothScroll(smoothScroller);
+
+        // 4. 轻量级缓存（解决卡顿，避免全量缓存）
+        fileRecyclerView.setItemViewCacheSize(10);
+        fileRecyclerView.postDelayed(() -> {
+            fileRecyclerView.setItemViewCacheSize(20);
+        }, 300);
+    }
+
+    /**
+     * 判断Item是否完全显示在屏幕内
+     */
+    private boolean isItemFullyVisible(LinearLayoutManager layoutManager, int position) {
+        // 获取Item的可见状态
+        int visiblePos = layoutManager.findFirstCompletelyVisibleItemPosition();
+        int lastVisiblePos = layoutManager.findLastCompletelyVisibleItemPosition();
+        // 位置在完全可见区间内 → 已完全显示
+        return position >= visiblePos && position <= lastVisiblePos;
+    }
+
+    /**
+     * 快速滑到底部（固定0.5秒到位）
+     */
+    private void scrollToBottom(final LinearLayoutManager layoutManager, final int totalItemCount) {
+        // 固定0.5秒滑到底部
+        FixedDurationSmoothScroller bottomScroller = new FixedDurationSmoothScroller(this);
+        bottomScroller.setTargetPosition(totalItemCount - 1);
+        layoutManager.startSmoothScroll(bottomScroller);
+    }
+
+    /**
+     * 自定义固定时长SmoothScroller（强制0.5秒滑动到位）
+     */
+    private static class FixedDurationSmoothScroller extends androidx.recyclerview.widget.LinearSmoothScroller {
+        private static final int FIXED_SCROLL_DURATION = 100; // 固定0.5秒
+
+        public FixedDurationSmoothScroller(Context context) {
+            super(context);
+        }
+
+        /**
+         * 核心修改：重写滑动时长计算，强制返回500ms
+         */
+        @Override
+        protected int calculateTimeForScrolling(int dx) {
+            // 忽略滑动距离，固定返回500ms
+            return FIXED_SCROLL_DURATION;
+        }
+
+        @Override
+        protected int getVerticalSnapPreference() {
+            return SNAP_TO_START; // 置顶对齐（底部滑动时会自动适配SNAP_TO_END）
+        }
+
+        /**
+         * 保留像素速度计算，但优先级低于calculateTimeForScrolling
+         */
+        @Override
+        protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
+            return 50f / displayMetrics.densityDpi; // 快速滑动基础值
+        }
+    }
+
+    // 初始化RecyclerView（优化滑动性能）
+    private void initRecyclerView() {
+        fileRecyclerView = findViewById(R.id.file_list);
+        final LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        // 禁用预加载，提升滑动流畅度
+        layoutManager.setInitialPrefetchItemCount(0);
+        // 开启快速滚动
+        layoutManager.setSmoothScrollbarEnabled(true);
+        fileRecyclerView.setHasFixedSize(true);
+        fileRecyclerView.setNestedScrollingEnabled(false);
+        // 优化绘制性能，解决卡顿
+        fileRecyclerView.setItemViewCacheSize(10);
+        fileRecyclerView.setDrawingCacheEnabled(true);
+        fileRecyclerView.setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH);
+        fileRecyclerView.setLayoutManager(layoutManager);
+        fileRecyclerView.setAdapter(fileAdapter);
+    }
+
+
+
 }
