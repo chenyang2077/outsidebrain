@@ -692,4 +692,159 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         }
     }
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 滑动关闭APP时，强制同步保存（阻塞直到保存完成）
+        if (!isSaved) {
+            saveContentSync(); // 同步保存，不使用线程，确保执行完再退出
+        }
+    }
+
+    /**
+     * 同步保存内容（无异步、无线程，确保滑动关闭时必执行完）
+     * 核心：放弃所有异步操作，直接写入文件，哪怕卡顿100ms，也要保证内容保存
+     */
+    private void saveContentSync() {
+        // 空内容直接标记为已保存
+        String inputTitle = etFileName.getText().toString().trim();
+        String content = etContent.getText().toString().trim();
+        if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content)) {
+            isSaved = true;
+            return;
+        }
+
+        String rootFolderName = getIntent().getStringExtra("root_folder_name");
+        boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
+        boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
+        if (rootFolderName == null) rootFolderName = ROOT_FOLDER_NAME;
+        File rootDir = new File(getFilesDir(), rootFolderName);
+
+        // 同步创建目录（阻塞直到创建完成）
+        if (!rootDir.exists()) {
+            rootDir.mkdirs();
+        }
+
+        try {
+            // 1. 新建文件场景
+            if (isPreEdit) {
+                String rawTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
+                String cleanedTitle = cleanFileName(rawTitle.trim());
+                String timestampSuffix = needHandleTimestamp
+                        ? "_" + UniqueFileNameHandler.generateRandomString() + "_" + UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp()
+                        : "";
+                File targetDirectory = currentDir != null ? currentDir : rootDir;
+                if (!targetDirectory.exists()) {
+                    targetDirectory.mkdirs(); // 同步创建目录
+                }
+                String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        rootDir, targetDirectory, cleanedTitle, timestampSuffix
+                );
+                targetFile = new File(targetDirectory, uniqueFileName);
+
+                // 同步创建文件 + 写入内容（无缓冲、无异步）
+                if (targetFile.createNewFile()) {
+                    String finalContent = processContentForSaving(content, targetDirectory, rootFolderName, isRootDirectory);
+                    // 同步写入：直接用FileOutputStream，不使用BufferedWriter（减少层级）
+                    FileOutputStream fos = new FileOutputStream(targetFile);
+                    fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
+                    fos.flush(); // 强制刷出缓冲区
+                    fos.close(); // 立即关闭流，确保内容落地
+                    isSaved = true;
+                }
+
+                // 2. 编辑已有文件场景
+            } else {
+                if (targetFile == null || !targetFile.exists()) {
+                    isSaved = true;
+                    return;
+                }
+                // 处理文件名变更（同步逻辑）
+                String originalFileName = targetFile.getName();
+                String originalFileNameWithoutExt = originalFileName.endsWith(".txt")
+                        ? originalFileName.substring(0, originalFileName.lastIndexOf("."))
+                        : originalFileName;
+                String cleanedOriginalTitle = needHandleTimestamp
+                        ? removeAllTimestampFormats(originalFileNameWithoutExt)
+                        : originalFileNameWithoutExt;
+                String cleanedNewTitle = TextUtils.isEmpty(inputTitle.trim())
+                        ? cleanedOriginalTitle
+                        : removeAllTimestampFormats(cleanFileName(inputTitle.trim()));
+                boolean needCheckDuplicate = !cleanedNewTitle.equals(cleanedOriginalTitle);
+                String newTimestampSuffix = "";
+
+                if (needHandleTimestamp && originalFileName.endsWith(".txt")) {
+                    String[] timestampStruct = parseTimestampStructure(originalFileNameWithoutExt);
+                    String newRandomStr = timestampStruct.length > 0 ? timestampStruct[0] : UniqueFileNameHandler.generateRandomString();
+                    ArrayList<String> newTimestamps = new ArrayList<>();
+                    String newMillisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+                    if (timestampStruct.length >= 2) {
+                        for (int i = 1; i < timestampStruct.length; i++) {
+                            newTimestamps.add(timestampStruct[i]);
+                        }
+                    }
+                    newTimestamps.add(newMillisTimestamp);
+                    StringBuilder suffixBuilder = new StringBuilder("_").append(newRandomStr);
+                    for (String ts : newTimestamps) {
+                        suffixBuilder.append("_").append(ts);
+                    }
+                    newTimestampSuffix = suffixBuilder.toString();
+                }
+
+                String newFileName = needCheckDuplicate
+                        ? UniqueFileNameHandler.getGlobalUniqueFileName(rootDir, targetFile.getParentFile(), cleanedNewTitle, newTimestampSuffix)
+                        : cleanedNewTitle + newTimestampSuffix + ".txt";
+                File newFile = new File(targetFile.getParentFile(), newFileName);
+
+                // 同步重命名/复制（阻塞直到完成）
+                if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
+                    if (!targetFile.renameTo(newFile)) {
+                        // 同步复制内容到新文件
+                        FileInputStream fis = new FileInputStream(targetFile);
+                        FileOutputStream fos = new FileOutputStream(newFile);
+                        byte[] buffer = new byte[8192];
+                        int len;
+                        while ((len = fis.read(buffer)) != -1) {
+                            fos.write(buffer, 0, len);
+                        }
+                        fis.close();
+                        fos.flush();
+                        fos.close();
+                        targetFile.delete(); // 同步删除原文件
+                    }
+                    targetFile = newFile; // 更新为新文件名
+                }
+
+                // 同步写入最终内容
+                File parsedDirectory = parseFirstLinePath(content, rootDir, isRootDirectory);
+                boolean pathMismatch = !parsedDirectory.getAbsolutePath().equals(targetFile.getParentFile().getAbsolutePath());
+                String finalContent = processContentForSaving(
+                        content, pathMismatch ? targetFile.getParentFile() : parsedDirectory, rootFolderName, isRootDirectory
+                );
+                FileOutputStream fos = new FileOutputStream(targetFile);
+                fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
+                fos.flush();
+                fos.close();
+                isSaved = true;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 即使异常，也标记为已保存（避免重复尝试）
+            isSaved = true;
+        }
+        // ===== 新增：保存完成后，强制录入新文件名路径 =====
+        if (targetFile != null && targetFile.exists()) {
+            // 录入编辑页标记
+            PreferenceUtils.saveLastPageType(this, "editor");
+            // 录入新文件名的完整路径（核心：此时targetFile是改名后的文件）
+            PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
+            // 录入文件所在文件夹路径（可选，确保restoreLastState()能加载文件夹列表）
+            PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
+            Log.d("FileEditor", "保存完成，录入新文件名路径：" + targetFile.getAbsolutePath());
+        }
+    }
+
+
+
+
 }
