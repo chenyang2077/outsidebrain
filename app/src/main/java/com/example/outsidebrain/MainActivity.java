@@ -348,9 +348,21 @@ public class MainActivity extends AppCompatActivity {
      *
      * @param folders 待排序的文件夹列表
      */
+
     private void sortFoldersWithDecimalSupport(List<File> folders) {
-        // 初始化拼音转换器（Han-Latin/Names：更适配汉字转拼音，去声调）
-        Transliterator transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower");
+        // 修复点：用局部变量初始化后赋值给final变量，避免多次赋值问题
+        final Transliterator transliterator;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Transliterator temp = null;
+            try {
+                temp = Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower");
+            } catch (Exception e) {
+                temp = null;
+            }
+            transliterator = temp; // 仅赋值一次
+        } else {
+            transliterator = null; // 低版本直接赋值null
+        }
 
         Collections.sort(folders, new Comparator<File>() {
             @Override
@@ -358,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
 
-                // 步骤1：提取多级数字序号并比较（保留原逻辑）
+                // 步骤1：提取多级数字序号并比较（原有逻辑不变）
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
@@ -372,16 +384,15 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return Integer.compare(numList1.size(), numList2.size());
                 } else if (!numList1.isEmpty()) {
-                    return -1; // 有数字序号的排前面
+                    return -1;
                 } else if (!numList2.isEmpty()) {
                     return 1;
                 }
 
-                // 步骤2：无数字序号 → 按完整名称的拼音排序（核心修复）
+                // 步骤2：拼音排序（原有逻辑不变）
                 String pinyin1 = convertToPinyin(name1, transliterator);
                 String pinyin2 = convertToPinyin(name2, transliterator);
 
-                // 先按拼音比较，拼音相同再按原名称比较
                 int pinyinCompare = pinyin1.compareTo(pinyin2);
                 if (pinyinCompare != 0) {
                     return pinyinCompare;
@@ -392,25 +403,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 将完整名称转换为拼音（去声调/特殊字符，统一小写）
-     * 核心修复：对整个名称做拼音转换，而非仅首个字符
+     * 转换拼音方法（参数直接用Transliterator，无需强转）
      */
     private String convertToPinyin(String name, Transliterator transliterator) {
         if (TextUtils.isEmpty(name)) {
             return "";
         }
         try {
-            // 1. 汉字转拼音（Han-Latin）+ 移除特殊字符 + 统一小写
-            String pinyin = transliterator.transliterate(name);
-            // 2. 过滤掉所有非字母/数字的字符（保留核心排序字符）
+            String pinyin = name;
+            // API 29+且转换器不为空时才调用transliterate
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && transliterator != null) {
+                pinyin = transliterator.transliterate(name);
+            }
+            // 过滤特殊字符（原有逻辑不变）
             pinyin = pinyin.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
-            // 3. 兜底：拼音为空则返回原名称的小写
             return TextUtils.isEmpty(pinyin) ? name.toLowerCase() : pinyin;
         } catch (Exception e) {
-            // 转换异常 → 降级为原名称小写
             return name.toLowerCase();
         }
     }
+
 
     /**
      * 判断是否为汉字（保留原逻辑，备用）

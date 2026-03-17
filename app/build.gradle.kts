@@ -46,4 +46,5 @@ dependencies {
     // Glide依赖（统一版本+Kotlin DSL正确写法）
     implementation("com.github.bumptech.glide:glide:4.16.0")
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
+    implementation("com.belerweb:pinyin4j:2.5.1")
 }
