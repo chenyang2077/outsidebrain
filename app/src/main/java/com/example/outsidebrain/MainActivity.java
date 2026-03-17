@@ -495,9 +495,7 @@ public class MainActivity extends AppCompatActivity {
      *
      * @param folders 待排序的文件夹列表
      */
-
     private void sortFoldersWithDecimalSupport(List<File> folders) {
-        // 修复点：用局部变量初始化后赋值给final变量，避免多次赋值问题
         final Transliterator transliterator;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             Transliterator temp = null;
@@ -506,18 +504,15 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 temp = null;
             }
-            transliterator = temp; // 仅赋值一次
+            transliterator = temp;
         } else {
-            transliterator = null; // 低版本直接赋值null
+            transliterator = null;
         }
-
         Collections.sort(folders, new Comparator<File>() {
             @Override
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
-
-                // 步骤1：提取多级数字序号并比较（原有逻辑不变）
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
@@ -535,11 +530,8 @@ public class MainActivity extends AppCompatActivity {
                 } else if (!numList2.isEmpty()) {
                     return 1;
                 }
-
-                // 步骤2：拼音排序（原有逻辑不变）
                 String pinyin1 = convertToPinyin(name1, transliterator);
                 String pinyin2 = convertToPinyin(name2, transliterator);
-
                 int pinyinCompare = pinyin1.compareTo(pinyin2);
                 if (pinyinCompare != 0) {
                     return pinyinCompare;
@@ -548,7 +540,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
     /**
      * 转换拼音方法（参数直接用Transliterator，无需强转）
      */
@@ -558,24 +549,14 @@ public class MainActivity extends AppCompatActivity {
         }
         try {
             String pinyin = name;
-            // API 29+且转换器不为空时才调用transliterate
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && transliterator != null) {
                 pinyin = transliterator.transliterate(name);
             }
-            // 过滤特殊字符（原有逻辑不变）
             pinyin = pinyin.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
             return TextUtils.isEmpty(pinyin) ? name.toLowerCase() : pinyin;
         } catch (Exception e) {
             return name.toLowerCase();
         }
-    }
-
-
-    /**
-     * 判断是否为汉字（保留原逻辑，备用）
-     */
-    private boolean isChineseChar(char c) {
-        return Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS;
     }
     /**
      * 提取文件名开头的多级数字序号（支持任意层级小数点）
@@ -602,7 +583,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return numList;
     }
-
     /**
      * 压缩根文件夹：
      * 1. 弹出确认对话框，确认压缩操作；
@@ -780,10 +760,8 @@ public class MainActivity extends AppCompatActivity {
             return file.getName();
         }
     }
-
     // 进度对话框
     private ProgressDialog progressDialog;
-
     /**
      * 显示进度对话框：
      * 1. 创建水平进度条对话框，设置不可取消；
@@ -812,7 +790,6 @@ public class MainActivity extends AppCompatActivity {
             progressDialog.setProgress(progress);
         }
     }
-
     /**
      * 关闭进度对话框：隐藏并释放对话框资源
      */
@@ -931,7 +908,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 检查中转站权限：
      * 1. Android 11+ 检查MANAGE_EXTERNAL_STORAGE权限；
@@ -977,7 +953,6 @@ public class MainActivity extends AppCompatActivity {
         loadFileList();
         updateLevelHint();
     }
-
     /**
      * 确认清空回收站：
      * 1. 弹出确认对话框，提示永久删除风险；
