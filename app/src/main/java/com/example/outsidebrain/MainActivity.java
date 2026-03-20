@@ -150,6 +150,7 @@ public class MainActivity extends AppCompatActivity {
         fileRecyclerView.setAdapter(fileAdapter);
         checkPermission();
         clearSearchKeyword();
+        recoverFromCrash();
         isInSearchMode = false;
         initRecycleBin();
         transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
@@ -3498,6 +3499,37 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
             return 50f / displayMetrics.densityDpi;
+        }
+    }
+
+
+    // 打开时恢复崩溃的文件
+    private void recoverFromCrash() {
+        File rootDir = new File(getFilesDir(), "主页根目录");
+        if (!rootDir.exists()) return;
+        // 扫描并恢复备份/临时文件（逻辑和FileEditorActivity里的recoverFromCrash()一致）
+        File[] files = rootDir.listFiles((dir, name) ->
+                name.contains("_atomic_tmp_") || name.endsWith("_backup")
+        );
+        if (files == null || files.length == 0) return;
+        for (File file : files) {
+            String fileName = file.getName();
+            if (fileName.contains("_atomic_tmp_")) {
+                String originalFileName = fileName.split("_atomic_tmp_")[0];
+                File originalFile = new File(rootDir, originalFileName);
+                if (originalFile.exists()) originalFile.delete();
+                file.renameTo(originalFile);
+                Toast.makeText(this, "恢复未保存的文件：" + originalFileName, Toast.LENGTH_LONG).show();
+            } else if (fileName.endsWith("_backup")) {
+                String originalFileName = fileName.replace("_backup", "");
+                File originalFile = new File(rootDir, originalFileName);
+                if (!originalFile.exists()) {
+                    file.renameTo(originalFile);
+                    Toast.makeText(this, "恢复损坏的文件：" + originalFileName, Toast.LENGTH_LONG).show();
+                } else {
+                    file.delete();
+                }
+            }
         }
     }
 
