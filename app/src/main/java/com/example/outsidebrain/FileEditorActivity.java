@@ -302,21 +302,25 @@ public class FileEditorActivity extends AppCompatActivity {
                     finish();
                     return;
                 }
-                if (targetFile.createNewFile()) {
-                    String finalContent = processContentForSaving(
-                            content,
-                            targetDirectory,
-                            rootFolderName,
-                            isRootDirectory
-                    );
-                    writeFileContent(targetFile, finalContent);
+
+                String finalContent = processContentForSaving(
+                        content,
+                        targetDirectory,
+                        rootFolderName,
+                        isRootDirectory
+                );
+
+                // ========== 原子保存：新建文件 ==========
+                boolean saveSuccess = atomicSave(targetFile, finalContent);
+                if (saveSuccess) {
                     isSaved = true;
                     Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
                     setResult(RESULT_REFRESH);
                 } else {
                     Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
                 }
-            } catch (IOException e) {
+
+            } catch (Exception e) {
                 e.printStackTrace();
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
@@ -386,7 +390,10 @@ public class FileEditorActivity extends AppCompatActivity {
             if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
                 if (!targetFile.renameTo(newFile)) {
                     try {
-                        writeFileContent(newFile, readFileContent(targetFile));
+                        // 复制原文件内容到新文件（原子方式）
+                        String oldContent = readFileContent(targetFile);
+                        atomicSave(newFile, oldContent);
+
                         if (!targetFile.delete()) {
                             Log.w("FileEditor", "无法删除原文件");
                         }
@@ -408,10 +415,17 @@ public class FileEditorActivity extends AppCompatActivity {
                         rootFolderName,
                         isRootDirectory
                 );
-                writeFileContent(targetFile, finalContent);
-                isSaved = true;
-                Toast.makeText(this, pathMismatch ? "文件路径标识已纠正并保存" : "文件更新成功", Toast.LENGTH_SHORT).show();
-                setResult(RESULT_REFRESH);
+
+                // ========== 原子保存：覆盖更新文件 ==========
+                try {
+                    atomicSave(targetFile, finalContent);
+                    isSaved = true;
+                    Toast.makeText(this, pathMismatch ? "文件路径标识已纠正并保存" : "文件更新成功", Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_REFRESH);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Toast.makeText(this, "保存失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
             }
         }
         if (!isPreEdit && targetFile != null && targetFile.exists()) {
@@ -420,6 +434,44 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         hideSoftInput();
         finish();
+    }
+
+    // ========== 原子保存核心方法（直接放在这个类里即可） ==========
+    private boolean atomicSave(File targetFile, String content) throws IOException {
+        if (targetFile.getParentFile() == null) return false;
+
+        // 1. 创建同目录临时文件
+        File tempFile = File.createTempFile(
+                "tmp_atomic_",
+                ".tmp",
+                targetFile.getParentFile()
+        );
+
+        try {
+            // 2. 先完整写入临时文件
+            writeFileContent(tempFile, content);
+
+            // 3. 写入成功后原子替换原文件
+            if (targetFile.exists()) {
+                boolean deleted = targetFile.delete();
+                if (!deleted) {
+                    tempFile.delete();
+                    return false;
+                }
+            }
+
+            boolean renamed = tempFile.renameTo(targetFile);
+            if (!renamed) {
+                tempFile.delete();
+            }
+            return renamed;
+
+        } finally {
+            // 兜底清理临时文件
+            if (tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
     }
     /**
      * 清理文件名中的非法字符（\ / : * ? " < > |）
@@ -752,15 +804,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 );
                 targetFile = new File(targetDirectory, uniqueFileName);
 
-                // 同步创建文件 + 写入内容（无缓冲、无异步）
-                if (targetFile.createNewFile()) {
-                    String finalContent = processContentForSaving(content, targetDirectory, rootFolderName, isRootDirectory);
-                    // 同步写入：直接用FileOutputStream，不使用BufferedWriter（减少层级）
-                    FileOutputStream fos = new FileOutputStream(targetFile);
-                    fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
-                    fos.flush(); // 强制刷出缓冲区
-                    fos.close(); // 立即关闭流，确保内容落地
-
+                // ========== 原子保存：新建文件（替换原createNewFile+直接写入） ==========
+                String finalContent = processContentForSaving(content, targetDirectory, rootFolderName, isRootDirectory);
+                boolean createSuccess = atomicSaveSync(targetFile, finalContent);
+                if (createSuccess) {
                     // ===== 仅新增这2行：记录新建文件的光标位置和保存路径 =====
                     cursorPosition = etContent.getSelectionStart(); // 记录光标字符位置
                     savedNewFilePath = targetFile.getAbsolutePath(); // 记录文件路径
@@ -814,32 +861,20 @@ public class FileEditorActivity extends AppCompatActivity {
                 // 同步重命名/复制（阻塞直到完成）
                 if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
                     if (!targetFile.renameTo(newFile)) {
-                        // 同步复制内容到新文件
-                        FileInputStream fis = new FileInputStream(targetFile);
-                        FileOutputStream fos = new FileOutputStream(newFile);
-                        byte[] buffer = new byte[8192];
-                        int len;
-                        while ((len = fis.read(buffer)) != -1) {
-                            fos.write(buffer, 0, len);
-                        }
-                        fis.close();
-                        fos.flush();
-                        fos.close();
+                        // ========== 原子保存：同步复制原文件到新文件（替换原流复制） ==========
+                        atomicCopyFileSync(targetFile, newFile);
                         targetFile.delete(); // 同步删除原文件
                     }
                     targetFile = newFile; // 更新为新文件名
                 }
 
-                // 同步写入最终内容
+                // ========== 原子保存：同步写入最终内容（替换原直接流写入） ==========
                 File parsedDirectory = parseFirstLinePath(content, rootDir, isRootDirectory);
                 boolean pathMismatch = !parsedDirectory.getAbsolutePath().equals(targetFile.getParentFile().getAbsolutePath());
                 String finalContent = processContentForSaving(
                         content, pathMismatch ? targetFile.getParentFile() : parsedDirectory, rootFolderName, isRootDirectory
                 );
-                FileOutputStream fos = new FileOutputStream(targetFile);
-                fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
-                fos.flush();
-                fos.close();
+                atomicSaveSync(targetFile, finalContent);
                 isSaved = true;
             }
         } catch (Exception e) {
@@ -860,7 +895,64 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    // ===== 新增onResume方法（仅处理新建文件切回前台的光标定位）=====
+    // ========== 原子保存核心方法（同步版，无异步，适配saveContentSync的阻塞逻辑） ==========
+    private boolean atomicSaveSync(File targetFile, String content) throws IOException {
+        if (targetFile.getParentFile() == null) return false;
+
+        // 1. 创建同目录临时文件（同步创建，无缓冲）
+        File tempFile = File.createTempFile(
+                "tmp_atomic_sync_",
+                ".tmp",
+                targetFile.getParentFile()
+        );
+
+        try {
+            // 2. 同步写入临时文件（无缓冲流，强制落地）
+            FileOutputStream fos = new FileOutputStream(tempFile);
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
+            fos.flush(); // 强制刷出所有缓冲区
+            fos.getFD().sync(); // 强制同步到磁盘（关键：确保内容真正写入硬件）
+            fos.close();
+
+            // 3. 原子替换原文件（同步操作）
+            if (targetFile.exists()) {
+                boolean deleted = targetFile.delete();
+                if (!deleted) {
+                    tempFile.delete();
+                    return false;
+                }
+            }
+
+            boolean renamed = tempFile.renameTo(targetFile);
+            if (!renamed) {
+                tempFile.delete();
+            }
+            return renamed;
+
+        } finally {
+            // 兜底清理临时文件
+            if (tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+
+    // ========== 原子复制文件（同步版，适配重命名失败后的复制逻辑） ==========
+    private void atomicCopyFileSync(File sourceFile, File targetFile) throws IOException {
+        // 先原子写入到临时文件，再替换目标文件
+        FileInputStream fis = new FileInputStream(sourceFile);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int len;
+        while ((len = fis.read(buffer)) != -1) {
+            bos.write(buffer, 0, len);
+        }
+        fis.close();
+        // 调用原子保存方法写入目标文件
+        atomicSaveSync(targetFile, new String(bos.toByteArray(), StandardCharsets.UTF_8));
+    }
+
+    // ===== 新增onResume方法（完全保留你的原有逻辑，无改动）=====
     @Override
     protected void onResume() {
         super.onResume();
