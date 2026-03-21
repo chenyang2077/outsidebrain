@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tv_custom_tip"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="8dp"
+    android:textSize="14sp"
+    android:textColor="#FFFFFF"
+    android:background="#CC000000"
+    android:radius="8dp"
+    android:gravity="center"
+    android:elevation="6dp"
+    android:maxWidth="280dp"
+    android:lineSpacingExtra="2dp"/> <!-- 新增：行间距，换行更美观 -->

@@ -126,6 +126,11 @@ public class MainActivity extends AppCompatActivity {
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
     private View pasteButton;
+    private Toast mPathToast; // 路径提示Toast
+    private View mTouchOverlay; // 全屏触摸覆盖层（用于监听触摸消失）
+    // 自定义路径提示（替代Toast，无自动消失）
+    private View mCustomTipView;
+    private boolean mIsTipShowing = false;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
@@ -199,6 +204,104 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             startFilePreEdit();
         });
+        // ===== 新增：初始化全屏触摸覆盖层 =====
+        mTouchOverlay = new View(this);
+        ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        mTouchOverlay.setLayoutParams(params);
+        // 设置透明背景，不遮挡界面
+        mTouchOverlay.setBackgroundColor(Color.TRANSPARENT);
+        // 添加到屏幕最顶层
+        ((ViewGroup) getWindow().getDecorView()).addView(mTouchOverlay);
+        // 默认隐藏
+        mTouchOverlay.setVisibility(View.GONE);
+
+        // 触摸覆盖层的监听：触摸任意位置关闭Toast并隐藏自身
+        mTouchOverlay.setOnTouchListener((v, event) -> {
+            if (mPathToast != null) {
+                mPathToast.cancel(); // 关闭Toast
+                mPathToast = null;
+            }
+            mTouchOverlay.setVisibility(View.GONE); // 隐藏覆盖层
+            return false;
+        });
+
+    }
+    /**
+     * 显示自定义路径提示（文件夹路径+文件名分行显示）
+     */
+    private void showCustomPathTip(String fullRelativePath) {
+        // 先隐藏旧提示
+        hideCustomPathTip();
+
+        // ===== 核心修改：拆分文件夹路径和文件名，分行显示 =====
+        String folderPath; // 文件夹路径
+        String fileName;   // 文件名
+        int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
+        if (lastSepIndex == -1) {
+            // 无文件夹层级（直接在根目录）
+            folderPath = "根目录";
+            fileName = fullRelativePath;
+        } else {
+            // 拆分：文件夹路径 = 最后一个分隔符前的内容，文件名 = 最后一个分隔符后的内容
+            folderPath = fullRelativePath.substring(0, lastSepIndex);
+            fileName = fullRelativePath.substring(lastSepIndex + 1);
+        }
+        // 拼接文本：文件夹路径换行显示文件名
+        String tipText = "文件夹：" + folderPath + "\n文件名：" + fileName;
+
+        // 初始化自定义提示View
+        mCustomTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
+        TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
+        tvTip.setText(tipText); // 设置分行文本
+
+        // 以下逻辑不变（位置、触摸监听等）
+        ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
+        rootView.addView(mCustomTipView);
+
+        ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
+        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        mCustomTipView.setLayoutParams(params);
+
+        mCustomTipView.post(() -> {
+            int screenWidth = rootView.getWidth();
+            int tipWidth = mCustomTipView.getWidth();
+            int left = (screenWidth - tipWidth) / 2;
+            int bottomMargin = dp2px(80);
+            int top = rootView.getHeight() - bottomMargin - mCustomTipView.getHeight();
+
+            mCustomTipView.setX(left);
+            mCustomTipView.setY(top);
+        });
+
+        mIsTipShowing = true;
+
+        rootView.setOnTouchListener((view, event) -> {
+            if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
+                hideCustomPathTip();
+                rootView.setOnTouchListener(null);
+            }
+            return false;
+        });
+    }
+
+    /**
+     * 隐藏自定义路径提示
+     */
+    private void hideCustomPathTip() {
+        if (mIsTipShowing && mCustomTipView != null && mCustomTipView.getParent() != null) {
+            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
+            mCustomTipView = null;
+            mIsTipShowing = false;
+        }
+    }
+
+    // 工具方法：dp转px（如果已有可忽略）
+    private int dp2px(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
     /**
      * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
@@ -275,9 +378,22 @@ public class MainActivity extends AppCompatActivity {
                     hidePasteButton();
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+
+                    // ========== 搜索模式显示自定义路径提示（永不自动消失）==========
+                    if (isInSearchMode) {
+                        // 只显示根目录后面的路径
+                        String full = file.getAbsolutePath();
+                        String root = rootDirectory.getAbsolutePath();
+                        String showPath = full.replace(root, "");
+                        if (showPath.startsWith(File.separator)) {
+                            showPath = showPath.substring(1);
+                        }
+                        // 显示自定义提示（替代Toast）
+                        MainActivity.this.showCustomPathTip(showPath);
+                    }
+
                     new Thread(() -> {
                         boolean corrected = file.getName().toLowerCase().endsWith(".txt");
-
                         runOnUiThread(() -> {
                             if (corrected) {
                                 Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
@@ -292,7 +408,7 @@ public class MainActivity extends AppCompatActivity {
                         });
                     }).start();
                     PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
-                } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                }else if (file.getName().toLowerCase().endsWith(".zip")) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
@@ -3285,6 +3401,7 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     public void onBackPressed() {
+        hideCustomPathTip(); // 新增：返回时隐藏提示
         final File targetFileForScroll = currentDirectory;
         boolean needScroll = true;
         final int TARGET_VISUAL_POS = 5;
