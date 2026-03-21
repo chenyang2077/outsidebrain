@@ -122,7 +122,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInRecycleBin = false;
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
@@ -130,6 +129,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
+     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
      * 1. 绑定布局控件，初始化视图组件；2. 设置夜间模式、文件列表适配器；3. 初始化回收站/中转站目录； 4. 设置搜索框/菜单按钮/新增按钮点击事件； 5. 检查存储权限，初始化根目录。
      */
     @Override
@@ -276,7 +276,8 @@ public class MainActivity extends AppCompatActivity {
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
                     new Thread(() -> {
-                        boolean corrected = correctFilepathInTxt(file);
+                        boolean corrected = file.getName().toLowerCase().endsWith(".txt");
+
                         runOnUiThread(() -> {
                             if (corrected) {
                                 Intent editIntent = new Intent(MainActivity.this, FileEditorActivity.class);
@@ -286,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
                                 editIntent.putExtra("is_root_directory", file.getParentFile().equals(rootDirectory));
                                 startActivityForResult(editIntent, REQUEST_EDIT_FILE);
                             } else {
-                                Toast.makeText(MainActivity.this, "文件路径修正失败，无法打开", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "仅支持编辑TXT文件", Toast.LENGTH_SHORT).show();
                             }
                         });
                     }).start();
@@ -398,7 +399,6 @@ public class MainActivity extends AppCompatActivity {
             invalidateOptionsMenu();
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 new Thread(() -> {
-                    batchCorrectTxtFilepaths(rootDirectory);
                     runOnUiThread(() -> loadFileList());
                 }).start();
             }, 1000);
@@ -1077,27 +1077,41 @@ public class MainActivity extends AppCompatActivity {
      * @param keyword 搜索关键词
      * @return 是否包含关键词
      */
+    /**
+     * 检查文件内容中是否包含指定关键词（忽略大小写）
+     * 过滤规则：不检查ZIP压缩包、图片文件、其他非文本文件
+     * @param file 待检查的文件
+     * @param keyword 要匹配的关键词（空字符串返回false）
+     * @return 内容是否包含关键词
+     */
     private boolean isContentContainKeyword(File file, String keyword) {
+        // 1. 空关键词直接返回false
+        if (TextUtils.isEmpty(keyword)) {
+            return false;
+        }
+
+        // 2. 过滤非文本文件：ZIP压缩包、图片、其他非文本文件不检查
         if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
             return false;
         }
+
+        // 3. 读取文件内容，逐行检查关键词（忽略大小写）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
-            boolean isFirstLine = true;
+            String lowerKeyword = keyword.toLowerCase(); // 预转换关键词为小写，提升性能
+
             while ((line = br.readLine()) != null) {
-                String filteredLine = line;
-                if (isFirstLine) {
-                    filteredLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
-                    isFirstLine = false;
-                }
-                if (filteredLine.toLowerCase().contains(keyword.toLowerCase())) {
-                    return true;
+                // 移除原逻辑中第一行路径标识的过滤，直接检查整行内容
+                if (line.toLowerCase().contains(lowerKeyword)) {
+                    return true; // 找到关键词，立即返回true
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            e.printStackTrace(); // 文件读取失败时，返回false
         }
+
+        // 4. 未找到关键词或文件读取失败
         return false;
     }
 
@@ -1836,7 +1850,6 @@ public class MainActivity extends AppCompatActivity {
                             if (result) {
                                 Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
                                 new Thread(() -> {
-                                    batchCorrectTxtFilepaths(currentDirectory);
                                     runOnUiThread(this::loadFileList);
                                 }).start();
                             } else {
@@ -3233,105 +3246,9 @@ public class MainActivity extends AppCompatActivity {
             throw e;
         }
     }
-    private boolean correctFilepathInTxt(File file) {
-        if (!file.getName().toLowerCase().endsWith(".txt")) return false;
-        File parentDir = file.getParentFile();
-        if (parentDir == null) {
-            return false;
-        }
-        boolean isInRootDir = parentDir.equals(rootDirectory);
-        boolean isInTransferStationRoot = parentDir.equals(transferStationDirectory);
-        boolean isInRecycleBinRoot = parentDir.equals(recycleBinDirectory);
-        boolean isInNoPathRequiredDir = isInRootDir || isInTransferStationRoot || isInRecycleBinRoot;
-        boolean isInTransferStationSubDir = false;
-        boolean isInRecycleBinSubDir = false;
-        String actualPath = "";
-        try {
-            String parentPath = parentDir.getCanonicalPath() + File.separator;
-            String transferPath = transferStationDirectory.getCanonicalPath() + File.separator;
-            isInTransferStationSubDir = parentPath.startsWith(transferPath) && !isInTransferStationRoot;
-            String recyclePath = recycleBinDirectory.getCanonicalPath() + File.separator;
-            isInRecycleBinSubDir = parentPath.startsWith(recyclePath) && !isInRecycleBinRoot;
-            if (isInTransferStationSubDir) {
-                actualPath = parentPath.substring(transferPath.length())
-                        .replace(File.separator, "/")
-                        .replaceAll("/$", "");
-            } else if (isInRecycleBinSubDir) {
-                actualPath = parentPath.substring(recyclePath.length())
-                        .replace(File.separator, "/")
-                        .replaceAll("/$", "");
-            } else if (!isInNoPathRequiredDir) {
-                String rootPath = rootDirectory.getCanonicalPath() + File.separator;
-                actualPath = parentPath.substring(rootPath.length())
-                        .replace(File.separator, "/")
-                        .replaceAll("/$", "");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            actualPath = parentDir.getName();
-        }
-        List<String> allLines = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                allLines.add(line);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-        StringBuilder newContent = new StringBuilder();
-        boolean pathProcessed = false;
-        for (int i = 0; i < allLines.size(); i++) {
-            String line = allLines.get(i);
-            if (i == 0 && !isInNoPathRequiredDir) {
-                if (FIRST_LINE_PATH_PATTERN.matcher(line).matches()) {
-                    newContent.append("【").append(actualPath).append("】\n");
-                } else {
-                    newContent.append("【").append(actualPath).append("】\n").append(line).append("\n");
-                }
-                pathProcessed = true;
-            } else if (i == 0 && isInNoPathRequiredDir) {
-                String processedLine = FIRST_LINE_PATH_PATTERN.matcher(line).replaceAll("");
-                newContent.append(processedLine).append("\n");
-                pathProcessed = true;
-            } else {
-                newContent.append(line).append("\n");
-            }
-        }
-        if (!isInNoPathRequiredDir && allLines.isEmpty()) {
-            newContent.append("【").append(actualPath).append("】\n");
-        }
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            String finalContent = newContent.toString().endsWith("\n")
-                    ? newContent.toString().substring(0, newContent.length() - 1)
-                    : newContent.toString();
-            fos.write(finalContent.getBytes(StandardCharsets.UTF_8));
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
 
-    /**
-     * 批量修正目录下所有TXT文件的路径信息
-     */
-    private void batchCorrectTxtFilepaths(File folder) {
-        if (!folder.isDirectory()) return;
 
-        File[] files = folder.listFiles();
-        if (files == null) return;
 
-        for (File file : files) {
-            if (file.isDirectory()) {
-                batchCorrectTxtFilepaths(file);
-            } else if (file.getName().toLowerCase().endsWith(".txt")) {
-                correctFilepathInTxt(file);
-            }
-        }
-    }
 
     /**
      * 使用Glide加载图片缩略图，优化加载性能
