@@ -131,6 +131,10 @@ public class MainActivity extends AppCompatActivity {
     // 自定义路径提示（替代Toast，无自动消失）
     private View mCustomTipView;
     private boolean mIsTipShowing = false;
+    // ========== 新增全局变量：解决卡顿核心 ==========
+    private View mReusableTipView; // 复用唯一的提示视图，避免重复inflate
+    private long lastTipUpdateTime = 0; // 防抖时间戳，避免高频触发
+    private String lastTipText = ""; // 缓存上一次提示文本，避免重复更新
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
@@ -236,8 +240,17 @@ public class MainActivity extends AppCompatActivity {
      * 显示可点击的路径提示，点击跳转到对应文件夹
      */
     private void showCustomPathTip(String fullRelativePath) {
+        // ========== 修复1：防抖：50ms内不重复执行，避免高频创建视图 ==========
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastTipUpdateTime < 50) {
+            return;
+        }
+        lastTipUpdateTime = currentTime;
+
+        // ========== 修复2：先隐藏旧视图（保留原有逻辑） ==========
         hideCustomPathTip();
 
+        // ========== 原有路径解析逻辑：完全保留 ==========
         String folderPath;
         String fileName;
         int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
@@ -249,8 +262,6 @@ public class MainActivity extends AppCompatActivity {
             fileName = fullRelativePath.substring(lastSepIndex + 1);
         }
 
-        // ========== 完全移除层级（Lv-xxx）相关代码 ==========
-        // 最终文本：仅显示路径 + 文件名（根目录显示"根目录"，非根目录显示实际路径）
         String tipText;
         if (TextUtils.isEmpty(folderPath)) {
             tipText = "根目录" + "\n" + fileName;
@@ -258,25 +269,34 @@ public class MainActivity extends AppCompatActivity {
             tipText = folderPath + "\n" + fileName;
         }
 
-        // ========== 加载布局并设置点击跳转 ==========
-        mCustomTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
+        // ========== 修复3：文本未变化则直接返回，避免无效操作 ==========
+        if (tipText.equals(lastTipText)) {
+            return;
+        }
+        lastTipText = tipText;
+
+        // ========== 修复4：复用视图，避免重复inflate ==========
+        if (mReusableTipView == null) {
+            // 仅第一次调用时加载布局，后续复用
+            mReusableTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
+        }
+        mCustomTipView = mReusableTipView; // 替换原有mCustomTipView为复用视图
+
+        // ========== 原有文本设置+点击事件：完全保留 ==========
         TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
         tvTip.setText(tipText);
 
-        // 点击跳转到目标文件夹
         View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
         tipContainer.setOnClickListener(v -> {
             try {
-                // 构建目标文件夹绝对路径
                 File targetFolder;
                 if (TextUtils.isEmpty(folderPath)) {
-                    targetFolder = rootDirectory; // 根目录
+                    targetFolder = rootDirectory;
                 } else {
                     targetFolder = new File(rootDirectory, folderPath);
                 }
 
                 if (targetFolder.exists() && targetFolder.isDirectory()) {
-                    // 跳转到该文件夹（和原有点击文件夹逻辑一致）
                     isInSearchMode = false;
                     etSearch.setText("");
                     currentDirectory = targetFolder;
@@ -290,31 +310,44 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Toast.makeText(MainActivity.this, "跳转文件夹失败", Toast.LENGTH_SHORT).show();
             }
-            hideCustomPathTip(); // 点击后隐藏提示
+            hideCustomPathTip();
         });
 
-        // 以下位置、触摸监听逻辑完全保留
+        // ========== 修复5：提前计算位置，避免post异步调整导致的闪屏 ==========
         ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
+
+        // 先计算位置，再添加视图（核心：避免视图先显示在默认位置）
+        int screenWidth = rootView.getWidth();
+        int bottomMargin = dp2px(80);
+        // 提前测量视图尺寸（避免post获取宽高）
+        mCustomTipView.measure(
+                View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        );
+        int tipWidth = mCustomTipView.getMeasuredWidth();
+        int tipHeight = mCustomTipView.getMeasuredHeight();
+        int left = (screenWidth - tipWidth) / 2;
+        int top = rootView.getHeight() - bottomMargin - tipHeight;
+
+        // 设置位置后再添加视图，避免闪屏
+        mCustomTipView.setX(left);
+        mCustomTipView.setY(top);
+
+        // ========== 修复6：添加视图前先移除旧引用（避免重复添加） ==========
+        if (mCustomTipView.getParent() != null) {
+            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
+        }
         rootView.addView(mCustomTipView);
 
+        // 原有布局参数设置：保留
         ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
         params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         mCustomTipView.setLayoutParams(params);
 
-        mCustomTipView.post(() -> {
-            int screenWidth = rootView.getWidth();
-            int tipWidth = mCustomTipView.getWidth();
-            int left = (screenWidth - tipWidth) / 2;
-            int bottomMargin = dp2px(80);
-            int top = rootView.getHeight() - bottomMargin - mCustomTipView.getHeight();
-            mCustomTipView.setX(left);
-            mCustomTipView.setY(top);
-        });
-
         mIsTipShowing = true;
 
-        // 外部点击消失保留
+        // 外部点击消失：保留
         rootView.setOnTouchListener((view, event) -> {
             if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
                 hideCustomPathTip();
@@ -323,14 +356,11 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
     }
-
-    /**
-     * 隐藏自定义路径提示
-     */
     private void hideCustomPathTip() {
         if (mIsTipShowing && mCustomTipView != null && mCustomTipView.getParent() != null) {
             ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
-            mCustomTipView = null;
+            // ========== 核心修改：注释掉mCustomTipView = null，保留复用视图 ==========
+            // mCustomTipView = null; // 不要置空！保留视图引用以便复用
             mIsTipShowing = false;
         }
     }
