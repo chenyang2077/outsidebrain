@@ -847,7 +847,6 @@ public class FileEditorActivity extends AppCompatActivity {
             saveContentSync(); // 同步保存，不使用线程，确保执行完再退出
         }
     }
-
     /**
      * 同步保存内容（无异步、无线程，确保滑动关闭时必执行完）
      * 核心：放弃所有异步操作，直接写入文件，哪怕卡顿100ms，也要保证内容保存
@@ -956,21 +955,40 @@ public class FileEditorActivity extends AppCompatActivity {
                 String newTimestampSuffix = "";
 
                 if (needHandleTimestamp && originalFileName.endsWith(".txt")) {
+                    // 【核心修改】按需求调整时间戳逻辑：1个新增、2个替换最后1个
                     String[] timestampStruct = parseTimestampStructure(originalFileNameWithoutExt);
-                    String newRandomStr = timestampStruct.length > 0 ? timestampStruct[0] : UniqueFileNameHandler.generateRandomString();
+                    String newRandomStr = "";
                     ArrayList<String> newTimestamps = new ArrayList<>();
                     String newMillisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
-                    if (timestampStruct.length >= 2) {
-                        for (int i = 1; i < timestampStruct.length; i++) {
+
+                    if (timestampStruct.length == 0) {
+                        // 0个时间戳：新建随机串+1个时间戳（原有逻辑）
+                        newRandomStr = UniqueFileNameHandler.generateRandomString();
+                        newTimestamps.add(newMillisTimestamp);
+                    } else if (timestampStruct.length == 2) {
+                        // 1个随机串 + 1个时间戳：保留原时间戳，新增1个（最终2个）
+                        newRandomStr = timestampStruct[0];
+                        newTimestamps.add(timestampStruct[1]); // 保留原时间戳
+                        newTimestamps.add(newMillisTimestamp); // 新增新时间戳
+                    } else if (timestampStruct.length >= 3) {
+                        // 1个随机串 + ≥2个时间戳：保留前n-1个，替换最后1个
+                        newRandomStr = timestampStruct[0];
+                        // 复制除最后1个外的所有时间戳
+                        for (int i = 1; i < timestampStruct.length - 1; i++) {
                             newTimestamps.add(timestampStruct[i]);
                         }
+                        // 替换最后1个为新时间戳
+                        newTimestamps.add(newMillisTimestamp);
                     }
-                    newTimestamps.add(newMillisTimestamp);
-                    StringBuilder suffixBuilder = new StringBuilder("_").append(newRandomStr);
-                    for (String ts : newTimestamps) {
-                        suffixBuilder.append("_").append(ts);
+
+                    // 构建新的时间戳后缀
+                    if (!TextUtils.isEmpty(newRandomStr) && !newTimestamps.isEmpty()) {
+                        StringBuilder suffixBuilder = new StringBuilder("_").append(newRandomStr);
+                        for (String ts : newTimestamps) {
+                            suffixBuilder.append("_").append(ts);
+                        }
+                        newTimestampSuffix = suffixBuilder.toString();
                     }
-                    newTimestampSuffix = suffixBuilder.toString();
                 }
 
                 String newFileName = needCheckDuplicate
@@ -983,9 +1001,12 @@ public class FileEditorActivity extends AppCompatActivity {
                     if (!targetFile.renameTo(newFile)) {
                         // ========== 原子复制文件 ==========
                         atomicCopyFileSync(targetFile, newFile);
-                        targetFile.delete(); // 同步删除原文件
+                        if (!targetFile.delete()) {
+                            Log.w("FileEditor", "同步保存时无法删除原文件：" + targetFile.getAbsolutePath());
+                        }
                     }
                     targetFile = newFile; // 更新为新文件名
+                    Log.d("FileEditor", "同步保存-文件名更新：" + originalFileName + " → " + newFileName);
                 }
 
                 // ========== 增强版原子保存：同步写入最终内容 ==========
@@ -994,8 +1015,9 @@ public class FileEditorActivity extends AppCompatActivity {
                 isSaved = true;
             }
 
-            // 清除保存状态
-            sp.edit().putBoolean("is_saving_" + (targetFile != null ? targetFile.getName() : fileName), false).commit();
+            // 清除保存状态（使用新的文件名）
+            String finalFileName = targetFile != null ? targetFile.getName() : fileName;
+            sp.edit().putBoolean("is_saving_" + finalFileName, false).commit();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -1012,10 +1034,9 @@ public class FileEditorActivity extends AppCompatActivity {
             PreferenceUtils.saveLastPageType(this, "editor");
             PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
             PreferenceUtils.saveLastFolderPath(this, targetFile.getParentFile().getAbsolutePath());
-            Log.d("FileEditor", "保存完成，录入新文件名路径：" + targetFile.getAbsolutePath());
+            Log.d("FileEditor", "同步保存完成，录入新文件名路径：" + targetFile.getAbsolutePath());
         }
     }
-
 
     // ========== 原子复制文件（同步版） ==========
     private void atomicCopyFileSync(File sourceFile, File targetFile) throws IOException {

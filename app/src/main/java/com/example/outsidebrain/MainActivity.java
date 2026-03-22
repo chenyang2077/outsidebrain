@@ -230,34 +230,70 @@ public class MainActivity extends AppCompatActivity {
 
     }
     /**
-     * 显示自定义路径提示（文件夹路径+文件名分行显示）
+     * 显示自定义路径提示（TXT文件所在文件夹的实际展示序号层级 + 文件夹路径+文件名分行显示）
+     */
+    /**
+     * 显示可点击的路径提示，点击跳转到对应文件夹
      */
     private void showCustomPathTip(String fullRelativePath) {
-        // 先隐藏旧提示
         hideCustomPathTip();
 
-        // ===== 核心修改：拆分文件夹路径和文件名，分行显示 =====
-        String folderPath; // 文件夹路径
-        String fileName;   // 文件名
+        String folderPath;
+        String fileName;
         int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
         if (lastSepIndex == -1) {
-            // 无文件夹层级（直接在根目录）
-            folderPath = "根目录";
+            folderPath = "";       // 根目录下
             fileName = fullRelativePath;
         } else {
-            // 拆分：文件夹路径 = 最后一个分隔符前的内容，文件名 = 最后一个分隔符后的内容
             folderPath = fullRelativePath.substring(0, lastSepIndex);
             fileName = fullRelativePath.substring(lastSepIndex + 1);
         }
-        // 拼接文本：文件夹路径换行显示文件名
-        String tipText = "文件夹：" + folderPath + "\n文件名：" + fileName;
 
-        // 初始化自定义提示View
+        // ========== 完全移除层级（Lv-xxx）相关代码 ==========
+        // 最终文本：仅显示路径 + 文件名（根目录显示"根目录"，非根目录显示实际路径）
+        String tipText;
+        if (TextUtils.isEmpty(folderPath)) {
+            tipText = "根目录" + "\n" + fileName;
+        } else {
+            tipText = folderPath + "\n" + fileName;
+        }
+
+        // ========== 加载布局并设置点击跳转 ==========
         mCustomTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
         TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
-        tvTip.setText(tipText); // 设置分行文本
+        tvTip.setText(tipText);
 
-        // 以下逻辑不变（位置、触摸监听等）
+        // 点击跳转到目标文件夹
+        View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
+        tipContainer.setOnClickListener(v -> {
+            try {
+                // 构建目标文件夹绝对路径
+                File targetFolder;
+                if (TextUtils.isEmpty(folderPath)) {
+                    targetFolder = rootDirectory; // 根目录
+                } else {
+                    targetFolder = new File(rootDirectory, folderPath);
+                }
+
+                if (targetFolder.exists() && targetFolder.isDirectory()) {
+                    // 跳转到该文件夹（和原有点击文件夹逻辑一致）
+                    isInSearchMode = false;
+                    etSearch.setText("");
+                    currentDirectory = targetFolder;
+                    loadFileList();
+
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "main");
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
+                }
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "跳转文件夹失败", Toast.LENGTH_SHORT).show();
+            }
+            hideCustomPathTip(); // 点击后隐藏提示
+        });
+
+        // 以下位置、触摸监听逻辑完全保留
         ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
         rootView.addView(mCustomTipView);
 
@@ -272,13 +308,13 @@ public class MainActivity extends AppCompatActivity {
             int left = (screenWidth - tipWidth) / 2;
             int bottomMargin = dp2px(80);
             int top = rootView.getHeight() - bottomMargin - mCustomTipView.getHeight();
-
             mCustomTipView.setX(left);
             mCustomTipView.setY(top);
         });
 
         mIsTipShowing = true;
 
+        // 外部点击消失保留
         rootView.setOnTouchListener((view, event) -> {
             if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
                 hideCustomPathTip();
