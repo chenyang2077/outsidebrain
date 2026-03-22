@@ -2406,6 +2406,30 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
+
+            // ========== 核心修改：文件夹重命名优先查重，提示后直接退出 ==========
+            if (isFolder) {
+                // 1. 检查当前文件夹内是否已有该名称的文件夹
+                File newFolder = new File(file.getParentFile(), newName);
+                if (newFolder.exists()) {
+                    Toast.makeText(this, "此文件夹名称已存在", Toast.LENGTH_SHORT).show();
+                    return; // 直接退出方法，不执行后续逻辑
+                }
+                // 2. 检查名称是否未更改
+                if (newName.equals(originalFileName)) {
+                    Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // 3. 执行文件夹重命名
+                if (file.renameTo(newFolder)) {
+                    Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
+                    loadFileList();
+                } else {
+                    Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
+                }
+                return; // 文件夹逻辑执行完后退出，不进入文件逻辑
+            }
+
             if (isSpecialFile) {
                 String newCoreName = newName;
                 newCoreName = removeAllExtensions(newCoreName);
