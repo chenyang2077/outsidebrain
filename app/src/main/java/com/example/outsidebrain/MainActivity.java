@@ -2167,20 +2167,95 @@ public class MainActivity extends AppCompatActivity {
             if (!recycleBinDirectory.exists()) {
                 recycleBinDirectory.mkdirs();
             }
-            File initialTargetFile = new File(recycleBinDirectory, file.getName());
+
+            // 🔥 安全裁剪：只裁主体，不碰时间戳和后缀
+            String safeFileName = getSafeFileNameForRecycleBin(file.getName());
+            File initialTargetFile = new File(recycleBinDirectory, safeFileName);
             File targetFile = getNonConflictFile(initialTargetFile);
+
+            // 是文件夹 → 递归移动内部所有文件（自动裁剪超长名称）
+            if (file.isDirectory()) {
+                return moveFolderToRecycleBinWithSafeName(file, targetFile);
+            }
+
+            // 是文件
             if (file.getName().toLowerCase().endsWith(".txt")) {
                 return moveFileWithTimestampUpdate(file, targetFile);
-            } else if (file.isDirectory()) {
-                return moveFolderToRecycleBin(file, targetFile);
             } else {
                 return file.renameTo(targetFile);
             }
+
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         }
     }
+    // 🔥 回收站专用：裁剪主体名称，保留时间戳、后缀、格式
+    private String getSafeFileNameForRecycleBin(String fileName) {
+        final int MAX_ALLOW = 120; // 安全长度
+        if (fileName.length() <= MAX_ALLOW) {
+            return fileName;
+        }
+
+        // 分离主体 + 合法后缀
+        int lastDot = fileName.lastIndexOf(".");
+        String ext = "";
+        String main = fileName;
+
+        if (lastDot > 0 && (fileName.length() - lastDot - 1) <= 4) {
+            String afterDot = fileName.substring(lastDot + 1).toLowerCase();
+            if (afterDot.equals("txt") || afterDot.equals("png") || afterDot.equals("jpg")
+                    || afterDot.equals("jpeg") || afterDot.equals("gif") || afterDot.equals("bmp")) {
+                ext = fileName.substring(lastDot);
+                main = fileName.substring(0, lastDot);
+            }
+        }
+
+        // 只裁剪主体，从尾部裁
+        if (main.length() > MAX_ALLOW) {
+            main = main.substring(0, MAX_ALLOW);
+        }
+
+        return main + ext;
+    }
+    private boolean moveFolderToRecycleBinWithSafeName(File sourceFolder, File targetFolder) {
+        try {
+            if (!targetFolder.exists()) {
+                targetFolder.mkdirs();
+            }
+
+            File[] files = sourceFolder.listFiles();
+            if (files == null) {
+                return true;
+            }
+
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    String safeFolderName = getSafeFileNameForRecycleBin(file.getName());
+                    File subTarget = new File(targetFolder, safeFolderName);
+                    moveFolderToRecycleBinWithSafeName(file, subTarget);
+                } else {
+                    String safeFileName = getSafeFileNameForRecycleBin(file.getName());
+                    File targetFile = new File(targetFolder, safeFileName);
+                    File finalTarget = getNonConflictFile(targetFile);
+
+                    if (file.getName().toLowerCase().endsWith(".txt")) {
+                        moveFileWithTimestampUpdate(file, finalTarget);
+                    } else {
+                        file.renameTo(finalTarget);
+                    }
+                }
+            }
+
+            sourceFolder.delete();
+            return true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    // ====================== 回收站安全文件名：裁剪主体，保留后缀、时间戳、随机串 ======================
 
     /**
      * 递归移动文件夹到回收站，处理其中TXT文件的时间戳更新
@@ -2437,36 +2512,41 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // ========== 核心修改：文件夹重命名优先查重，提示后直接退出 ==========
+            // ========== 文件夹重命名查重 ==========
             if (isFolder) {
-                // 1. 检查当前文件夹内是否已有该名称的文件夹
                 File newFolder = new File(file.getParentFile(), newName);
                 if (newFolder.exists()) {
                     Toast.makeText(this, "此文件夹名称已存在", Toast.LENGTH_SHORT).show();
-                    return; // 直接退出方法，不执行后续逻辑
+                    return;
                 }
-                // 2. 检查名称是否未更改
                 if (newName.equals(originalFileName)) {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                // 3. 执行文件夹重命名
                 if (file.renameTo(newFolder)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 } else {
                     Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
                 }
-                return; // 文件夹逻辑执行完后退出，不进入文件逻辑
+                return;
             }
 
             if (isSpecialFile) {
                 String newCoreName = newName;
                 newCoreName = removeAllExtensions(newCoreName);
+
+                // ====================== 【正确修复】只裁剪主体名称，从后面裁 ======================
+                int maxCoreLength = 45; // 主体名最长45，足够安全
+                if (newCoreName.length() > maxCoreLength) {
+                    newCoreName = newCoreName.substring(0, maxCoreLength);
+                }
+
                 if (newCoreName.equals(originalCoreName)) {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
+
                 String nameWithoutExt = originalFileName;
                 int lastDot = originalFileName.lastIndexOf(".");
                 if (lastDot > 0) {
@@ -2494,16 +2574,15 @@ public class MainActivity extends AppCompatActivity {
                 }
                 String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                 StringBuilder timestampSuffix = new StringBuilder();
+
                 if (timestamps.isEmpty()) {
                     randomStr = generateRandomString();
                     timestampSuffix.append("_").append(randomStr).append("_").append(newTimestamp);
                 } else if (timestamps.size() == 1) {
-                    // 单时间戳：原有拼接逻辑
                     timestampSuffix.append("_").append(randomStr)
                             .append("_").append(timestamps.get(0))
                             .append("_").append(newTimestamp);
                 } else {
-                    // 双时间戳：原有拼接逻辑（遍历所有旧时间戳+新增时间戳）
                     timestampSuffix.append("_").append(randomStr);
                     for (int i = 0; i < timestamps.size() - 1; i++) {
                         timestampSuffix.append("_").append(timestamps.get(i));
@@ -2511,26 +2590,20 @@ public class MainActivity extends AppCompatActivity {
                     timestampSuffix.append("_").append(newTimestamp);
                 }
 
-                // 先拼接正确后缀，再做全域查重（避免查重逻辑污染）
+                // 拼接：主体 + 时间戳后缀（时间戳、随机串 完全不动）
                 String tempFileName = newCoreName + timestampSuffix.toString();
                 if (isTxtFile) {
                     tempFileName += ".txt";
                 } else if (isImageFileFlag) {
                     tempFileName += imgExt;
                 }
-                // 净化tempFileName，移除重复/错误后缀（如.txt）
+
                 tempFileName = purifyFileName(tempFileName, isTxtFile, isImageFileFlag, originalFileName);
-                // 基于净化后的名称做全域查重
-                String uniqueName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                        rootDirectory,
-                        file.getParentFile(),
-                        newCoreName,
-                        timestampSuffix.toString()
-                );
-                // 重新拼接正确后缀（覆盖查重可能添加的错误后缀）
+
+                // ========== 改用 当前文件夹查重（你之前要求的） ==========
+                String uniqueName = getUniqueFileNameInCurrentDir(file.getParentFile(), tempFileName);
                 String finalName = purifyFileName(uniqueName, isTxtFile, isImageFileFlag, originalFileName);
 
-                // 最终文件检查
                 File newFile = new File(file.getParentFile(), finalName);
                 if (newFile.exists()) {
                     Toast.makeText(this, "名称已存在", Toast.LENGTH_SHORT).show();
@@ -2542,8 +2615,9 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show();
                 }
+
             } else {
-                // 普通文件逻辑（原有逻辑不变）
+                // 普通文件
                 final String finalNewName = (!isFolder && !fileExtension.isEmpty())
                         ? newName + fileExtension
                         : newName;
@@ -2551,11 +2625,11 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "名称未更改", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                String uniqueName = FileUtils.generateUniqueFolderName(
-                        file.getParentFile(),
-                        finalNewName
-                );
-                File newFile = new File(file.getParentFile(), uniqueName);
+                File newFile = new File(file.getParentFile(), finalNewName);
+                if (newFile.exists()) {
+                    Toast.makeText(this, "文件名称已存在", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 if (file.renameTo(newFile)) {
                     Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
@@ -2574,6 +2648,25 @@ public class MainActivity extends AppCompatActivity {
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         input.postDelayed(() -> imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT), 100);
     }
+
+    // 当前文件夹查重，自动加 (1)(2)
+    private String getUniqueFileNameInCurrentDir(File folder, String baseName) {
+        if (folder == null || !folder.exists()) return baseName;
+        File test = new File(folder, baseName);
+        if (!test.exists()) return baseName;
+
+        int dot = baseName.lastIndexOf(".");
+        String name = dot == -1 ? baseName : baseName.substring(0, dot);
+        String ext = dot == -1 ? "" : baseName.substring(dot);
+
+        int num = 1;
+        while (new File(folder, name + "(" + num + ")" + ext).exists()) {
+            num++;
+        }
+        return name + "(" + num + ")" + ext;
+    }
+
+
 
     /**
      * 提取纯核心名（专门兼容双时间戳，仅用于编辑显示，不影响生成逻辑）
@@ -2799,6 +2892,9 @@ public class MainActivity extends AppCompatActivity {
                     cleanName = cleanName.substring(0, lastDotIndex);
                 }
 
+                // ====================== 【只加这一行！自动裁剪，不影响你任何逻辑】 ======================
+                cleanName = getSafeCoreName(cleanName);
+
                 String randomStr = UniqueFileNameHandler.generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
@@ -2851,68 +2947,8 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
-    /**
-     * 递归复制子文件夹，处理其中TXT文件并维护序号
-     */
-    private int copySubFolderWithTxtCheck(File sourceFolder, File targetParent, int startSequence) throws IOException {
-        int currentSequence = startSequence;
-        String uniqueFolderName = getUniqueFolderName(targetParent, sourceFolder.getName());
-        File targetFolder = new File(targetParent, uniqueFolderName);
-        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
-            Log.e("CopySubFolder", "创建子文件夹失败: " + targetFolder.getAbsolutePath());
-            return currentSequence;
-        }
-        File[] files = sourceFolder.listFiles();
-        if (files == null) {
-            return currentSequence;
-        }
-        for (File sourceFile : files) {
-            if (sourceFile.isDirectory()) {
-                currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
-            } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                String originalName = sourceFile.getName();
-                String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
-                if (cleanName.toLowerCase().endsWith(".txt")) {
-                    cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-                }
-                String randomStr = UniqueFileNameHandler.generateRandomString();
-                String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-                if (baseTimestamp.length() >= 12) {
-                    String datePart = baseTimestamp.substring(0, 8);
-                    String timeRemaining = baseTimestamp.substring(12);
-                    String sequenceStr = String.format(Locale.getDefault(), "%04d", currentSequence % 10000);
-                    String newTimestamp = datePart + sequenceStr + timeRemaining;
-                    String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDirectory,
-                            targetFolder,
-                            cleanName,
-                            timestampSuffix
-                    );
-                    File targetFile = new File(targetFolder, uniqueFileName);
-                    if (copyFileContent(sourceFile, targetFile)) {
-                        currentSequence++;
-                    }
-                } else {
-                    Log.w("CopySubFolder", "时间戳格式异常，使用默认命名");
-                    String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
-                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                            rootDirectory,
-                            targetFolder,
-                            cleanName,
-                            timestampSuffix
-                    );
-                    File targetFile = new File(targetFolder, uniqueFileName);
-                    copyFileContent(sourceFile, targetFile);
-                }
-            } else {
-                File targetFile = new File(targetFolder, sourceFile.getName());
-                File uniqueTargetFile = getNonConflictFile(targetFile);
-                copyFileContent(sourceFile, uniqueTargetFile);
-            }
-        }
-        return currentSequence;
-    }
+
+
     /**
      * 移除名称中所有后缀，仅保留纯核心名（防重复加.txt）
      */
@@ -2974,14 +3010,13 @@ public class MainActivity extends AppCompatActivity {
         String ts1 = parsedParts[2];
         String ts2 = parsedParts[3];
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
         if (randomStr == null || ts1 == null) {
             randomStr = UniqueFileNameHandler.generateRandomString();
             return "_" + randomStr + "_" + newTimestamp;
-        }
-        else if (ts2 == null) {
+        } else if (ts2 == null) {
             return "_" + randomStr + "_" + ts1 + "_" + newTimestamp;
-        }
-        else {
+        } else {
             return "_" + randomStr + "_" + ts1 + "_" + newTimestamp;
         }
     }
@@ -3008,13 +3043,14 @@ public class MainActivity extends AppCompatActivity {
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
+                        // ✅ 【剪切】用：正确时间戳方法（保留随机串，只更新时间）
                         result[0] = moveFolderWithTxtUpdate(copiedFile, currentDirectory, false);
+
                     } else {
-                        // 复制文件夹：保持原有逻辑（无多一层问题）
+                        // ✅ 【复制】不动！完全保留你原来的逻辑（生成新随机串）
                         result[0] = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
-                    // 单个文件：保持之前修复的逻辑
                     File sourceFile = copiedFile;
                     boolean isTxt = sourceFile.getName().toLowerCase().endsWith(".txt");
                     boolean isImg = isImageFile(sourceFile);
@@ -3031,10 +3067,18 @@ public class MainActivity extends AppCompatActivity {
                         if (isCutOperation) {
                             String[] parsed = parseFileName(originalName);
                             String pureCoreName = parsed[0];
+
+                            // 裁剪：剪切模式
+                            pureCoreName = getSafeCoreName(pureCoreName);
+
                             timestampSuffix = generateNewTimestampSuffix(parsed);
                             cleanName = pureCoreName;
                         } else {
                             cleanName = UniqueFileNameHandler.removeTimestamp(cleanName);
+
+                            // 裁剪：复制模式
+                            cleanName = getSafeCoreName(cleanName);
+
                             if (baseTimestamp.length() >= 12) {
                                 String datePart = baseTimestamp.substring(0, 8);
                                 String timeRemaining = baseTimestamp.substring(12);
@@ -3099,6 +3143,121 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+    private boolean moveFolderWithTxtUpdate(File sourceDir, File targetParentDir, boolean isInnerMove) {
+        if (sourceDir == null || !sourceDir.exists() || targetParentDir == null) {
+            return false;
+        }
+
+        try {
+            // 文件夹名称安全裁剪
+            String folderName = getSafeCoreName(sourceDir.getName());
+            File targetDir = new File(targetParentDir, folderName);
+
+            // 重名处理
+            if (targetDir.exists()) {
+                String uniqueName = getUniqueFolderName(targetParentDir, targetDir.getName());
+                targetDir = new File(targetParentDir, uniqueName);
+            }
+
+            if (!targetDir.mkdirs()) {
+                return false;
+            }
+
+            File[] files = sourceDir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        // 递归处理子文件夹
+                        moveFolderWithTxtUpdate(file, targetDir, true);
+                    } else {
+                        boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
+                        boolean isImg = isImageFile(file);
+
+                        if (isTxt || isImg) {
+                            String originalName = file.getName();
+                            String originalExt = getOriginalExtension(originalName);
+                            String[] parsed = parseFileName(originalName);
+                            String pureCoreName = parsed[0];
+
+                            // 超长文件名自动裁剪
+                            pureCoreName = getSafeCoreName(pureCoreName);
+
+                            // 你自己的时间戳规则
+                            String timestampSuffix = generateNewTimestampSuffix(parsed);
+                            String cleanName = pureCoreName;
+
+                            String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                                    rootDirectory,
+                                    targetDir,
+                                    cleanName,
+                                    timestampSuffix
+                            );
+
+                            String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
+                            File targetFile = new File(targetDir, finalFileName);
+
+                            // 执行剪切
+                            if (!file.renameTo(targetFile)) {
+                                if (copyFileContent(file, targetFile)) {
+                                    file.delete();
+                                }
+                            }
+                        } else {
+                            // 普通文件
+                            File target = new File(targetDir, file.getName());
+                            File safeTarget = getNonConflictFile(target);
+                            if (!file.renameTo(safeTarget)) {
+                                copyFileContent(file, safeTarget);
+                                file.delete();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ====================== 【修复点：递归删除所有原文件夹】 ======================
+            // 不管是不是内层，全部递归删除 → 彻底清空源目录
+            deleteFolderTree(sourceDir);
+
+            return true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // ====================== 【新增：递归删除文件夹工具方法】 ======================
+    private void deleteFolderTree(File fileOrFolder) {
+        if (fileOrFolder.isDirectory()) {
+            File[] children = fileOrFolder.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteFolderTree(child);
+                }
+            }
+        }
+        fileOrFolder.delete();
+    }
+    // 剪切文件夹：复制成功后删除原文件夹
+    private void deleteFolderAfterCopy(File folder) {
+        if (folder == null || !folder.exists()) return;
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                deleteFolderAfterCopy(file);
+            }
+        }
+        folder.delete();
+    }
+    // 统一规则：裁剪主体名称，保留后缀、随机串、时间戳
+    private String getSafeCoreName(String coreName) {
+        final int MAX_LENGTH = 45;
+        if (coreName.length() > MAX_LENGTH) {
+            return coreName.substring(0, MAX_LENGTH);
+        }
+        return coreName;
+    }
     /**
      * 仅在当前目录查重生成唯一文件夹名（剪切专用）
      * 规则：仅当目标目录已存在同名文件夹时，加(1)/(2)序号，否则返回原名
@@ -3120,56 +3279,71 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 移动文件夹并更新其中TXT/图片文件的时间戳，处理重名和复制失败的降级逻辑
      */
-    private boolean moveFolderWithTxtUpdate(File sourceFolder, File targetParent, boolean useGlobalCheck) throws IOException {
-        File targetFolder = new File(targetParent, sourceFolder.getName());
-        if (targetFolder.exists()) {
-            String uniqueName = getUniqueFolderNameInCurrentDir(targetParent, sourceFolder.getName());
-            targetFolder = new File(targetParent, uniqueName);
-        }
+    /**
+     * 递归复制子文件夹，处理其中TXT文件并维护序号
+     */
+    private int copySubFolderWithTxtCheck(File sourceFolder, File targetParent, int startSequence) throws IOException {
+        int currentSequence = startSequence;
+        String uniqueFolderName = getUniqueFolderName(targetParent, sourceFolder.getName());
+        File targetFolder = new File(targetParent, uniqueFolderName);
         if (!targetFolder.exists() && !targetFolder.mkdirs()) {
-            Log.e("MoveFolder", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
-            return false;
+            Log.e("CopySubFolder", "创建子文件夹失败: " + targetFolder.getAbsolutePath());
+            return currentSequence;
         }
         File[] files = sourceFolder.listFiles();
         if (files == null) {
-            return true;
+            return currentSequence;
         }
         for (File sourceFile : files) {
             if (sourceFile.isDirectory()) {
-                moveFolderWithTxtUpdate(sourceFile, targetFolder, false);
-            } else if (sourceFile.getName().toLowerCase().endsWith(".txt") || isImageFile(sourceFile)) {
+                currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
+            } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
                 String originalName = sourceFile.getName();
-                String originalExt = getOriginalExtension(originalName);
-                String[] parsed = parseFileName(originalName);
-                String newTsSuffix = generateNewTimestampSuffix(parsed);
-                String newFileName = parsed[0] + newTsSuffix + originalExt;
-                File targetFile = new File(targetFolder, newFileName);
-                if (targetFile.exists()) {
-                    String uniqueFileName = getUniqueFileNameInDir(targetFile);
-                    targetFile = new File(targetFolder, uniqueFileName);
+                String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+                if (cleanName.toLowerCase().endsWith(".txt")) {
+                    cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
-                if (!sourceFile.renameTo(targetFile)) {
+
+                // ====================== 只加这一行：裁剪超长文件名 ======================
+                cleanName = getSafeCoreName(cleanName);
+
+                String randomStr = UniqueFileNameHandler.generateRandomString();
+                String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+                if (baseTimestamp.length() >= 12) {
+                    String datePart = baseTimestamp.substring(0, 8);
+                    String timeRemaining = baseTimestamp.substring(12);
+                    String sequenceStr = String.format(Locale.getDefault(), "%04d", currentSequence % 10000);
+                    String newTimestamp = datePart + sequenceStr + timeRemaining;
+                    String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+                    File targetFile = new File(targetFolder, uniqueFileName);
                     if (copyFileContent(sourceFile, targetFile)) {
-                        sourceFile.delete();
-                    } else {
-                        return false;
+                        currentSequence++;
                     }
+                } else {
+                    Log.w("CopySubFolder", "时间戳格式异常，使用默认命名");
+                    String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
+                    String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                            rootDirectory,
+                            targetFolder,
+                            cleanName,
+                            timestampSuffix
+                    );
+                    File targetFile = new File(targetFolder, uniqueFileName);
+                    copyFileContent(sourceFile, targetFile);
                 }
             } else {
                 File targetFile = new File(targetFolder, sourceFile.getName());
-                if (targetFile.exists()) {
-                    targetFile = new File(targetFolder, getUniqueFileNameInDir(targetFile));
-                }
-                if (!sourceFile.renameTo(targetFile)) {
-                    if (copyFileContent(sourceFile, targetFile)) {
-                        sourceFile.delete();
-                    } else {
-                        return false;
-                    }
-                }
+                File uniqueTargetFile = getNonConflictFile(targetFile);
+                copyFileContent(sourceFile, uniqueTargetFile);
             }
         }
-        return deleteEmptyDirectory(sourceFolder);
+        return currentSequence;
     }
     /**
      * 修复：确保方法是 private（Activity 内可访问），参数为 File，返回 String
