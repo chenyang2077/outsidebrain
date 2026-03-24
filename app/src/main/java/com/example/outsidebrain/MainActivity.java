@@ -2158,6 +2158,10 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
      */
+    /**
+     * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
+     * 【与剪切粘贴完全相同时间戳规则】
+     */
     private boolean moveToRecycleBin(File file) {
         if (file == null || !file.exists()) {
             return false;
@@ -2168,27 +2172,152 @@ public class MainActivity extends AppCompatActivity {
                 recycleBinDirectory.mkdirs();
             }
 
-            // 🔥 安全裁剪：只裁主体，不碰时间戳和后缀
-            String safeFileName = getSafeFileNameForRecycleBin(file.getName());
-            File initialTargetFile = new File(recycleBinDirectory, safeFileName);
-            File targetFile = getNonConflictFile(initialTargetFile);
-
-            // 是文件夹 → 递归移动内部所有文件（自动裁剪超长名称）
+            // 文件夹：走剪切同款逻辑
             if (file.isDirectory()) {
-                return moveFolderToRecycleBinWithSafeName(file, targetFile);
+                String safeFolderName = getSafeFileNameForRecycleBin(file.getName());
+                File targetFolder = new File(recycleBinDirectory, safeFolderName);
+                targetFolder = getNonConflictFile(targetFolder);
+                return moveFolderToRecycleBinLikeCut(file, targetFolder);
             }
 
-            // 是文件
-            if (file.getName().toLowerCase().endsWith(".txt")) {
-                return moveFileWithTimestampUpdate(file, targetFile);
+            // ==============================================
+            // 🔥 单个文件：强制走【剪切同款时间戳逻辑】
+            // ==============================================
+            boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
+            boolean isImg = isImageFile(file);
+
+            if (isTxt || isImg) {
+                String originalName = file.getName();
+                String originalExt = getOriginalExtension(originalName);
+                String[] parsed = parseFileName(originalName);
+                String pureCoreName = parsed[0];
+
+                // 安全裁剪
+                pureCoreName = getSafeCoreName(pureCoreName);
+
+                // ✅ 剪切同款时间戳（关键修复）
+                String timestampSuffix = generateNewTimestampSuffix(parsed);
+
+                // 生成不冲突文件名
+                String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                        rootDirectory,
+                        recycleBinDirectory,
+                        pureCoreName,
+                        timestampSuffix
+                );
+
+                String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
+                File targetFile = new File(recycleBinDirectory, finalFileName);
+
+                // 移动文件
+                boolean success = file.renameTo(targetFile);
+                if (!success) {
+                    if (copyFileContent(file, targetFile)) {
+                        file.delete();
+                        return true;
+                    }
+                }
+                return success;
+
             } else {
-                return file.renameTo(targetFile);
+                // 普通文件
+                File targetFile = new File(recycleBinDirectory, file.getName());
+                File safeTarget = getNonConflictFile(targetFile);
+                boolean success = file.renameTo(safeTarget);
+                if (!success) {
+                    if (copyFileContent(file, safeTarget)) {
+                        file.delete();
+                        return true;
+                    }
+                }
+                return success;
             }
 
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         }
+    }
+    private boolean moveFolderToRecycleBinLikeCut(File sourceFolder, File targetFolder) {
+        if (sourceFolder == null || !sourceFolder.exists() || targetFolder == null) {
+            return false;
+        }
+
+        try {
+            if (!targetFolder.exists()) {
+                targetFolder.mkdirs();
+            }
+
+            File[] files = sourceFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        String safeFolderName = getSafeFileNameForRecycleBin(file.getName());
+                        File subTarget = new File(targetFolder, safeFolderName);
+                        moveFolderToRecycleBinLikeCut(file, subTarget);
+                    } else {
+                        boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
+                        boolean isImg = isImageFile(file);
+
+                        if (isTxt || isImg) {
+                            String originalName = file.getName();
+                            String originalExt = getOriginalExtension(originalName);
+                            String[] parsed = parseFileName(originalName);
+                            String pureCoreName = parsed[0];
+                            pureCoreName = getSafeCoreName(pureCoreName);
+
+                            // 剪切同款时间戳
+                            String timestampSuffix = generateNewTimestampSuffix(parsed);
+
+                            String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
+                                    rootDirectory,
+                                    targetFolder,
+                                    pureCoreName,
+                                    timestampSuffix
+                            );
+
+                            String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
+                            File targetFile = new File(targetFolder, finalFileName);
+
+                            if (!file.renameTo(targetFile)) {
+                                if (copyFileContent(file, targetFile)) {
+                                    file.delete();
+                                }
+                            }
+                        } else {
+                            File target = new File(targetFolder, file.getName());
+                            File safeTarget = getNonConflictFile(target);
+                            if (!file.renameTo(safeTarget)) {
+                                copyFileContent(file, safeTarget);
+                                file.delete();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 彻底删除源目录
+            deleteFolderTreeInternal(sourceFolder);
+            return true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // 内部删除，永不冲突
+    private void deleteFolderTreeInternal(File fileOrFolder) {
+        if (fileOrFolder == null || !fileOrFolder.exists()) return;
+        if (fileOrFolder.isDirectory()) {
+            File[] children = fileOrFolder.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteFolderTreeInternal(child);
+                }
+            }
+        }
+        fileOrFolder.delete();
     }
     // 🔥 回收站专用：裁剪主体名称，保留时间戳、后缀、格式
     private String getSafeFileNameForRecycleBin(String fileName) {
