@@ -316,6 +316,9 @@ public class FileEditorActivity extends AppCompatActivity {
         });
     }
 
+    // ==============================
+// 🔥 修复后：完全对齐 MainActivity 主体名查重逻辑
+// ==============================
     private void autoSave() {
         if (isSaved) return;
 
@@ -357,10 +360,16 @@ public class FileEditorActivity extends AppCompatActivity {
                 timestampSuffix = "_" + randomStr + "_" + millisTimestamp;
             }
             File targetDirectory = currentDir;
-            String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                    rootDir, targetDirectory, cleanedTitle, timestampSuffix
-            );
-            targetFile = new File(targetDirectory, uniqueFileName);
+
+            // ==============================
+            // 🔥 【正确】和 Main 完全一样：主体名查重 + 加序号
+            // ==============================
+            String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
+            String tempFileName = finalCoreName + timestampSuffix + ".txt";
+            File uniqueFile = new File(targetDirectory, tempFileName);
+
+            targetFile = uniqueFile;
+
             try {
                 if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
                     Toast.makeText(this, "无法创建目标目录", Toast.LENGTH_SHORT).show();
@@ -470,14 +479,18 @@ public class FileEditorActivity extends AppCompatActivity {
                     newTimestampSuffix = suffixBuilder.toString();
                 }
             }
+
+            // ==============================
+            // 🔥 【正确】修改文件也走主体名查重
+            // ==============================
             String newFileName;
             if (needCheckDuplicate) {
-                newFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                        rootDir, actualDirectory, cleanedNewTitle, newTimestampSuffix
-                );
+                String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
+                newFileName = finalCoreName + newTimestampSuffix + ".txt";
             } else {
                 newFileName = cleanedNewTitle + newTimestampSuffix + ".txt";
             }
+
             File newFile = new File(actualDirectory, newFileName);
             boolean fileOperationSuccess = true;
             if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
@@ -516,6 +529,50 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         hideSoftInput();
         finish();
+    }
+    // ==============================
+// 统一工具：主体名查重（和 MainActivity 一模一样）
+// ==============================
+    private String getNonConflictCoreNameInFolder(File targetFolder, String baseCore) {
+        if (targetFolder == null || !targetFolder.exists() || baseCore == null) {
+            return baseCore;
+        }
+        if (!isCoreNameExistsInFolder(targetFolder, baseCore)) {
+            return baseCore;
+        }
+        int index = 1;
+        while (true) {
+            String testName = baseCore + "(" + index + ")";
+            if (!isCoreNameExistsInFolder(targetFolder, testName)) {
+                return testName;
+            }
+            index++;
+        }
+    }
+
+    private boolean isCoreNameExistsInFolder(File folder, String coreName) {
+        if (folder == null || !folder.exists() || coreName == null) return false;
+        File[] files = folder.listFiles();
+        if (files == null) return false;
+        for (File f : files) {
+            if (f.isFile()) {
+                String existCore = extractPureCoreNameForDisplay(f.getName());
+                if (coreName.equals(existCore)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 提取主体名（和你Main里面一样）
+    private String extractPureCoreNameForDisplay(String fileName) {
+        if (TextUtils.isEmpty(fileName)) return "";
+        int dot = fileName.lastIndexOf('.');
+        if (dot > 0) {
+            fileName = fileName.substring(0, dot);
+        }
+        return removeAllTimestampFormats(fileName);
     }
 
     private boolean atomicSave(File targetFile, String content) throws IOException {
@@ -794,10 +851,14 @@ public class FileEditorActivity extends AppCompatActivity {
                 if (!targetDirectory.exists()) {
                     targetDirectory.mkdirs();
                 }
-                String uniqueFileName = UniqueFileNameHandler.getGlobalUniqueFileName(
-                        rootDir, targetDirectory, cleanedTitle, timestampSuffix
-                );
-                targetFile = new File(targetDirectory, uniqueFileName);
+
+                // ======================
+                // 🔥 同步保存-新建：主体名查重（和Main完全一致）
+                // ======================
+                String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
+                String tempFileName = finalCoreName + timestampSuffix + ".txt";
+                File uniqueFile = new File(targetDirectory, tempFileName);
+                targetFile = uniqueFile;
 
                 String finalContent = processContentForSaving(content);
                 boolean createSuccess = atomicSaveSync(targetFile, finalContent);
@@ -877,9 +938,17 @@ public class FileEditorActivity extends AppCompatActivity {
                     }
                 }
 
-                String newFileName = needCheckDuplicate
-                        ? UniqueFileNameHandler.getGlobalUniqueFileName(rootDir, targetFile.getParentFile(), cleanedNewTitle, newTimestampSuffix)
-                        : cleanedNewTitle + newTimestampSuffix + ".txt";
+                // ======================
+                // 🔥 同步保存-修改：主体名查重（和Main完全一致）
+                // ======================
+                String newFileName;
+                if (needCheckDuplicate) {
+                    String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
+                    newFileName = finalCoreName + newTimestampSuffix + ".txt";
+                } else {
+                    newFileName = cleanedNewTitle + newTimestampSuffix + ".txt";
+                }
+
                 File newFile = new File(targetFile.getParentFile(), newFileName);
 
                 if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
@@ -916,6 +985,12 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
+    // ==============================
+// 统一主体名查重（和MainActivity完全一样）
+// ==============================
+
+
+
     private void atomicCopyFileSync(File sourceFile, File targetFile) throws IOException {
         FileInputStream fis = new FileInputStream(sourceFile);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -944,6 +1019,35 @@ public class FileEditorActivity extends AppCompatActivity {
             }, 100);
 
             savedNewFilePath = "";
+        }
+    }
+
+    // ======================
+    // 🔥 你项目自带的本地查重方法（确保一定存在）
+    // ======================
+    private File getNonConflictFile(File file) {
+        if (!file.exists()) {
+            return file;
+        }
+        String name = file.getName();
+        String parent = file.getParent();
+        String baseName;
+        String ext = "";
+        int lastDot = name.lastIndexOf(".");
+        if (lastDot > 0) {
+            baseName = name.substring(0, lastDot);
+            ext = name.substring(lastDot);
+        } else {
+            baseName = name;
+        }
+        int index = 1;
+        while (true) {
+            String newName = baseName + "(" + index + ")" + ext;
+            File newFile = new File(parent, newName);
+            if (!newFile.exists()) {
+                return newFile;
+            }
+            index++;
         }
     }
 }
