@@ -2047,14 +2047,25 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle("解压文件")
                 .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
                 .setPositiveButton("确定", (dialog, which) -> {
+
+                    // 🔥 解压开始：显示加载提示
+                    ProgressDialog extractDialog = new ProgressDialog(this);
+                    extractDialog.setMessage("正在解压中，请稍候...");
+                    extractDialog.setCanceledOnTouchOutside(false);
+                    extractDialog.setCancelable(false);
+                    extractDialog.show();
+
                     new Thread(() -> {
                         boolean result = FileUtils.unzipFile(zipFile, currentDirectory);
                         runOnUiThread(() -> {
+                            // 🔥 解压结束：关闭提示
+                            if (extractDialog.isShowing()) {
+                                extractDialog.dismiss();
+                            }
+
                             if (result) {
-                                Toast.makeText(this, "解压成功，正在修正文件路径...", Toast.LENGTH_SHORT).show();
-                                new Thread(() -> {
-                                    runOnUiThread(this::loadFileList);
-                                }).start();
+                                Toast.makeText(this, "解压成功", Toast.LENGTH_SHORT).show();
+                                loadFileList();
                             } else {
                                 Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
                             }
@@ -2179,14 +2190,17 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
      */
-    /**
-     * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
-     * 【与剪切粘贴完全相同时间戳规则】
-     */
     private boolean moveToRecycleBin(File file) {
         if (file == null || !file.exists()) {
             return false;
         }
+
+        // 加载提示（固定final，不会报错）
+        final ProgressDialog recycleDialog = new ProgressDialog(this);
+        recycleDialog.setMessage("正在移动到回收站，请稍候...");
+        recycleDialog.setCanceledOnTouchOutside(false);
+        recycleDialog.setCancelable(false);
+        runOnUiThread(recycleDialog::show);
 
         try {
             if (!recycleBinDirectory.exists()) {
@@ -2197,12 +2211,21 @@ public class MainActivity extends AppCompatActivity {
             if (file.isDirectory()) {
                 File targetFolder = new File(recycleBinDirectory, file.getName());
                 File safeFolder = getNonConflictFile(targetFolder);
-                return moveFolderToRecycleBinLikeCut(file, safeFolder);
+                final boolean result = moveFolderToRecycleBinLikeCut(file, safeFolder);
+
+                runOnUiThread(() -> {
+                    if (recycleDialog.isShowing()) {
+                        recycleDialog.dismiss();
+                        Toast.makeText(this, result ? "移动成功" : "移动失败", Toast.LENGTH_SHORT).show();
+                    }
+                });
+                return result;
             }
 
-            // 文件 txt / 图片
+            // 文件处理
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
             boolean isImg = isImageFile(file);
+            boolean finalSuccess = false;
 
             if (isTxt || isImg) {
                 String originalName = file.getName();
@@ -2211,12 +2234,7 @@ public class MainActivity extends AppCompatActivity {
                 String pureCoreName = parsed[0];
 
                 pureCoreName = getSafeCoreName(pureCoreName);
-
-                // ==========================
-                // 🔥 主体名查重（目标文件夹：回收站根目录）
-                // ==========================
                 String finalCoreName = getNonConflictCoreNameInFolder(recycleBinDirectory, pureCoreName);
-
                 String timestampSuffix = generateNewTimestampSuffix(parsed);
                 String finalFileName = finalCoreName + timestampSuffix + originalExt;
 
@@ -2226,10 +2244,11 @@ public class MainActivity extends AppCompatActivity {
                 if (!success) {
                     if (copyFileContent(file, targetFile)) {
                         file.delete();
-                        return true;
+                        finalSuccess = true;
                     }
+                } else {
+                    finalSuccess = true;
                 }
-                return success;
 
             } else {
                 // 普通文件
@@ -2239,14 +2258,34 @@ public class MainActivity extends AppCompatActivity {
                 if (!success) {
                     if (copyFileContent(file, safeTarget)) {
                         file.delete();
-                        return true;
+                        finalSuccess = true;
                     }
+                } else {
+                    finalSuccess = true;
                 }
-                return success;
             }
+
+            // 最终提示（用final变量，无lambda错误）
+            boolean finalResult = finalSuccess;
+            runOnUiThread(() -> {
+                if (recycleDialog.isShowing()) {
+                    recycleDialog.dismiss();
+                    Toast.makeText(this, finalResult ? "移动成功" : "移动失败", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            return finalSuccess;
 
         } catch (Exception e) {
             e.printStackTrace();
+
+            runOnUiThread(() -> {
+                if (recycleDialog.isShowing()) {
+                    recycleDialog.dismiss();
+                    Toast.makeText(this, "移动失败：异常", Toast.LENGTH_SHORT).show();
+                }
+            });
+
             return false;
         }
     }
@@ -3256,17 +3295,22 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             return;
         }
-        final boolean[] result = {false};
+
+        // 🔥 粘贴提示框（统一风格，不可取消）
+        final ProgressDialog pasteDialog = new ProgressDialog(this);
+        pasteDialog.setMessage("正在处理中，请稍候...");
+        pasteDialog.setCanceledOnTouchOutside(false);
+        pasteDialog.setCancelable(false);
+        runOnUiThread(pasteDialog::show);
+
         new Thread(() -> {
+            boolean success = false;
             try {
                 if (copiedFile.isDirectory()) {
                     if (isCutOperation) {
-                        // ✅ 【剪切】用：正确时间戳方法（保留随机串，只更新时间）
-                        result[0] = moveFolderWithTxtUpdate(copiedFile, currentDirectory, false);
-
+                        success = moveFolderWithTxtUpdate(copiedFile, currentDirectory, false);
                     } else {
-                        // ✅ 【复制】不动！完全保留你原来的逻辑（生成新随机串）
-                        result[0] = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
+                        success = copyFolderWithTxtGlobalCheck(copiedFile, currentDirectory);
                     }
                 } else {
                     File sourceFile = copiedFile;
@@ -3285,16 +3329,11 @@ public class MainActivity extends AppCompatActivity {
                         if (isCutOperation) {
                             String[] parsed = parseFileName(originalName);
                             String pureCoreName = parsed[0];
-
-                            // 裁剪：剪切模式
                             pureCoreName = getSafeCoreName(pureCoreName);
-
                             timestampSuffix = generateNewTimestampSuffix(parsed);
                             cleanName = pureCoreName;
                         } else {
                             cleanName = UniqueFileNameHandler.removeTimestamp(cleanName);
-
-                            // 裁剪：复制模式
                             cleanName = getSafeCoreName(cleanName);
 
                             if (baseTimestamp.length() >= 12) {
@@ -3308,49 +3347,51 @@ public class MainActivity extends AppCompatActivity {
                             }
                         }
 
-                        // ==============================
-// 🔥 【正确逻辑】只在目标文件夹查重主体名
-// ==============================
+                        // 主体名查重
                         String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanName);
                         String uniqueFileName = finalCoreName + timestampSuffix;
-
                         String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
                         File targetFile = new File(currentDirectory, finalFileName);
 
                         if (isCutOperation) {
-                            result[0] = sourceFile.renameTo(targetFile);
-                            if (!result[0]) {
+                            success = sourceFile.renameTo(targetFile);
+                            if (!success) {
                                 if (copyFileContent(sourceFile, targetFile)) {
                                     sourceFile.delete();
-                                    result[0] = true;
+                                    success = true;
                                 }
                             }
                         } else {
-                            result[0] = copyFileContent(sourceFile, targetFile);
+                            success = copyFileContent(sourceFile, targetFile);
                         }
                     } else {
                         File targetFile = new File(currentDirectory, copiedFile.getName());
                         File uniqueTargetFile = getNonConflictFile(targetFile);
                         if (isCutOperation) {
-                            result[0] = copiedFile.renameTo(uniqueTargetFile);
-                            if (!result[0]) {
+                            success = copiedFile.renameTo(uniqueTargetFile);
+                            if (!success) {
                                 if (copyFileContent(copiedFile, uniqueTargetFile)) {
                                     copiedFile.delete();
-                                    result[0] = true;
+                                    success = true;
                                 }
                             }
                         } else {
-                            result[0] = copyFileContent(copiedFile, uniqueTargetFile);
+                            success = copyFileContent(copiedFile, uniqueTargetFile);
                         }
                     }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                result[0] = false;
+                success = false;
             }
 
+            // 结束后关闭提示
+            boolean finalSuccess = success;
             runOnUiThread(() -> {
-                if (result[0]) {
+                if (pasteDialog.isShowing()) {
+                    pasteDialog.dismiss();
+                }
+                if (finalSuccess) {
                     Toast.makeText(this, (isCutOperation ? "剪切" : "复制") + "成功", Toast.LENGTH_SHORT).show();
                     loadFileList();
                 } else {
