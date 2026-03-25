@@ -1315,12 +1315,26 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         saveSearchKeyword(keyword);
+
+        // 🔥 搜索开始：弹出提示框（文件多需要时间）
+        ProgressDialog searchDialog = new ProgressDialog(this);
+        searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
+        searchDialog.setCanceledOnTouchOutside(false); // 点击外部不消失
+        searchDialog.setCancelable(false); // 按返回键不消失
+        searchDialog.show();
+
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
             recursiveSearch(currentDirectory, keyword);
             sortSearchResult();
+
             runOnUiThread(() -> {
+                // 🔥 搜索结束：关闭提示框
+                if (searchDialog.isShowing()) {
+                    searchDialog.dismiss();
+                }
+
                 fileAdapter.setData(searchResultList);
                 Toast.makeText(MainActivity.this,
                         searchResultList.size() + " 个匹配结果",
@@ -1350,7 +1364,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 递归搜索文件：
      * 1. 遍历当前目录下所有文件/文件夹；
-     * 2. 文件夹：名称匹配则加入结果，递归搜索子目录；
+     * 2. 文件夹：名称匹配则加入结果，递归搜索子目录，跳过末尾带#的文件夹；
      * 3. 文件：名称/内容匹配则加入结果。
      *
      * @param dir     搜索目录
@@ -1364,6 +1378,13 @@ public class MainActivity extends AppCompatActivity {
 
         for (File file : files) {
             if (file.isDirectory()) {
+                // ======================
+                // 🔥 只跳过【子文件夹】末尾带 # 的，不跳过当前目录
+                // ======================
+                if (file.getName().endsWith("#")) {
+                    continue;
+                }
+
                 if (file.getName().toLowerCase().contains(keyword.toLowerCase())) {
                     searchResultList.add(file);
                 }
