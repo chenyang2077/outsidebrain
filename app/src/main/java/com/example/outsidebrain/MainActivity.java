@@ -2216,7 +2216,10 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (recycleDialog.isShowing()) {
                         recycleDialog.dismiss();
-                        Toast.makeText(this, result ? "移动成功" : "移动失败", Toast.LENGTH_SHORT).show();
+                        // 成功不提示，只失败提示
+                        if (!result) {
+                            Toast.makeText(this, "移动失败", Toast.LENGTH_SHORT).show();
+                        }
                     }
                 });
                 return result;
@@ -2265,12 +2268,14 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // 最终提示（用final变量，无lambda错误）
+            // 最终提示：成功不提示，失败才提示
             boolean finalResult = finalSuccess;
             runOnUiThread(() -> {
                 if (recycleDialog.isShowing()) {
                     recycleDialog.dismiss();
-                    Toast.makeText(this, finalResult ? "移动成功" : "移动失败", Toast.LENGTH_SHORT).show();
+                    if (!finalResult) {
+                        Toast.makeText(this, "移动失败", Toast.LENGTH_SHORT).show();
+                    }
                 }
             });
 
