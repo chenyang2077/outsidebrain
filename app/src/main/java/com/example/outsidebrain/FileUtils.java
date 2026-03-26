@@ -6,13 +6,7 @@
 开发语言：Java
 */
 package com.example.outsidebrain;
-import android.content.Context;
-import android.database.Cursor;
-import android.net.Uri;
 import android.os.Environment;
-import android.provider.DocumentsContract;
-import android.provider.MediaStore;
-import android.provider.OpenableColumns;
 import android.util.Log;
 import java.io.File;
 import java.io.FileInputStream;
@@ -257,79 +251,5 @@ public class FileUtils {
      */
     public static boolean unzipFile(File zipFile, File targetDir) {
         return ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), targetDir.getAbsolutePath());
-    }
-    // ============================
-// 外部文件打开专用（不影响原有功能）
-// ============================
-    public static String getRealPathFromUri(Context context, Uri uri) {
-        if (DocumentsContract.isDocumentUri(context, uri)) {
-            if (isExternalStorageDocument(uri)) {
-                final String docId = DocumentsContract.getDocumentId(uri);
-                final String[] split = docId.split(":");
-                return "/storage/" + split[0] + "/" + split[1];
-            } else if (isDownloadsDocument(uri)) {
-                return Environment.getExternalStorageDirectory().getPath() + "/Download/" + getFileName(uri, context);
-            } else if (isMediaDocument(uri)) {
-                final String docId = DocumentsContract.getDocumentId(uri);
-                final String[] split = docId.split(":");
-                final String type = split[0];
-                Uri contentUri = null;
-                if ("image".equals(type)) {
-                    contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                } else if ("video".equals(type)) {
-                    contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-                } else if ("audio".equals(type)) {
-                    contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-                }
-                final String selection = "_id=?";
-                final String[] selectionArgs = new String[]{split[1]};
-                return getDataColumn(context, contentUri, selection, selectionArgs);
-            }
-        }
-        if ("content".equalsIgnoreCase(uri.getScheme())) {
-            return getDataColumn(context, uri, null, null);
-        } else if ("file".equalsIgnoreCase(uri.getScheme())) {
-            return uri.getPath();
-        }
-        return null;
-    }
-
-    private static String getDataColumn(Context context, Uri uri, String selection, String[] selectionArgs) {
-        Cursor cursor = null;
-        final String column = MediaStore.MediaColumns.DATA;
-        final String[] projection = {column};
-        try {
-            cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs, null);
-            if (cursor != null && cursor.moveToFirst()) {
-                return cursor.getString(0);
-            }
-        } finally {
-            if (cursor != null) cursor.close();
-        }
-        return null;
-    }
-
-    private static String getFileName(Uri uri, Context context) {
-        Cursor cursor = context.getContentResolver().query(uri, null, null, null, null);
-        if (cursor != null) {
-            int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-            if (nameIndex != -1 && cursor.moveToFirst()) {
-                return cursor.getString(nameIndex);
-            }
-            cursor.close();
-        }
-        return "file.txt";
-    }
-
-    public static boolean isExternalStorageDocument(Uri uri) {
-        return "com.android.externalstorage.documents".equals(uri.getAuthority());
-    }
-
-    public static boolean isDownloadsDocument(Uri uri) {
-        return "com.android.providers.downloads.documents".equals(uri.getAuthority());
-    }
-
-    public static boolean isMediaDocument(Uri uri) {
-        return "com.android.providers.media.documents".equals(uri.getAuthority());
     }
 }
