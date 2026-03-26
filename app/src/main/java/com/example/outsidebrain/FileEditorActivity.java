@@ -17,7 +17,12 @@ import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.Toast;
-
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.OpenableColumns;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
@@ -29,6 +34,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -64,7 +70,12 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
     private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
     private int cursorPosition = 0;
+    private Uri uriFromExternal = null;       // 外部文件的uri
+    private String externalFolderPath = null;
+    private String externalParentFolderPath = null; // 外部文件所在目录
+    private boolean isOpenedFromExternal = false;
     private String originalFileNameForEdit;
+    private String externalFileName = null; // 用来保存外部文件名
     private String savedNewFilePath = "";
 
     @Override
@@ -79,9 +90,8 @@ public class FileEditorActivity extends AppCompatActivity {
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         searchKeyword = sp.getString("current_keyword", "").trim();
-
+        handleExternalFileIntent(getIntent());
         recoverFromCrash();
-        handleZipAndShareIntent();
 
         if (!isPreEdit && filePath != null) {
             targetFile = new File(filePath);
@@ -131,7 +141,100 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         setupTextChangeListeners();
     }
+    // ==========================
+// 接收外部传来的 TXT 文件（系统分享/打开方式选择）
+// ==========================
+    private void handleExternalFileIntent(Intent intent) {
+        if (intent == null) return;
+        if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
 
+        Uri uri = intent.getData();
+        if (uri == null) {
+            finish();
+            return;
+        }
+
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            BufferedReader br = new BufferedReader(new InputStreamReader(is));
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+            br.close();
+            is.close();
+
+            String fileName = "未命名文件";
+            Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+            if (cursor != null) {
+                int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (nameIndex != -1 && cursor.moveToFirst()) {
+                    fileName = cursor.getString(nameIndex); // 🔥 这里修复了！
+                }
+                cursor.close();
+            }
+
+            this.uriFromExternal = uri;
+            this.targetFile = null;
+            this.isPreEdit = false;
+
+            if (fileName.toLowerCase().endsWith(".txt")) {
+                fileName = fileName.substring(0, fileName.lastIndexOf("."));
+            }
+            etFileName.setText(fileName);
+            etContent.setText(content.toString());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            finish();
+        }
+    }
+
+
+
+
+    // 获取外部文件真实路径（你的权限完全支持）
+    private String getRealPathFromUri(Uri uri) {
+        if (uri == null) return null;
+
+        if ("content".equals(uri.getScheme())) {
+            String[] projection = {android.provider.MediaStore.Files.FileColumns.DATA};
+            Cursor cursor = null;
+            try {
+                cursor = getContentResolver().query(uri, projection, null, null, null);
+                if (cursor != null && cursor.moveToFirst()) {
+                    int columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATA);
+                    return cursor.getString(columnIndex);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+        } else if ("file".equals(uri.getScheme())) {
+            return uri.getPath();
+        }
+        return null;
+    }
+    // 工具方法：从 uri 获取文件名
+    private String getFileNameFromUri(Uri uri) {
+        String fileName = "未命名文件.txt"; // 默认名
+        Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+        if (cursor != null) {
+            int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                fileName = cursor.getString(nameIndex);
+            }
+            cursor.close();
+        }
+
+        // 确保一定是 .txt 结尾（关键修复）
+        if (!fileName.toLowerCase().endsWith(".txt")) {
+            fileName += ".txt";
+        }
+        return fileName;
+    }
     private void recoverFromCrash() {
         File rootDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
         if (!rootDir.exists()) return;
@@ -321,7 +424,24 @@ public class FileEditorActivity extends AppCompatActivity {
 // ==============================
     private void autoSave() {
         if (isSaved) return;
+        if (uriFromExternal != null) {
+            try {
+                String content = etContent.getText().toString();
+                OutputStream os = getContentResolver().openOutputStream(uriFromExternal, "wt");
+                os.write(content.getBytes(StandardCharsets.UTF_8));
+                os.close();
 
+                isSaved = true;
+                Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                e.printStackTrace();
+                Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
+            }
+
+            hideSoftInput();
+            finish();
+            return;
+        }
         SharedPreferences sp = getSharedPreferences("save_state", MODE_PRIVATE);
         String fileName = targetFile != null ? targetFile.getName() : etFileName.getText().toString().trim();
         sp.edit().putBoolean("is_saving_" + fileName, true).apply();
@@ -664,18 +784,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    private void handleZipAndShareIntent() {
-        Intent intent = getIntent();
-        if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
-            String folderPath = intent.getStringExtra("FOLDER_PATH");
-            zipFolder(new File(folderPath));
-            finish();
-        } else if (intent.hasExtra("ACTION_SHARE_FILE")) {
-            String filePath = intent.getStringExtra("FILE_PATH");
-            shareFile(new File(filePath));
-            finish();
-        }
-    }
+
 
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
@@ -737,33 +846,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    private void shareFile(File file) {
-        if (!file.exists()) {
-            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            Uri fileUri = FileProvider.getUriForFile(
-                    this,
-                    getPackageName() + ".fileprovider",
-                    file
-            );
-            Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType(getMimeType(file.getName()));
-            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
-            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            Intent chooser = Intent.createChooser(shareIntent, "分享文件");
-            if (shareIntent.resolveActivity(getPackageManager()) != null) {
-                startActivity(chooser);
-                setResult(RESULT_REFRESH);
-            } else {
-                Toast.makeText(this, "未找到可分享的应用", Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(this, "分享失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
+
 
     private String getMimeType(String fileName) {
         if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
@@ -784,10 +867,19 @@ public class FileEditorActivity extends AppCompatActivity {
             imm.hideSoftInputFromWindow(etContent.getWindowToken(), 0);
         }
     }
-
+    // 返回逻辑
     @Override
     public void onBackPressed() {
         autoSave();
+
+        // 返回到 TXT 所在的文件夹（你的 APP 内）
+        if (externalFolderPath != null) {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.putExtra("open_folder", externalFolderPath);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(intent);
+        }
+
         super.onBackPressed();
     }
 
@@ -811,10 +903,19 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private void saveContentSync() {
+        if (uriFromExternal != null) {
+            try {
+                String content = etContent.getText().toString();
+                OutputStream os = getContentResolver().openOutputStream(uriFromExternal, "wt");
+                os.write(content.getBytes(StandardCharsets.UTF_8));
+                os.close();
+                isSaved = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return;
+        }
         String inputTitle = etFileName.getText().toString().trim();
-        // ======================
-        // 🔥 修复：去掉 .trim()
-        // ======================
         String content = etContent.getText().toString();
 
         SharedPreferences sp = getSharedPreferences("save_state", MODE_PRIVATE);

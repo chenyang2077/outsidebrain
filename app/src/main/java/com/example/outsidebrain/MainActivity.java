@@ -67,6 +67,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
@@ -166,6 +167,16 @@ public class MainActivity extends AppCompatActivity {
         if (!transferStationDirectory.exists()) {
             transferStationDirectory.mkdirs();
         }
+        String openFolder = getIntent().getStringExtra("open_folder");
+        if (openFolder != null) {
+            File dir = new File(openFolder);
+            if (dir.exists()) {
+                currentDirectory = dir;
+                loadFileList();
+                updateLevelHint();
+            }
+        }
+
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -231,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
             mTouchOverlay.setVisibility(View.GONE); // 隐藏覆盖层
             return false;
         });
+
 
     }
     /**
@@ -2553,9 +2565,12 @@ public class MainActivity extends AppCompatActivity {
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE
         );
         builder.setTitle(whiteTitle);
-        boolean isHomeOrHomeSubFolder = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
-        boolean isRecycleOrRecycleSubFolder = currentDirectory.getAbsolutePath().startsWith(recycleBinDirectory.getAbsolutePath());
-        boolean shouldHideShare = isHomeOrHomeSubFolder || isRecycleOrRecycleSubFolder;
+
+        // ======================
+        // 🔥 永久显示分享：所有文件夹都显示分享
+        // ======================
+        boolean shouldHideShare = false;
+
         String[] allOptions = {"重命名", "删除", "分享", "复制", "剪切"};
         int[] allIcons = {
                 R.drawable.ic_rename,
@@ -2633,13 +2648,48 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_EDIT_FILE);
     }
     /**
-     * 跳转到FileEditorActivity执行文件分享操作
+     * 分享文件，
      */
     private void shareFile(File file) {
-        Intent intent = new Intent(this, FileEditorActivity.class);
-        intent.putExtra("ACTION_SHARE_FILE", true);
-        intent.putExtra("FILE_PATH", file.getAbsolutePath());
-        startActivityForResult(intent, REQUEST_EDIT_FILE);
+        if (file == null || !file.exists()) {
+            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Uri fileUri = FileProvider.getUriForFile(
+                    this,
+                    getPackageName() + ".fileprovider",
+                    file
+            );
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType(getMimeType(file.getName()));
+            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            Intent chooser = Intent.createChooser(shareIntent, "分享文件");
+            if (shareIntent.resolveActivity(getPackageManager()) != null) {
+                startActivity(chooser);
+            } else {
+                Toast.makeText(this, "未找到可分享的应用", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "分享失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    private String getMimeType(String fileName) {
+        if (TextUtils.isEmpty(fileName)) {
+            return "application/octet-stream";
+        }
+        String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
+        switch (extension) {
+            case "txt":
+                return "text/plain";
+            case "zip":
+                return "application/zip";
+            default:
+                return "application/octet-stream";
+        }
     }
     /**
      * 显示文件/文件夹重命名弹窗
