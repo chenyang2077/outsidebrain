@@ -1,9 +1,10 @@
 /*
 软件名称：快乐文字
 版本号：V1.0
-功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，提供文件夹压缩、文件分享功能，限制操作范围保障数据安全
+功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，文件分享功能，限制操作范围保障数据安全
 所属模块：文件编辑模块
 开发语言：Java
+
 */
 package com.example.outsidebrain;
 
@@ -48,7 +49,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * 文件编辑页面：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，提供文件夹压缩、文件分享功能
+ * 文件编辑页面：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，
  */
 public class FileEditorActivity extends AppCompatActivity {
     private static final int BUFFER_SIZE = 8192;
@@ -142,7 +143,9 @@ public class FileEditorActivity extends AppCompatActivity {
         setupTextChangeListeners();
     }
     // ==========================
-// 接收外部传来的 TXT 文件（系统分享/打开方式选择）
+// 接收外部传来的 TXT 文件（系统分享/打开方式选择）文件管理器里点一个 txt
+//选择用你的 “快乐文字” 打开
+//你的编辑器就会读取内容并显示
 // ==========================
     private void handleExternalFileIntent(Intent intent) {
         if (intent == null) return;
@@ -785,40 +788,6 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
 
-
-    private void zipFolder(File folder) {
-        if (!folder.exists() || !folder.isDirectory()) {
-            Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String zipFileName = folder.getName() + ".zip";
-        File zipFile = new File(folder.getParentFile(), zipFileName);
-        int counter = 1;
-        while (zipFile.exists()) {
-            zipFileName = folder.getName() + "(" + counter + ").zip";
-            zipFile = new File(folder.getParentFile(), zipFileName);
-            counter++;
-        }
-        final File finalZipFile = zipFile;
-        new Thread(() -> {
-            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(finalZipFile))) {
-                zos.setLevel(9);
-                addFolderToZip(folder, folder.getName(), zos);
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "压缩成功：" + finalZipFile.getName(), Toast.LENGTH_SHORT).show();
-                    setResult(RESULT_REFRESH);
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "压缩失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    if (finalZipFile.exists()) {
-                        finalZipFile.delete();
-                    }
-                });
-            }
-        }).start();
-    }
 
     private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
         ZipEntry dirEntry = new ZipEntry(parentEntryName + "/");
