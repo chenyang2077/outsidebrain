@@ -3934,6 +3934,34 @@ public class MainActivity extends AppCompatActivity {
         final File targetFileForScroll = currentDirectory;
         boolean needScroll = true;
         final int TARGET_VISUAL_POS = 5;
+
+        // =========================
+        // 🔥 核心修复：搜索模式下，直接回到【搜索前的文件夹】，而不是当前目录
+        // =========================
+        if (isInSearchMode) {
+            isInSearchMode = false;
+            etSearch.setText("");
+            etSearch.clearFocus();
+            fileAdapter.setData(fileList);
+            clearSearchKeyword();
+            Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
+            hidePasteButton();
+            PreferenceUtils.saveLastPageType(this, "main");
+
+            // 🔥 退出搜索 → 恢复搜索前的文件夹（所有位置都生效）
+            if (currentDirectory != null && currentDirectory.exists()) {
+                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
+            }
+
+            // 退出搜索后不再执行后续逻辑
+            needScroll = false;
+
+            // 直接刷新列表，回到搜索前所在的文件夹
+            loadFileList();
+            updateLevelHint();
+            return; // 关键：直接return，不往下走
+        }
+
         if (isInTransferStation) {
             if (currentDirectory != null && !currentDirectory.equals(transferStationDirectory)) {
                 currentDirectory = currentDirectory.getParentFile();
@@ -3952,19 +3980,6 @@ public class MainActivity extends AppCompatActivity {
                 exitRecycleBinToHome();
                 needScroll = false;
             }
-        } else if (isInSearchMode) {
-            isInSearchMode = false;
-            etSearch.setText("");
-            etSearch.clearFocus();
-            fileAdapter.setData(fileList);
-            clearSearchKeyword();
-            Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
-            hidePasteButton();
-            PreferenceUtils.saveLastPageType(this, "main");
-            if (currentDirectory != null && currentDirectory.exists()) {
-                PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
-            }
-            needScroll = false;
         } else if (currentDirectory != null && !currentDirectory.getName().equals(ROOT_FOLDER_NAME)) {
             final File childFolder = currentDirectory;
             currentDirectory = currentDirectory.getParentFile();

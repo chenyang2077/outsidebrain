@@ -327,7 +327,11 @@ public class FileEditorActivity extends AppCompatActivity {
         sp.edit().putBoolean("is_saving_" + fileName, true).apply();
 
         String inputTitle = etFileName.getText().toString();
-        String content = etContent.getText().toString().trim();
+        // ======================
+        // 🔥 修复：去掉 .trim()
+        // ======================
+        String content = etContent.getText().toString();
+
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
@@ -361,9 +365,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }
             File targetDirectory = currentDir;
 
-            // ==============================
-            // 🔥 【正确】和 Main 完全一样：主体名查重 + 加序号
-            // ==============================
             String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
             String tempFileName = finalCoreName + timestampSuffix + ".txt";
             File uniqueFile = new File(targetDirectory, tempFileName);
@@ -378,7 +379,7 @@ public class FileEditorActivity extends AppCompatActivity {
                     return;
                 }
 
-                String finalContent = processContentForSaving(content);
+                String finalContent = content;
 
                 boolean saveSuccess = atomicSave(targetFile, finalContent);
                 if (saveSuccess) {
@@ -480,9 +481,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
 
-            // ==============================
-            // 🔥 【正确】修改文件也走主体名查重
-            // ==============================
             String newFileName;
             if (needCheckDuplicate) {
                 String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
@@ -510,7 +508,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 Log.d("FileEditor", "文件名更新：" + originalFileName + " → " + newFileName);
             }
             if (fileOperationSuccess) {
-                String finalContent = processContentForSaving(content);
+                String finalContent = content;
                 try {
                     atomicSave(targetFile, finalContent);
                     isSaved = true;
@@ -636,10 +634,6 @@ public class FileEditorActivity extends AppCompatActivity {
 
     private String cleanFileName(String fileName) {
         return fileName.replaceAll("[\\\\/:*?\"<>|]", "");
-    }
-
-    private String processContentForSaving(String content) {
-        return content;
     }
 
     private String readFileContent(File file) throws IOException {
@@ -818,7 +812,10 @@ public class FileEditorActivity extends AppCompatActivity {
 
     private void saveContentSync() {
         String inputTitle = etFileName.getText().toString().trim();
-        String content = etContent.getText().toString().trim();
+        // ======================
+        // 🔥 修复：去掉 .trim()
+        // ======================
+        String content = etContent.getText().toString();
 
         SharedPreferences sp = getSharedPreferences("save_state", MODE_PRIVATE);
         String fileName = targetFile != null ? targetFile.getName() : inputTitle;
@@ -852,15 +849,12 @@ public class FileEditorActivity extends AppCompatActivity {
                     targetDirectory.mkdirs();
                 }
 
-                // ======================
-                // 🔥 同步保存-新建：主体名查重（和Main完全一致）
-                // ======================
                 String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
                 String tempFileName = finalCoreName + timestampSuffix + ".txt";
                 File uniqueFile = new File(targetDirectory, tempFileName);
                 targetFile = uniqueFile;
 
-                String finalContent = processContentForSaving(content);
+                String finalContent = content;
                 boolean createSuccess = atomicSaveSync(targetFile, finalContent);
                 if (createSuccess) {
                     cursorPosition = etContent.getSelectionStart();
@@ -938,9 +932,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     }
                 }
 
-                // ======================
-                // 🔥 同步保存-修改：主体名查重（和Main完全一致）
-                // ======================
                 String newFileName;
                 if (needCheckDuplicate) {
                     String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
@@ -962,7 +953,7 @@ public class FileEditorActivity extends AppCompatActivity {
                     Log.d("FileEditor", "同步保存-文件名更新：" + originalFileName + " → " + newFileName);
                 }
 
-                String finalContent = processContentForSaving(content);
+                String finalContent = content;
                 atomicSaveSync(targetFile, finalContent);
                 isSaved = true;
             }
