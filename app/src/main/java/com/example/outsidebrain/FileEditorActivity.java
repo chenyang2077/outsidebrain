@@ -8,11 +8,13 @@
 */
 package com.example.outsidebrain;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
@@ -25,9 +27,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.FileProvider;
-
-import java.io.BufferedReader;
+import android.os.Handler;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -142,51 +142,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         setupTextChangeListeners();
     }
-    private void handleZipAndShareIntent() {
-        Intent intent = getIntent();
-        if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
-            String folderPath = intent.getStringExtra("FOLDER_PATH");
-            zipFolder(new File(folderPath));
-            finish();
-        } else if (intent.hasExtra("ACTION_SHARE_FILE")) {
-            String filePath = intent.getStringExtra("FILE_PATH");
-            shareFile(new File(filePath));
-            finish();
-        }
-    }
-    private void zipFolder(File folder) {
-        if (!folder.exists() || !folder.isDirectory()) {
-            Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String zipFileName = folder.getName() + ".zip";
-        File zipFile = new File(folder.getParentFile(), zipFileName);
-        int counter = 1;
-        while (zipFile.exists()) {
-            zipFileName = folder.getName() + "(" + counter + ").zip";
-            zipFile = new File(folder.getParentFile(), zipFileName);
-            counter++;
-        }
-        final File finalZipFile = zipFile;
-        new Thread(() -> {
-            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(finalZipFile))) {
-                zos.setLevel(9);
-                addFolderToZip(folder, folder.getName(), zos);
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "压缩成功：" + finalZipFile.getName(), Toast.LENGTH_SHORT).show();
-                    setResult(RESULT_REFRESH);
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "压缩失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    if (finalZipFile.exists()) {
-                        finalZipFile.delete();
-                    }
-                });
-            }
-        }).start();
-    }
+
     // ==========================
 // 接收外部传来的 TXT 文件（系统分享/打开方式选择）文件管理器里点一个 txt
 //选择用你的 “快乐文字” 打开
@@ -886,7 +842,6 @@ public class FileEditorActivity extends AppCompatActivity {
     public void onBackPressed() {
         autoSave();
 
-        // 返回到 TXT 所在的文件夹（你的 APP 内）
         if (externalFolderPath != null) {
             Intent intent = new Intent(this, MainActivity.class);
             intent.putExtra("open_folder", externalFolderPath);

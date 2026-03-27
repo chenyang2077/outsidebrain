@@ -121,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInTransferStation = false;
     private File recycleBinDirectory;
     private boolean isInRecycleBin = false;
+    public static final int RESULT_REFRESH = 1001;
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
@@ -132,10 +133,17 @@ public class MainActivity extends AppCompatActivity {
     // 自定义路径提示（替代Toast，无自动消失）
     private View mCustomTipView;
     private boolean mIsTipShowing = false;
+    private boolean isJumping = false;
     // ========== 新增全局变量：解决卡顿核心 ==========
     private View mReusableTipView; // 复用唯一的提示视图，避免重复inflate
     private long lastTipUpdateTime = 0; // 防抖时间戳，避免高频触发
     private String lastTipText = ""; // 缓存上一次提示文本，避免重复更新
+    // 压缩专用 防重复点击
+    private boolean isZipCompressing = false;
+    // 文件夹智能加载提示（快不弹，慢才弹）
+    private Handler mLoadingHandler = new Handler(Looper.getMainLooper());
+    private ProgressDialog mLoadingDialog;
+    private Runnable mShowDialogRunnable;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
@@ -300,38 +308,63 @@ public class MainActivity extends AppCompatActivity {
 
         View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
         tipContainer.setOnClickListener(v -> {
-            try {
-                File targetFolder;
-                if (TextUtils.isEmpty(folderPath)) {
-                    targetFolder = rootDirectory;
-                } else {
-                    targetFolder = new File(rootDirectory, folderPath);
-                }
-
-                if (targetFolder.exists() && targetFolder.isDirectory()) {
-                    isInSearchMode = false;
-                    etSearch.setText("");
-                    currentDirectory = targetFolder;
-                    loadFileList();
-
-                    PreferenceUtils.saveLastPageType(MainActivity.this, "main");
-                    PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
-                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
-                    PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
-                }
-            } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "跳转文件夹失败", Toast.LENGTH_SHORT).show();
+            // 防重复点击：正在跳转时不响应第二次点击
+            if (isJumping) {
+                return;
             }
+            isJumping = true;
+
+            // 显示加载提示
+            ProgressDialog jumpDialog = new ProgressDialog(MainActivity.this);
+            jumpDialog.setMessage("正在跳转...");
+            jumpDialog.setCancelable(false);
+            jumpDialog.show();
+
             hideCustomPathTip();
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    File baseDir;
+
+                    if (isInTransferStation) {
+                        baseDir = transferStationDirectory;
+                    } else if (isInRecycleBin) {
+                        baseDir = getFilesDir();
+                    } else {
+                        baseDir = rootDirectory;
+                    }
+
+                    File targetFile = new File(baseDir, fullRelativePath);
+                    File targetFolder = targetFile.getParentFile();
+
+                    if (targetFolder != null && targetFolder.exists() && targetFolder.isDirectory()) {
+                        isInSearchMode = false;
+                        etSearch.setText("");
+                        currentDirectory = targetFolder;
+                        loadFileList();
+
+                        PreferenceUtils.saveLastPageType(MainActivity.this, "main");
+                        PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
+                        PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                        PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "跳转失败", Toast.LENGTH_SHORT).show();
+                } finally {
+                    // 跳转逻辑执行完，关闭对话框，释放点击
+                    isJumping = false;
+                    if (jumpDialog.isShowing()) {
+                        jumpDialog.dismiss();
+                    }
+                }
+            });
         });
 
         // ========== 修复5：提前计算位置，避免post异步调整导致的闪屏 ==========
         ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
 
-        // 先计算位置，再添加视图（核心：避免视图先显示在默认位置）
         int screenWidth = rootView.getWidth();
         int bottomMargin = dp2px(80);
-        // 提前测量视图尺寸（避免post获取宽高）
         mCustomTipView.measure(
                 View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
@@ -341,17 +374,14 @@ public class MainActivity extends AppCompatActivity {
         int left = (screenWidth - tipWidth) / 2;
         int top = rootView.getHeight() - bottomMargin - tipHeight;
 
-        // 设置位置后再添加视图，避免闪屏
         mCustomTipView.setX(left);
         mCustomTipView.setY(top);
 
-        // ========== 修复6：添加视图前先移除旧引用（避免重复添加） ==========
         if (mCustomTipView.getParent() != null) {
             ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
         }
         rootView.addView(mCustomTipView);
 
-        // 原有布局参数设置：保留
         ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
         params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -359,7 +389,7 @@ public class MainActivity extends AppCompatActivity {
 
         mIsTipShowing = true;
 
-        // 外部点击消失：保留
+        // 修复：MotionEvent.ACTION_DOWN
         rootView.setOnTouchListener((view, event) -> {
             if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
                 hideCustomPathTip();
@@ -441,7 +471,7 @@ public class MainActivity extends AppCompatActivity {
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
-                        hidePasteButton(); // 隐藏粘贴按钮
+                        hidePasteButton();
                         Toast.makeText(MainActivity.this, "禁止在当前复制/剪切的文件夹内粘贴，已自动隐藏粘贴功能", Toast.LENGTH_SHORT).show();
                     }
                     isInSearchMode = false;
@@ -459,14 +489,30 @@ public class MainActivity extends AppCompatActivity {
 
                     // ========== 搜索模式显示自定义路径提示（永不自动消失）==========
                     if (isInSearchMode) {
-                        // 只显示根目录后面的路径
-                        String full = file.getAbsolutePath();
-                        String root = rootDirectory.getAbsolutePath();
-                        String showPath = full.replace(root, "");
+                        // ========== 统一处理：主页 / 中转站 / 回收站 全部转为相对路径 ==========
+                        String showPath;
+                        String fullPath = file.getAbsolutePath();
+
+                        if (isInTransferStation) {
+                            // 中转站：相对中转站目录
+                            String basePath = transferStationDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else if (isInRecycleBin) {
+                            // 回收站：相对回收站目录
+                            String basePath = getFilesDir().getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else {
+                            // 主页：相对根目录
+                            String basePath = rootDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        }
+
+                        // 去掉开头的 /
                         if (showPath.startsWith(File.separator)) {
                             showPath = showPath.substring(1);
                         }
-                        // 显示自定义提示（替代Toast）
+
+                        // 最终传入：统一相对路径
                         MainActivity.this.showCustomPathTip(showPath);
                     }
 
@@ -823,6 +869,8 @@ public class MainActivity extends AppCompatActivity {
                 .setCancelable(true)
                 .show();
     }
+
+
     /**
      * 异步压缩任务：
      * 1. 后台执行文件夹压缩，显示进度对话框；
@@ -1787,6 +1835,7 @@ public class MainActivity extends AppCompatActivity {
         if (copiedFile != null && currentDirectory.equals(copiedFile)) {
             hidePasteButton();
         }
+
     }
     /**
      * 获取目录层级路径：
@@ -2638,14 +2687,100 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 
+
+
     /**
-     * 跳转到FileEditorActivity执行文件夹压缩为ZIP的操作
+     * 直接压缩文件夹，
      */
     private void zipFolder(File folder) {
-        Intent intent = new Intent(this, FileEditorActivity.class);
-        intent.putExtra("ACTION_ZIP_FOLDER", true);
-        intent.putExtra("FOLDER_PATH", folder.getAbsolutePath());
-        startActivityForResult(intent, REQUEST_EDIT_FILE);
+        // 防重复点击
+        if (isZipCompressing) {
+            Toast.makeText(this, "正在压缩中，请稍候...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!folder.exists() || !folder.isDirectory()) {
+            Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 先生成最终文件名（修复 lambda 不可变问题）
+        String zipFileName = folder.getName() + ".zip";
+        File zipFile = new File(folder.getParentFile(), zipFileName);
+        int counter = 1;
+        while (zipFile.exists()) {
+            zipFileName = folder.getName() + "(" + counter + ").zip";
+            zipFile = new File(folder.getParentFile(), zipFileName);
+            counter++;
+        }
+
+        // 关键：定义成 final，彻底解决 lambda 报错
+        final File finalZipFile = zipFile;
+        final ProgressDialog progressDialog = new ProgressDialog(this);
+        final boolean[] finalSuccess = {true}; // 用数组解决 lambda 不可变问题
+
+        // 弹窗配置
+        progressDialog.setMessage("正在压缩...");
+        progressDialog.setCancelable(false);
+        progressDialog.setCanceledOnTouchOutside(false);
+        progressDialog.show();
+
+        isZipCompressing = true;
+
+        new Thread(() -> {
+            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(finalZipFile))) {
+                zos.setLevel(9);
+                addFolderToZip(folder, folder.getName(), zos);
+            } catch (IOException e) {
+                finalSuccess[0] = false;
+                e.printStackTrace();
+            }
+
+            runOnUiThread(() -> {
+                progressDialog.dismiss();
+                isZipCompressing = false;
+
+                if (finalSuccess[0]) {
+                    Toast.makeText(this, "压缩成功：" + finalZipFile.getName(), Toast.LENGTH_SHORT).show();
+                    loadFileList();
+                } else {
+                    Toast.makeText(this, "压缩失败", Toast.LENGTH_SHORT).show();
+                    if (finalZipFile.exists()) {
+                        finalZipFile.delete();
+                    }
+                }
+            });
+        }).start();
+    }
+
+    /**
+     * 递归压缩文件夹
+     */
+    private void addFolderToZip(File folder, String parentPath, ZipOutputStream zos) throws IOException {
+        File[] files = folder.listFiles();
+        if (files == null || files.length == 0) {
+            ZipEntry zipEntry = new ZipEntry(parentPath + "/");
+            zos.putNextEntry(zipEntry);
+            zos.closeEntry();
+            return;
+        }
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                addFolderToZip(file, parentPath + "/" + file.getName(), zos);
+            } else {
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    ZipEntry zipEntry = new ZipEntry(parentPath + "/" + file.getName());
+                    zos.putNextEntry(zipEntry);
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = fis.read(buffer)) != -1) {
+                        zos.write(buffer, 0, len);
+                    }
+                    zos.closeEntry();
+                }
+            }
+        }
     }
     /**
      * 分享文件，
