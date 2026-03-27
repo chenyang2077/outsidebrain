@@ -142,6 +142,40 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         setupTextChangeListeners();
     }
+
+    private void zipFolder(File folder) {
+        if (!folder.exists() || !folder.isDirectory()) {
+            Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String zipFileName = folder.getName() + ".zip";
+        File zipFile = new File(folder.getParentFile(), zipFileName);
+        int counter = 1;
+        while (zipFile.exists()) {
+            zipFileName = folder.getName() + "(" + counter + ").zip";
+            zipFile = new File(folder.getParentFile(), zipFileName);
+            counter++;
+        }
+        final File finalZipFile = zipFile;
+        new Thread(() -> {
+            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(finalZipFile))) {
+                zos.setLevel(9);
+                addFolderToZip(folder, folder.getName(), zos);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "压缩成功：" + finalZipFile.getName(), Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_REFRESH);
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "压缩失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    if (finalZipFile.exists()) {
+                        finalZipFile.delete();
+                    }
+                });
+            }
+        }).start();
+    }
     // ==========================
 // 接收外部传来的 TXT 文件（系统分享/打开方式选择）文件管理器里点一个 txt
 //选择用你的 “快乐文字” 打开
