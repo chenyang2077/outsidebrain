@@ -142,7 +142,18 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         setupTextChangeListeners();
     }
-
+    private void handleZipAndShareIntent() {
+        Intent intent = getIntent();
+        if (intent.hasExtra("ACTION_ZIP_FOLDER")) {
+            String folderPath = intent.getStringExtra("FOLDER_PATH");
+            zipFolder(new File(folderPath));
+            finish();
+        } else if (intent.hasExtra("ACTION_SHARE_FILE")) {
+            String filePath = intent.getStringExtra("FILE_PATH");
+            shareFile(new File(filePath));
+            finish();
+        }
+    }
     private void zipFolder(File folder) {
         if (!folder.exists() || !folder.isDirectory()) {
             Toast.makeText(this, "文件夹不存在", Toast.LENGTH_SHORT).show();
