@@ -490,9 +490,10 @@ public class MainActivity extends AppCompatActivity {
 
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
-                    if (copiedFile != null && currentDirectory.equals(copiedFile)) {
+                    // 👇 只改这一行！！！
+                    if (copiedFile != null && file.equals(copiedFile)) {
                         hidePasteButton();
-                        Toast.makeText(MainActivity.this, "禁止粘贴", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "禁止粘贴在所选文件夹内部", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
