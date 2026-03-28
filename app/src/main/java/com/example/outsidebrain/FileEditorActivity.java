@@ -72,11 +72,18 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
     private int cursorPosition = 0;
     private Uri uriFromExternal = null;       // 外部文件的uri
+
+
+    private boolean isNavigatingBack = false;
     private String externalFolderPath = null;
     private String externalParentFolderPath = null; // 外部文件所在目录
     private boolean isOpenedFromExternal = false;
     private String originalFileNameForEdit;
+    public static ProgressDialog mBackDialog; // 设为 public static
     private String externalFileName = null; // 用来保存外部文件名
+    // 只加这三行，不动你任何原有变量
+    private Handler mHandler = new Handler(Looper.getMainLooper());
+    private Runnable mShowDialogRunnable;
     private String savedNewFilePath = "";
 
     @Override
@@ -838,13 +845,22 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
     // 返回逻辑
+
     @Override
     public void onBackPressed() {
         autoSave();
 
-        if (externalFolderPath != null) {
+        // 业界标准：立即弹窗，挡住卡顿界面
+        mBackDialog = new ProgressDialog(this);
+        mBackDialog.setMessage("正在返回文件夹...");
+        mBackDialog.setCancelable(false);
+        mBackDialog.show();
+
+        // 标准跳转（主线程，官方推荐）
+        String folderPath = getIntent().getStringExtra("current_folder");
+        if (folderPath != null) {
             Intent intent = new Intent(this, MainActivity.class);
-            intent.putExtra("open_folder", externalFolderPath);
+            intent.putExtra("open_folder", folderPath);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
         }
@@ -853,8 +869,21 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        // 这行是关键：只有真正跳走了，才关弹窗
+        if (mBackDialog != null) {
+            mBackDialog.dismiss();
+            mBackDialog = null;
+        }
+    }
+
+
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+
         if (isChangingConfigurations()) {
             if (!isPreEdit && targetFile != null && targetFile.exists()) {
                 PreferenceUtils.saveLastPageType(this, "editor");
