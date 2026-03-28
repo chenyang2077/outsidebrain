@@ -934,65 +934,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ==============================
-// 4. 文件排序（TXT/图片，也支持中文数字）
-// ==============================
-    // ==============================
-// 文件排序（最终版：中文数字 + 无序号则时间戳倒序）
-// ==============================
-    // ==============================
-// 文件排序（最终版：和文件夹数字逻辑完全一致 + 无数字按时间倒序）
-// ==============================
-    // ==============================
-// 文件排序终极版（和文件夹完全一致）
-// 规则：
-// 1. 优先【左侧数字/中文数字】排序
-// 2. 有数字 → 永远排在无数字前面
-// 3. 无数字 → 按时间倒序（最新在前）
-// ==============================
-    // ==============================
-// 文件排序终极版（和文件夹数字逻辑完全一致 + 无数字按时间倒序）
-// ==============================
-    // ==============================
-// 文件排序（最终无错版：和文件夹数字逻辑完全一致 + 无数字按时间倒序）
-// ==============================
-    private final Comparator<File> txtImageComparator = (file1, file2) -> {
-        String name1 = file1.getName();
-        String name2 = file2.getName();
-
-        // 1. 中文数字转换（和文件夹完全一样）
-        name1 = parseChineseNumber(name1);
-        name2 = parseChineseNumber(name2);
-
-        // 2. 提取左侧多级数字
-        List<Long> numList1 = extractMultiLevelNumberFromName(name1);
-        List<Long> numList2 = extractMultiLevelNumberFromName(name2);
-
-        // 3. 数字比较逻辑（完全复制文件夹）
-        if (!numList1.isEmpty() && !numList2.isEmpty()) {
-            int minSize = Math.min(numList1.size(), numList2.size());
-            for (int i = 0; i < minSize; i++) {
-                long n1 = numList1.get(i);
-                long n2 = numList2.get(i);
-                // 🔥 修复这里：用 n1 / n2 不是 num1/num2
-                if (n1 != n2) {
-                    return Long.compare(n1, n2);
-                }
-            }
-            return Integer.compare(numList1.size(), numList2.size());
-        }
-        // 只有第一个有数字 → 排前
-        else if (!numList1.isEmpty()) {
-            return -1;
-        }
-        // 只有第二个有数字 → 排前
-        else if (!numList2.isEmpty()) {
-            return 1;
-        }
-
-        // 4. 无数字 → 按修改时间倒序（最新在前）
-        return Long.compare(file2.lastModified(), file1.lastModified());
-    };
     /**
      * 转换拼音方法（参数直接用Transliterator，无需强转）
      */
@@ -1973,6 +1914,16 @@ public class MainActivity extends AppCompatActivity {
                     public int compare(File file1, File file2) {
                         String name1 = file1.getName();
                         String name2 = file2.getName();
+
+                        // ========================
+                        // 🔥 补上：和文件夹一样的中文数字解析（你原来缺这个）
+                        // ========================
+                        name1 = parseChineseNumber(name1);
+                        name2 = parseChineseNumber(name2);
+
+                        // ========================
+                        // 你原来的数字排序（完全不动）
+                        // ========================
                         List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                         List<Long> numList2 = extractMultiLevelNumberFromName(name2);
                         if (!numList1.isEmpty() && !numList2.isEmpty()) {
@@ -1990,21 +1941,29 @@ public class MainActivity extends AppCompatActivity {
                         } else if (!numList2.isEmpty()) {
                             return 1;
                         }
+
+                        // ========================
+                        // 你原来的时间戳提取（完全不动）
+                        // ========================
                         long time1 = extractTimestampIgnoreLast4(name1);
                         long time2 = extractTimestampIgnoreLast4(name2);
-                        if (time1 != time1) {
+                        if (time1 != time2) {
                             return Long.compare(time2, time1);
                         }
                         return name1.compareTo(name2);
                     }
 
+                    // 你原来的方法（完全不动）
                     private long extractTimestampIgnoreLast4(String fileName) {
-                        if (fileName == null || fileName.length() <= 4) return 0;
+                        if (fileName == null || fileName.length() <= 4) {
+                            return 0;
+                        }
                         String nameWithoutExtension = fileName;
                         int lastDotIndex = fileName.lastIndexOf(".");
                         if (lastDotIndex > 0) {
                             nameWithoutExtension = fileName.substring(0, lastDotIndex);
                         }
+
                         Pattern pattern = Pattern.compile("(\\d{17})$");
                         Matcher matcher = pattern.matcher(nameWithoutExtension);
                         if (matcher.find()) {
