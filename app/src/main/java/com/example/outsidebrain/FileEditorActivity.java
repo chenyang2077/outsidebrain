@@ -850,13 +850,6 @@ public class FileEditorActivity extends AppCompatActivity {
     public void onBackPressed() {
         autoSave();
 
-        // 立即弹窗（快返回会自己秒关，用户看不见）
-        mBackDialog = new ProgressDialog(this);
-        mBackDialog.setMessage("正在返回文件夹...");
-        mBackDialog.setCancelable(false);
-        mBackDialog.show();
-
-        // 跳转
         String folderPath = getIntent().getStringExtra("current_folder");
         if (folderPath != null) {
             Intent intent = new Intent(this, MainActivity.class);
@@ -868,14 +861,6 @@ public class FileEditorActivity extends AppCompatActivity {
         super.onBackPressed();
     }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (mBackDialog != null) {
-            mBackDialog.dismiss();
-            mBackDialog = null;
-        }
-    }
 
 
 

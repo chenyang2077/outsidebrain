@@ -1773,110 +1773,124 @@ public class MainActivity extends AppCompatActivity {
      * 3. 更新适配器数据，刷新UI。
      */
     private void loadFileList() {
-        File dir = currentDirectory;
-        File[] files = dir.listFiles();
+        // 👇 【仅加这一行：记录当前目录，用于判断是否已经返回上一级】
+        final File loadDirectory = currentDirectory;
 
-        List<File> folders = new ArrayList<>();
-        List<File> zipFiles = new ArrayList<>();
-        List<File> txtAndImageFiles = new ArrayList<>();
-        List<File> otherFiles = new ArrayList<>();
-
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    folders.add(file);
-                } else if (file.getName().toLowerCase().endsWith(".zip")) {
-                    zipFiles.add(file);
-                } else if (file.getName().toLowerCase().endsWith(".txt") || isImageFile(file)) {
-                    txtAndImageFiles.add(file);
-                } else {
-                    otherFiles.add(file);
-                }
-            }
-        }
-
-        // 你的原有排序 100% 保留
-        sortFoldersWithDecimalSupport(folders);
-
-        Comparator<File> txtImageComparator = new Comparator<File>() {
+        // 👇 核心改造：所有耗时逻辑 放进子线程，不卡UI
+        new Thread(new Runnable() {
             @Override
-            public int compare(File file1, File file2) {
-                String name1 = file1.getName();
-                String name2 = file2.getName();
-                List<Long> numList1 = extractMultiLevelNumberFromName(name1);
-                List<Long> numList2 = extractMultiLevelNumberFromName(name2);
-                if (!numList1.isEmpty() && !numList2.isEmpty()) {
-                    int minSize = Math.min(numList1.size(), numList2.size());
-                    for (int i = 0; i < minSize; i++) {
-                        long num1 = numList1.get(i);
-                        long num2 = numList2.get(i);
-                        if (num1 != num2) {
-                            return Long.compare(num1, num2);
+            public void run() {
+                File dir = loadDirectory;
+                File[] files = dir.listFiles();
+
+                List<File> folders = new ArrayList<>();
+                List<File> zipFiles = new ArrayList<>();
+                List<File> txtAndImageFiles = new ArrayList<>();
+                List<File> otherFiles = new ArrayList<>();
+
+                if (files != null) {
+                    for (File file : files) {
+                        if (file.isDirectory()) {
+                            folders.add(file);
+                        } else if (file.getName().toLowerCase().endsWith(".zip")) {
+                            zipFiles.add(file);
+                        } else if (file.getName().toLowerCase().endsWith(".txt") || isImageFile(file)) {
+                            txtAndImageFiles.add(file);
+                        } else {
+                            otherFiles.add(file);
                         }
                     }
-                    return Integer.compare(numList1.size(), numList2.size());
-                } else if (!numList1.isEmpty()) {
-                    return -1;
-                } else if (!numList2.isEmpty()) {
-                    return 1;
                 }
-                long time1 = extractTimestampIgnoreLast4(name1);
-                long time2 = extractTimestampIgnoreLast4(name2);
-                if (time1 != time1) {
-                    return Long.compare(time2, time1);
-                }
-                return name1.compareTo(name2);
-            }
 
-            private long extractTimestampIgnoreLast4(String fileName) {
-                if (fileName == null || fileName.length() <= 4) return 0;
-                String nameWithoutExtension = fileName;
-                int lastDotIndex = fileName.lastIndexOf(".");
-                if (lastDotIndex > 0) {
-                    nameWithoutExtension = fileName.substring(0, lastDotIndex);
-                }
-                Pattern pattern = Pattern.compile("(\\d{17})$");
-                Matcher matcher = pattern.matcher(nameWithoutExtension);
-                if (matcher.find()) {
-                    try {
-                        return Long.parseLong(matcher.group(1));
-                    } catch (NumberFormatException e) {
+                // 你的原有排序 100% 保留
+                sortFoldersWithDecimalSupport(folders);
+
+                Comparator<File> txtImageComparator = new Comparator<File>() {
+                    @Override
+                    public int compare(File file1, File file2) {
+                        String name1 = file1.getName();
+                        String name2 = file2.getName();
+                        List<Long> numList1 = extractMultiLevelNumberFromName(name1);
+                        List<Long> numList2 = extractMultiLevelNumberFromName(name2);
+                        if (!numList1.isEmpty() && !numList2.isEmpty()) {
+                            int minSize = Math.min(numList1.size(), numList2.size());
+                            for (int i = 0; i < minSize; i++) {
+                                long num1 = numList1.get(i);
+                                long num2 = numList2.get(i);
+                                if (num1 != num2) {
+                                    return Long.compare(num1, num2);
+                                }
+                            }
+                            return Integer.compare(numList1.size(), numList2.size());
+                        } else if (!numList1.isEmpty()) {
+                            return -1;
+                        } else if (!numList2.isEmpty()) {
+                            return 1;
+                        }
+                        long time1 = extractTimestampIgnoreLast4(name1);
+                        long time2 = extractTimestampIgnoreLast4(name2);
+                        if (time1 != time1) {
+                            return Long.compare(time2, time1);
+                        }
+                        return name1.compareTo(name2);
+                    }
+
+                    private long extractTimestampIgnoreLast4(String fileName) {
+                        if (fileName == null || fileName.length() <= 4) return 0;
+                        String nameWithoutExtension = fileName;
+                        int lastDotIndex = fileName.lastIndexOf(".");
+                        if (lastDotIndex > 0) {
+                            nameWithoutExtension = fileName.substring(0, lastDotIndex);
+                        }
+                        Pattern pattern = Pattern.compile("(\\d{17})$");
+                        Matcher matcher = pattern.matcher(nameWithoutExtension);
+                        if (matcher.find()) {
+                            try {
+                                return Long.parseLong(matcher.group(1));
+                            } catch (NumberFormatException e) {
+                                return 0;
+                            }
+                        }
                         return 0;
                     }
-                }
-                return 0;
+                };
+
+                Collections.sort(txtAndImageFiles, txtImageComparator);
+                Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+                Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+
+                List<File> fullySortedList = new ArrayList<>();
+                fullySortedList.addAll(folders);
+                fullySortedList.addAll(zipFiles);
+                fullySortedList.addAll(txtAndImageFiles);
+                fullySortedList.addAll(otherFiles);
+
+                // 👇 只把UI刷新放回主线程
+                runOnUiThread(() -> {
+                    // 👇 【仅加这一段：如果已经返回上一级，直接不刷新，不把你拖回去！】
+                    if (!loadDirectory.equals(currentDirectory)) {
+                        return;
+                    }
+
+                    fileList.clear();
+                    fileList.addAll(fullySortedList);
+                    fileAdapter.setData(fileList);
+
+                    // 关闭加载弹窗
+                    if (mLoadingDialog != null && mLoadingDialog.isShowing()) {
+                        mLoadingDialog.dismiss();
+                        mLoadingDialog = null;
+                    }
+
+                    if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
+                        updateLevelHint();
+                    }
+                    if (copiedFile != null && dir.equals(copiedFile)) {
+                        hidePasteButton();
+                    }
+                });
             }
-        };
-
-        Collections.sort(txtAndImageFiles, txtImageComparator);
-        Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-        Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-
-        List<File> fullySortedList = new ArrayList<>();
-        fullySortedList.addAll(folders);
-        fullySortedList.addAll(zipFiles);
-        fullySortedList.addAll(txtAndImageFiles);
-        fullySortedList.addAll(otherFiles);
-
-        runOnUiThread(() -> {
-            fileList.clear();
-            fileList.addAll(fullySortedList);
-            fileAdapter.setData(fileList);
-
-            // 关闭加载弹窗
-            if (mLoadingDialog != null && mLoadingDialog.isShowing()) {
-                mLoadingDialog.dismiss();
-                mLoadingDialog = null;
-            }
-
-            if (TextUtils.isEmpty(etSearch.getText().toString().trim())) {
-                updateLevelHint();
-            }
-            if (copiedFile != null && dir.equals(copiedFile)) {
-                hidePasteButton();
-            }
-        });
-
+        }).start();
     }
 
     /**
