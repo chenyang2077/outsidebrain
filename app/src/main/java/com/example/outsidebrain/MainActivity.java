@@ -24,6 +24,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import android.text.Spannable;
@@ -97,6 +98,14 @@ import androidx.appcompat.app.AppCompatDelegate;
 import java.io.BufferedWriter;
 import android.icu.text.Transliterator;
 import java.io.OutputStreamWriter;
+// 先确保你有这些 import（如果没有，加在类最顶部）
+import android.os.Build;
+import android.icu.text.Transliterator;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
@@ -140,8 +149,12 @@ public class MainActivity extends AppCompatActivity {
     private String lastTipText = ""; // 缓存上一次提示文本，避免重复更新
     // 压缩专用 防重复点击
     private boolean isZipCompressing = false;
+
+    private String lastSearchKeyword = ""; // 保存搜索词
     // 文件夹智能加载提示（快不弹，慢才弹）
     private Handler mLoadingHandler = new Handler(Looper.getMainLooper());
+    // 保存搜索结果列表，避免返回时重刷
+    private List<File> lastSearchResultList = new ArrayList<>();
 
     private Runnable mShowDialogRunnable;
     private Handler mHandler = new Handler(Looper.getMainLooper());
@@ -152,6 +165,9 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog mLoadingDialog;
     private static final int FILE_COUNT_LIMIT = 100;
     private static final int FIRST_BATCH = 50;
+
+    // 保存搜索列表滑动位置
+    private int lastSearchRecyclerPosition = 0;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
@@ -508,7 +524,7 @@ public class MainActivity extends AppCompatActivity {
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, "");
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, "");
-                }else if (file.getName().toLowerCase().endsWith(".txt")) {
+                } else if (file.getName().toLowerCase().endsWith(".txt")) {
                     hidePasteButton();
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
@@ -754,6 +770,108 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
+
+
+    /**
+     * 提取文件名开头的多级数字序号（支持任意层级小数点）
+     * @param fileName 文件名
+     * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
+     */
+
+    private List<Long> extractMultiLevelNumberFromName(String fileName) {
+        List<Long> numList = new ArrayList<>();
+        if (fileName == null || fileName.isEmpty()) {
+            return numList;
+        }
+        Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
+        Matcher matcher = pattern.matcher(fileName);
+        if (matcher.find()) {
+            String numStr = matcher.group(1);
+            String[] numParts = numStr.split("\\.");
+            for (String part : numParts) {
+                try {
+                    numList.add(Long.parseLong(part));
+                } catch (NumberFormatException e) {
+                    break;
+                }
+            }
+        }
+        return numList;
+    }
+
+    // ==============================
+// 2. 中文数字映射 & 解析（全局共用）
+// ==============================
+    private final Map<String, Integer> CN_NUM_MAP = new HashMap<>();
+
+    {
+        CN_NUM_MAP.put("零", 0);
+        CN_NUM_MAP.put("一", 1);
+        CN_NUM_MAP.put("二", 2);
+        CN_NUM_MAP.put("三", 3);
+        CN_NUM_MAP.put("四", 4);
+        CN_NUM_MAP.put("五", 5);
+        CN_NUM_MAP.put("六", 6);
+        CN_NUM_MAP.put("七", 7);
+        CN_NUM_MAP.put("八", 8);
+        CN_NUM_MAP.put("九", 9);
+        CN_NUM_MAP.put("十", 10);
+        CN_NUM_MAP.put("百", 100);
+        CN_NUM_MAP.put("千", 1000);
+        CN_NUM_MAP.put("万", 10000);
+    }
+
+    private String parseChineseNumber(String input) {
+        if (input == null || input.isEmpty()) {
+            return input;
+        }
+        StringBuilder result = new StringBuilder();
+        StringBuilder current = new StringBuilder();
+
+        for (int i = 0; i < input.length(); i++) {
+            String c = String.valueOf(input.charAt(i));
+            if (CN_NUM_MAP.containsKey(c)) {
+                current.append(c);
+            } else {
+                if (current.length() > 0) {
+                    result.append(convertChineseToNumber(current.toString()));
+                    current.setLength(0);
+                }
+                result.append(c);
+            }
+        }
+
+        if (current.length() > 0) {
+            result.append(convertChineseToNumber(current.toString()));
+        }
+
+        return result.toString();
+    }
+
+    private long convertChineseToNumber(String cn) {
+        try {
+            long total = 0;
+            long temp = 0;
+            for (int i = 0; i < cn.length(); i++) {
+                String c = String.valueOf(cn.charAt(i));
+                int v = CN_NUM_MAP.getOrDefault(c, 0);
+
+                if (v == 10 || v == 100 || v == 1000 || v == 10000) {
+                    temp = (temp == 0) ? 1 : temp;
+                    temp *= v;
+                    total += temp;
+                    temp = 0;
+                } else {
+                    temp = v;
+                }
+            }
+            total += temp;
+            return total;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     /**
      * 文件夹排序（支持多级小数序号+汉字拼音首字母排序）：
      * 1. 提取文件夹名称开头的多级数字序号（如1.25.5.25）；
@@ -775,13 +893,20 @@ public class MainActivity extends AppCompatActivity {
         } else {
             transliterator = null;
         }
+
         Collections.sort(folders, new Comparator<File>() {
             @Override
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
+
+                // 统一解析中文数字
+                name1 = parseChineseNumber(name1);
+                name2 = parseChineseNumber(name2);
+
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
+
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
                     int minSize = Math.min(numList1.size(), numList2.size());
                     for (int i = 0; i < minSize; i++) {
@@ -797,6 +922,7 @@ public class MainActivity extends AppCompatActivity {
                 } else if (!numList2.isEmpty()) {
                     return 1;
                 }
+
                 String pinyin1 = convertToPinyin(name1, transliterator);
                 String pinyin2 = convertToPinyin(name2, transliterator);
                 int pinyinCompare = pinyin1.compareTo(pinyin2);
@@ -807,6 +933,66 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
+    // ==============================
+// 4. 文件排序（TXT/图片，也支持中文数字）
+// ==============================
+    // ==============================
+// 文件排序（最终版：中文数字 + 无序号则时间戳倒序）
+// ==============================
+    // ==============================
+// 文件排序（最终版：和文件夹数字逻辑完全一致 + 无数字按时间倒序）
+// ==============================
+    // ==============================
+// 文件排序终极版（和文件夹完全一致）
+// 规则：
+// 1. 优先【左侧数字/中文数字】排序
+// 2. 有数字 → 永远排在无数字前面
+// 3. 无数字 → 按时间倒序（最新在前）
+// ==============================
+    // ==============================
+// 文件排序终极版（和文件夹数字逻辑完全一致 + 无数字按时间倒序）
+// ==============================
+    // ==============================
+// 文件排序（最终无错版：和文件夹数字逻辑完全一致 + 无数字按时间倒序）
+// ==============================
+    private final Comparator<File> txtImageComparator = (file1, file2) -> {
+        String name1 = file1.getName();
+        String name2 = file2.getName();
+
+        // 1. 中文数字转换（和文件夹完全一样）
+        name1 = parseChineseNumber(name1);
+        name2 = parseChineseNumber(name2);
+
+        // 2. 提取左侧多级数字
+        List<Long> numList1 = extractMultiLevelNumberFromName(name1);
+        List<Long> numList2 = extractMultiLevelNumberFromName(name2);
+
+        // 3. 数字比较逻辑（完全复制文件夹）
+        if (!numList1.isEmpty() && !numList2.isEmpty()) {
+            int minSize = Math.min(numList1.size(), numList2.size());
+            for (int i = 0; i < minSize; i++) {
+                long n1 = numList1.get(i);
+                long n2 = numList2.get(i);
+                // 🔥 修复这里：用 n1 / n2 不是 num1/num2
+                if (n1 != n2) {
+                    return Long.compare(n1, n2);
+                }
+            }
+            return Integer.compare(numList1.size(), numList2.size());
+        }
+        // 只有第一个有数字 → 排前
+        else if (!numList1.isEmpty()) {
+            return -1;
+        }
+        // 只有第二个有数字 → 排前
+        else if (!numList2.isEmpty()) {
+            return 1;
+        }
+
+        // 4. 无数字 → 按修改时间倒序（最新在前）
+        return Long.compare(file2.lastModified(), file1.lastModified());
+    };
     /**
      * 转换拼音方法（参数直接用Transliterator，无需强转）
      */
@@ -825,31 +1011,7 @@ public class MainActivity extends AppCompatActivity {
             return name.toLowerCase();
         }
     }
-    /**
-     * 提取文件名开头的多级数字序号（支持任意层级小数点）
-     * @param fileName 文件名
-     * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
-     */
-    private List<Long> extractMultiLevelNumberFromName(String fileName) {
-        List<Long> numList = new ArrayList<>();
-        if (fileName == null || fileName.isEmpty()) {
-            return numList;
-        }
-        Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
-        Matcher matcher = pattern.matcher(fileName);
-        if (matcher.find()) {
-            String numStr = matcher.group(1);
-            String[] numParts = numStr.split("\\.");
-            for (String part : numParts) {
-                try {
-                    numList.add(Long.parseLong(part));
-                } catch (NumberFormatException e) {
-                    break;
-                }
-            }
-        }
-        return numList;
-    }
+
     /**
      * 压缩根文件夹：
      * 1. 弹出确认对话框，确认压缩操作；
@@ -1427,6 +1589,7 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_SHORT).show();
             });
         }).start();
+
     }
 
     /**
@@ -4161,6 +4324,8 @@ public class MainActivity extends AppCompatActivity {
             isInRecycleBin = false;
         }
         invalidateOptionsMenu();
+
+
     }
     /**
      * 返回键处理（流畅滑动+底部精准定位版）：

@@ -11,6 +11,7 @@ import android.util.Log;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -60,10 +61,8 @@ public class ZipUnzipUtil {
                 return false;
             }
 
-            // 核心修改1：根文件夹仅创建一次，不重复生成序号
             String targetRootFolder = getNonConflictFolderName(targetDir, rootDirInfo.rootFolderName);
             File rootTargetDir = new File(targetDir, targetRootFolder);
-            // 确保根文件夹存在（仅创建，不重复生成序号）
             if (!rootTargetDir.exists() && !rootTargetDir.mkdirs()) {
                 Log.e(TAG, "创建根解压目录失败: " + rootTargetDir.getAbsolutePath());
                 return false;
@@ -83,13 +82,11 @@ public class ZipUnzipUtil {
                 }
             }
 
-            // 核心修改2：目录项仅校验路径，不主动创建带序号的文件夹（保留原空文件夹）
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
             }
 
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-            // 扩展：收集所有TXT和图片文件的清洁名称
             Set<String> existingCleanNames = new HashSet<>();
             collectAllCleanFileNames(rootDir, existingCleanNames);
 
@@ -182,6 +179,10 @@ public class ZipUnzipUtil {
      * 统一处理TXT/图片文件重命名，生成唯一的带时间戳和随机字符的文件名
      * @return int 更新后的序列号
      */
+    /**
+     * 统一处理TXT/图片文件重命名：不清理旧时间戳，只追加/更新最后一个时间戳
+     * @return int 更新后的序列号
+     */
     private static int processNamedFile(File targetFile, File rootDir,
                                         Set<String> existingCleanNames, int sequenceNumber) {
         if (targetFile == null || !targetFile.exists()) {
@@ -189,53 +190,57 @@ public class ZipUnzipUtil {
         }
         try {
             String originalName = targetFile.getName();
-            // 获取文件后缀（带点）
-            String suffix = originalName.substring(originalName.lastIndexOf("."));
-            String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf("."));
+            int lastDot = originalName.lastIndexOf(".");
+            String suffix = lastDot > 0 ? originalName.substring(lastDot) : "";
+            String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
 
-            // 清理旧时间戳（和原TXT逻辑一致）
-            String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
-            cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
-            cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+            String newFileName;
+            String newTs = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
 
-            if (cleanName.trim().isEmpty()) {
-                // 区分空名称的默认值
-                if (suffix.equalsIgnoreCase(".txt")) {
-                    cleanName = "未命名文件";
-                } else {
-                    cleanName = "未命名图片";
+            // 规则匹配：名称_6位随机_时间戳  或  名称_6位随机_时间戳_时间戳
+            Pattern hasRandomAndTs = Pattern.compile("^.+_[A-Za-z0-9]{6}(_\\d{13,17}){1,2}$");
+            // 只匹配：名称_6位随机_时间戳
+            Pattern hasOneTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}$");
+            // 匹配：名称_6位随机_时间戳_时间戳
+            Pattern hasTwoTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}_\\d{13,17}$");
+
+            if (hasTwoTs.matcher(nameWithoutExt).matches()) {
+                // 🔥 规则3：有随机 + 2个时间戳 → 替换最后一个时间戳
+                String base = nameWithoutExt.replaceAll("_\\d{13,17}$", "");
+                newFileName = base + "_" + newTs + suffix;
+            } else if (hasOneTs.matcher(nameWithoutExt).matches()) {
+                // 🔥 规则2：有随机 + 1个时间戳 → 追加一个时间戳
+                newFileName = nameWithoutExt + "_" + newTs + suffix;
+            } else if (hasRandomAndTs.matcher(nameWithoutExt).matches()) {
+                // 兜底兼容
+                newFileName = nameWithoutExt + "_" + newTs + suffix;
+            } else {
+                // 🔥 规则1：没有随机 + 没有时间戳 → 全新生成：名称_随机_时间戳
+                String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
+                cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+                cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
+
+                if (cleanName.trim().isEmpty()) {
+                    cleanName = suffix.equalsIgnoreCase(".txt") ? "未命名文件" : "未命名图片";
                 }
+
+                String uniqueBase = findUniqueBaseName(cleanName, existingCleanNames);
+                existingCleanNames.add(uniqueBase);
+                String randomStr = generateRandomString();
+
+                newFileName = uniqueBase + "_" + randomStr + "_" + newTs + suffix;
             }
 
-            // 查找唯一基础名
-            String uniqueBaseName = findUniqueBaseName(cleanName, existingCleanNames);
-            existingCleanNames.add(uniqueBaseName);
-
-            // 生成随机串和时间戳（和原TXT逻辑一致）
-            String randomStr = generateRandomString();
-            String datePart = BASE_TIMESTAMP_FORMAT.format(new Date());
-            String sequenceStr = String.format("%04d", sequenceNumber % 10000);
-            SimpleDateFormat timeSuffixFormat = new SimpleDateFormat("ssSSS", Locale.getDefault());
-            String timeSuffix = timeSuffixFormat.format(new Date());
-            String newTimestamp = datePart + sequenceStr + timeSuffix;
-
-            // 拼接新文件名（兼容不同后缀）
-            String newFileName = uniqueBaseName + "_" + randomStr + "_" + newTimestamp + suffix;
             File newFile = new File(targetFile.getParentFile(), newFileName);
 
-            // 重命名/复制重命名（和原TXT逻辑一致）
             if (targetFile.renameTo(newFile)) {
-                Log.d(TAG, "文件处理成功: " + originalName + " → " + newFileName);
-                return (sequenceNumber + 1) % 10000;
-            }
-            if (copyFileContent(targetFile, newFile)) {
+                Log.d(TAG, "重命名成功: " + originalName + " → " + newFileName);
+            } else if (copyFileContent(targetFile, newFile)) {
                 targetFile.delete();
-                Log.d(TAG, "文件复制并重命名成功: " + originalName + " → " + newFileName);
-                return (sequenceNumber + 1) % 10000;
-            } else {
-                Log.w(TAG, "文件重命名失败: " + originalName);
-                return sequenceNumber;
+                Log.d(TAG, "复制重命名成功: " + originalName + " → " + newFileName);
             }
+
+            return (sequenceNumber + 1) % 10000;
         } catch (Exception e) {
             Log.e(TAG, "处理文件失败", e);
             return sequenceNumber;

@@ -347,7 +347,7 @@ public class FileEditorActivity extends AppCompatActivity {
 
     private void loadExistingFileData(boolean needHandleTimestamp) {
         if (targetFile == null || !targetFile.exists()) {
-            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "文件不存在，可能更改未更新", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -849,15 +849,6 @@ public class FileEditorActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         autoSave();
-
-        String folderPath = getIntent().getStringExtra("current_folder");
-        if (folderPath != null) {
-            Intent intent = new Intent(this, MainActivity.class);
-            intent.putExtra("open_folder", folderPath);
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            startActivity(intent);
-        }
-
         super.onBackPressed();
     }
 
