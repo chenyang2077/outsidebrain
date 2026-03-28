@@ -1877,10 +1877,8 @@ public class MainActivity extends AppCompatActivity {
      * 3. 更新适配器数据，刷新UI。
      */
     private void loadFileList() {
-        // 👇 【仅加这一行：记录当前目录，用于判断是否已经返回上一级】
         final File loadDirectory = currentDirectory;
 
-        // 👇 核心改造：所有耗时逻辑 放进子线程，不卡UI
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -1906,7 +1904,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
 
-                // 你的原有排序 100% 保留
                 sortFoldersWithDecimalSupport(folders);
 
                 Comparator<File> txtImageComparator = new Comparator<File>() {
@@ -1915,15 +1912,11 @@ public class MainActivity extends AppCompatActivity {
                         String name1 = file1.getName();
                         String name2 = file2.getName();
 
-                        // ========================
-                        // 🔥 补上：和文件夹一样的中文数字解析（你原来缺这个）
-                        // ========================
+                        // 中文数字解析（和文件夹统一）
                         name1 = parseChineseNumber(name1);
                         name2 = parseChineseNumber(name2);
 
-                        // ========================
-                        // 你原来的数字排序（完全不动）
-                        // ========================
+                        // 数字排序（完全和你原来一样）
                         List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                         List<Long> numList2 = extractMultiLevelNumberFromName(name2);
                         if (!numList1.isEmpty() && !numList2.isEmpty()) {
@@ -1942,9 +1935,7 @@ public class MainActivity extends AppCompatActivity {
                             return 1;
                         }
 
-                        // ========================
-                        // 你原来的时间戳提取（完全不动）
-                        // ========================
+                        // 时间戳排序（你原来的逻辑）
                         long time1 = extractTimestampIgnoreLast4(name1);
                         long time2 = extractTimestampIgnoreLast4(name2);
                         if (time1 != time2) {
@@ -1953,7 +1944,6 @@ public class MainActivity extends AppCompatActivity {
                         return name1.compareTo(name2);
                     }
 
-                    // 你原来的方法（完全不动）
                     private long extractTimestampIgnoreLast4(String fileName) {
                         if (fileName == null || fileName.length() <= 4) {
                             return 0;
@@ -1987,18 +1977,21 @@ public class MainActivity extends AppCompatActivity {
                 fullySortedList.addAll(txtAndImageFiles);
                 fullySortedList.addAll(otherFiles);
 
-                // 👇 只把UI刷新放回主线程
                 runOnUiThread(() -> {
-                    // 👇 【仅加这一段：如果已经返回上一级，直接不刷新，不把你拖回去！】
                     if (!loadDirectory.equals(currentDirectory)) {
                         return;
                     }
 
                     fileList.clear();
                     fileList.addAll(fullySortedList);
-                    fileAdapter.setData(fileList);
 
-                    // 关闭加载弹窗
+                    // ===========================
+                    // 🔥 就是这一句！加回去！
+                    // ===========================
+                    if (!isInSearchMode) {
+                        fileAdapter.setData(fileList);
+                    }
+
                     if (mLoadingDialog != null && mLoadingDialog.isShowing()) {
                         mLoadingDialog.dismiss();
                         mLoadingDialog = null;
