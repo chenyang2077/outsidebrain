@@ -464,11 +464,15 @@ public class MainActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = mData.get(position);
             String displayFileName = file.getName();
+            int defaultIconSize = dp2px(holder.itemView.getContext(), 24);
+            ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
+            params.width = defaultIconSize;
+            params.height = defaultIconSize;
+            holder.ivIcon.setLayoutParams(params);
 
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 int iconSize = dp2px(holder.itemView.getContext(), 36);
-                ViewGroup.LayoutParams params = holder.ivIcon.getLayoutParams();
                 params.width = iconSize;
                 params.height = iconSize;
                 holder.ivIcon.setLayoutParams(params);
@@ -500,7 +504,6 @@ public class MainActivity extends AppCompatActivity {
 
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
-                    // 👇 只改这一行！！！
                     if (copiedFile != null && file.equals(copiedFile)) {
                         hidePasteButton();
                         Toast.makeText(MainActivity.this, "禁止粘贴在所选文件夹内部", Toast.LENGTH_SHORT).show();
@@ -511,18 +514,15 @@ public class MainActivity extends AppCompatActivity {
                     int totalCount = (tempFiles != null) ? tempFiles.length : 0;
 
                     if (totalCount <= FILE_COUNT_LIMIT) {
-                        // 小文件夹：原生逻辑
                         currentDirectory = file;
                         loadFileList();
                         updateLevelHint();
                     } else {
-                        // 大文件夹：先跳转 + 加载提示
                         currentDirectory = file;
                         fileList.clear();
                         fileAdapter.setData(fileList);
                         updateLevelHint();
 
-                        // ✅ 这里修复上下文！用 MainActivity.this 绝对不报错
                         mLoadingDialog = new ProgressDialog(MainActivity.this);
                         mLoadingDialog.setMessage("正在加载文件...");
                         mLoadingDialog.setCancelable(false);
@@ -540,32 +540,25 @@ public class MainActivity extends AppCompatActivity {
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
 
-                    // ========== 搜索模式显示自定义路径提示（永不自动消失）==========
                     if (isInSearchMode) {
-                        // ========== 统一处理：主页 / 中转站 / 回收站 全部转为相对路径 ==========
                         String showPath;
                         String fullPath = file.getAbsolutePath();
 
                         if (isInTransferStation) {
-                            // 中转站：相对中转站目录
                             String basePath = transferStationDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
                         } else if (isInRecycleBin) {
-                            // 回收站：相对回收站目录
                             String basePath = getFilesDir().getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
                         } else {
-                            // 主页：相对根目录
                             String basePath = rootDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
                         }
 
-                        // 去掉开头的 /
                         if (showPath.startsWith(File.separator)) {
                             showPath = showPath.substring(1);
                         }
 
-                        // 最终传入：统一相对路径
                         MainActivity.this.showCustomPathTip(showPath);
                     }
 
