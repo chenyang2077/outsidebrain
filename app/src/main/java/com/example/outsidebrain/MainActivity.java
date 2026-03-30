@@ -1224,9 +1224,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             List<String> menuList = new ArrayList<>();
 
-            // ------------------------------
-            // 完全保留你原来的菜单显示逻辑
-            // ------------------------------
+            // 你的菜单逻辑
             if (isInRecycleBin) {
                 menuList.add("返回主页");
                 menuList.add("清空回收站");
@@ -1244,9 +1242,9 @@ public class MainActivity extends AppCompatActivity {
             }
 
             ListView listView = new ListView(this);
-            listView.setBackgroundColor(Color.TRANSPARENT);
+            listView.setBackgroundResource(R.drawable.popup_menu_bg);
             listView.setDivider(null);
-            listView.setDividerHeight(1); // 紧凑间距
+            listView.setDividerHeight(1);
 
             ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, 0, menuList) {
                 @Override
@@ -1257,16 +1255,13 @@ public class MainActivity extends AppCompatActivity {
 
                     TextView tv = convertView.findViewById(android.R.id.text1);
                     tv.setText(menuList.get(position));
-                    tv.setTextColor(Color.WHITE);
-                    tv.setTextSize(18); // 字体变大
-                    tv.setPadding(20, 14, 20, 14); // 更精致
+                    tv.setTextColor(0xFFFFFFFF);
+                    tv.setTextSize(18);
+                    tv.setPadding(20, 16, 20, 16);
 
-                    // 按钮边框
                     convertView.setBackgroundResource(R.drawable.menu_item_border);
-
-                    // 点击效果（正常不失效）
-                    convertView.setClickable(true);
-                    convertView.setFocusable(true);
+                    convertView.setClickable(false);
+                    convertView.setFocusable(false);
 
                     return convertView;
                 }
@@ -1274,28 +1269,23 @@ public class MainActivity extends AppCompatActivity {
 
             listView.setAdapter(adapter);
 
-            // ------------------------------
-            // 宽度缩小 40% 你原来 240 → 现在 144
-            // ------------------------------
             final PopupWindow popupWindow = new PopupWindow(
                     listView,
-                    dp2px(144), // 缩小40%
+                    dp2px(140),
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     true
             );
-            popupWindow.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            popupWindow.setBackgroundDrawable(new ColorDrawable(0xFF000000));
             popupWindow.setOutsideTouchable(true);
             popupWindow.setFocusable(true);
 
-            // ------------------------------
-            // 点击功能 100% 还原你原来的逻辑
-            // ------------------------------
+            // ==========================
+            // 关键：全部去掉冲突的 selector
+            // ==========================
+
+            // 点击功能 100% 正常
             listView.setOnItemClickListener((parent, v, position, id) -> {
                 String text = menuList.get(position);
-
-                // ------------------------------
-                // 完全你原来的触发方式
-                // ------------------------------
                 switch (text) {
                     case "返回主页":
                         if (isInRecycleBin) exitRecycleBin();
@@ -1326,6 +1316,10 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
+
+
+
 
 
 
