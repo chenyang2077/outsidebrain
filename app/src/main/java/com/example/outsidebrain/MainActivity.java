@@ -1246,7 +1246,7 @@ public class MainActivity extends AppCompatActivity {
             ListView listView = new ListView(this);
             listView.setBackgroundColor(Color.TRANSPARENT);
             listView.setDivider(null);
-            listView.setDividerHeight(3); // 紧凑间距
+            listView.setDividerHeight(1); // 紧凑间距
 
             ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, 0, menuList) {
                 @Override
