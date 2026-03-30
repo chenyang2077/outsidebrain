@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 按下时：淡淡的灰色（非常柔和，不亮） -->
+    <item android:state_pressed="true">
+        <shape>
+            <solid android:color="#20000000" /> <!-- 淡黑色，超柔和 -->
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+
+    <!-- 选中时（长按/多选）：更淡 -->
+    <item android:state_selected="true">
+        <shape>
+            <solid android:color="#10000000" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+
+    <!-- 默认：透明（保留你原来的样式） -->
+    <item>
+        <shape>
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</selector>

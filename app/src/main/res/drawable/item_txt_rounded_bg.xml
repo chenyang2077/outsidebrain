@@ -1,5 +1,34 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <corners android:radius="6dp" />
-    <stroke android:width="0dp" android:color="#EEEEEE" />
-    <solid android:color="@color/fileColor" /> <!-- TXT文件颜色 -->
-</shape>
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 你原来的样式 100% 保留 -->
+    <item>
+        <shape>
+            <corners android:radius="6dp" />
+            <stroke android:width="0dp" android:color="#EEEEEE" />
+            <solid android:color="@color/fileColor" /> <!-- TXT文件颜色 -->
+        </shape>
+    </item>
+
+    <!-- 只加：柔和点击效果（不亮、不刺眼、不破坏原有样式） -->
+    <item>
+        <selector>
+            <!-- 按下时：淡淡的暗色遮罩 -->
+            <item android:state_pressed="true">
+                <shape>
+                    <solid android:color="#1F000000" />
+                    <corners android:radius="6dp" />
+                </shape>
+            </item>
+
+            <!-- 默认：透明，完全不影响原来样式 -->
+            <item>
+                <shape>
+                    <solid android:color="@android:color/transparent" />
+                    <corners android:radius="6dp" />
+                </shape>
+            </item>
+        </selector>
+    </item>
+
+</layer-list>

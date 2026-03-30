@@ -17,20 +17,6 @@
     </style>
 
 
-
-    <style name="CustomPopupMenu" parent="Widget.AppCompat.PopupMenu">
-        <!-- 弹出菜单背景色（深灰色） -->
-        <item name="android:popupBackground">#595959</item>
-        <!-- 文字颜色 -->
-        <item name="android:textColor">@color/white</item>
-        <!-- 文字大小 -->
-        <item name="android:textSize">18sp</item>
-        <!-- 分隔线高度和颜色（设置为白色） -->
-        <item name="android:dividerHeight">4dp</item> <!-- 分隔线高度 -->
-        <item name="android:divider">@android:color/white</item> <!-- 分隔线颜色（白色） -->
-        <!-- 菜单项高度 -->
-        <item name="android:listPreferredItemHeightSmall">48dp</item>
-    </style>
     <!-- 图片查看器全屏主题 -->
     <style name="Theme.OutsideBrain.NoActionBar.Fullscreen" parent="Theme.OutsideBrain.NoActionBar">
         <item name="android:windowFullscreen">true</item>

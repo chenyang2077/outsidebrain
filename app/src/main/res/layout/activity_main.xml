@@ -26,13 +26,15 @@
         <!-- 将原按钮ID修改为新名称，用于弹出菜单 -->
         <ImageButton
             android:id="@+id/menu_btn"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="4dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_folder2"
-        android:background="@drawable/btn_round_background"
-        android:contentDescription="菜单按钮"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_folder2"
+            android:contentDescription="菜单按钮"
+
+            android:background="@drawable/btn_click_bg"
+
         android:clickable="true"
         android:focusable="true"/>
 
@@ -60,7 +62,7 @@
                 android:textColor="#FFFFFF"
                 android:inputType="text"
             android:imeOptions="actionSearch"
-            android:contentDescription="显示当前文件夹层级，可输入搜索内容"/>
+            />
             <FrameLayout
                 android:id="@+id/paste_container"
                 android:layout_width="wrap_content"
@@ -96,7 +98,6 @@
         android:paddingRight="8dp"
         android:paddingTop="1dp"
         android:paddingBottom="2dp"
-        android:contentDescription="文件列表，显示当前文件夹下的文件夹和TXT文件"
         android:layout_below="@id/top_container"/>
 
     <!-- 原有悬浮按钮（保持不变） -->

@@ -17,11 +17,15 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Map;
@@ -59,7 +63,9 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListAdapter;
+import android.widget.ListView;
 import android.widget.PopupMenu;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -98,6 +104,10 @@ import androidx.appcompat.app.AppCompatDelegate;
 import java.io.BufferedWriter;
 import android.icu.text.Transliterator;
 import java.io.OutputStreamWriter;
+import android.widget.PopupMenu;
+import android.view.Gravity;
+import android.content.Context;
+import android.view.ContextThemeWrapper;
 // 先确保你有这些 import（如果没有，加在类最顶部）
 import android.os.Build;
 import android.icu.text.Transliterator;
@@ -1212,75 +1222,101 @@ public class MainActivity extends AppCompatActivity {
      */
     private void showPopupMenu(View view) {
         try {
-            ContextThemeWrapper themeWrapper = new ContextThemeWrapper(this, R.style.CustomPopupMenu);
-            PopupMenu popupMenu = new PopupMenu(themeWrapper, view);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                popupMenu.setGravity(Gravity.TOP | Gravity.START);
-            }
-            MenuInflater inflater = popupMenu.getMenuInflater();
-            inflater.inflate(R.menu.menu_popup, popupMenu.getMenu());
+            List<String> menuList = new ArrayList<>();
+
             if (isInRecycleBin) {
-                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
-                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+                menuList.add("返回主页");
+                menuList.add("新建文件夹");
+                menuList.add("清空回收站");
+                menuList.add("中转站");
             } else if (isInTransferStation) {
-                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
-                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(true); // 中转站显示压缩
+                menuList.add("返回主页");
+                menuList.add("新建文件夹");
+                menuList.add("压缩主页文件");
+                menuList.add("回收站");
             } else {
-                popupMenu.getMenu().findItem(R.id.action_home).setTitle("返回主页");
-                popupMenu.getMenu().findItem(R.id.action_recycle_bin).setVisible(true);
-                popupMenu.getMenu().findItem(R.id.action_clear_recycle_bin).setVisible(false);
-                popupMenu.getMenu().findItem(R.id.action_new_folder).setVisible(true);
-                boolean isHomeOrHomeSubFolders = currentDirectory.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath());
-                popupMenu.getMenu().findItem(R.id.action_transfer_station).setVisible(isHomeOrHomeSubFolders);
-                popupMenu.getMenu().findItem(R.id.yasuo).setVisible(false);
+                menuList.add("返回主页");
+                menuList.add("新建文件夹");
+                menuList.add("回收站");
+                menuList.add("中转站");
             }
-            popupMenu.setOnMenuItemClickListener(item -> {
-                int itemId = item.getItemId();
-                if (itemId == R.id.action_home) {
-                    if (isInRecycleBin) {
-                        exitRecycleBin();
-                    } else {
-                        navigateToRootDirectory();
+
+            ListView listView = new ListView(this);
+            listView.setBackgroundResource(R.drawable.popup_menu_bg);
+            listView.setDivider(null);
+            listView.setDividerHeight(1);
+
+            ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, 0, menuList) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    if (convertView == null) {
+                        convertView = getLayoutInflater().inflate(android.R.layout.simple_list_item_1, parent, false);
                     }
-                    return true;
-                } else if (itemId == R.id.action_new_folder) {
-                    showFolderCreateDialog();
-                    return true;
-                } else if (itemId == R.id.action_recycle_bin) {
-                    openRecycleBin();
-                    return true;
-                } else if (itemId == R.id.action_clear_recycle_bin) {
-                    confirmClearRecycleBin();
-                    return true;
-                } else if (itemId == R.id.action_transfer_station) {
-                    if (checkTransferPermission()) {
-                        openTransferStation();
-                    }
-                    return true;
-                } else if (itemId == R.id.yasuo) {
-                    compressRootFolder();
-                    return true;
+
+                    TextView textView = convertView.findViewById(android.R.id.text1);
+                    textView.setText(menuList.get(position));
+                    textView.setTextColor(0xFFFFFFFF);
+                    textView.setTextSize(16);
+                    textView.setPadding(30, 16, 30, 16);
+
+                    convertView.setBackgroundResource(R.drawable.menu_item_border);
+
+                    // 点击效果：按下轻微变亮，不破坏边框
+                    convertView.setClickable(true);
+                    convertView.setFocusable(true);
+
+                    return convertView;
                 }
-                return false;
+            };
+
+            listView.setAdapter(adapter);
+
+            final PopupWindow popupWindow = new PopupWindow(
+                    listView,
+                    dp2px(240),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    true
+            );
+            popupWindow.setBackgroundDrawable(new ColorDrawable(0x00000000));
+            popupWindow.setOutsideTouchable(true);
+            popupWindow.setFocusable(true);
+
+            // 系统默认点击效果 + 功能正常
+            listView.setOnItemClickListener((parent, v, position, id) -> {
+                String text = menuList.get(position);
+                switch (text) {
+                    case "返回主页":
+                        if (isInRecycleBin) exitRecycleBin();
+                        else navigateToRootDirectory();
+                        break;
+                    case "新建文件夹":
+                        showFolderCreateDialog();
+                        break;
+                    case "压缩主页文件":
+                        compressRootFolder();
+                        break;
+                    case "回收站":
+                        openRecycleBin();
+                        break;
+                    case "清空回收站":
+                        confirmClearRecycleBin();
+                        break;
+                    case "中转站":
+                        if (checkTransferPermission()) openTransferStation();
+                        break;
+                }
+                popupWindow.dismiss();
             });
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                popupMenu.setOnDismissListener(menu -> {
-                });
-            }
-            popupMenu.show();
+
+            popupWindow.showAsDropDown(view, 0, 0);
+
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.makeText(this, "菜单加载失败", Toast.LENGTH_SHORT).show();
         }
     }
+
+
+
     /**
      * 检查中转站权限：
      * 1. Android 11+ 检查MANAGE_EXTERNAL_STORAGE权限；
