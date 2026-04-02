@@ -764,19 +764,35 @@ public class MainActivity extends AppCompatActivity {
         if (fileName == null || fileName.isEmpty()) {
             return numList;
         }
-        Pattern pattern = Pattern.compile("^([0-9]+(\\.[0-9]+)*)");
+
+        // 匹配：数字 + (.或、数字) 【必须带符号】
+        Pattern pattern = Pattern.compile("^([0-9]+([.、][0-9]*)*)");
         Matcher matcher = pattern.matcher(fileName);
+
         if (matcher.find()) {
             String numStr = matcher.group(1);
+
+            // 🔥 核心规则：必须包含 . 或 、 才识别
+            boolean hasValidSymbol = numStr.contains(".") || numStr.contains("、");
+            if (!hasValidSymbol) {
+                return numList; // 纯数字 → 不识别
+            }
+
+            // 统一把 、换成 . 再分段
+            numStr = numStr.replace('、', '.');
             String[] numParts = numStr.split("\\.");
+
             for (String part : numParts) {
                 try {
-                    numList.add(Long.parseLong(part));
+                    if (!part.isEmpty()) {
+                        numList.add(Long.parseLong(part));
+                    }
                 } catch (NumberFormatException e) {
                     break;
                 }
             }
         }
+
         return numList;
     }
 
@@ -802,30 +818,42 @@ public class MainActivity extends AppCompatActivity {
         CN_NUM_MAP.put("万", 10000);
     }
 
+    // 提取名称中连续中文数字
     private String parseChineseNumber(String input) {
         if (input == null || input.isEmpty()) {
             return input;
         }
-        StringBuilder result = new StringBuilder();
-        StringBuilder current = new StringBuilder();
 
-        for (int i = 0; i < input.length(); i++) {
-            String c = String.valueOf(input.charAt(i));
-            if (CN_NUM_MAP.containsKey(c)) {
-                current.append(c);
-            } else {
-                if (current.length() > 0) {
-                    result.append(convertChineseToNumber(current.toString()));
-                    current.setLength(0);
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        int len = input.length();
+
+        while (i < len) {
+            char c = input.charAt(i);
+            String charStr = String.valueOf(c);
+
+            // 如果当前是中文数字，并且 后面 有字符，且后面是 、或 .
+            if (CN_NUM_MAP.containsKey(charStr) && i + 1 < len) {
+                char next = input.charAt(i + 1);
+                if (next == '、' || next == '.') {
+                    int j = i;
+                    while (j < len && CN_NUM_MAP.containsKey(String.valueOf(input.charAt(j)))) {
+                        j++;
+                    }
+                    String cnNum = input.substring(i, j);
+                    long num = convertChineseToNumber(cnNum);
+                    result.append(num);
+                    i = j;
+                } else {
+                    // 不是 、或 . → 不转换，原样保留
+                    result.append(c);
+                    i++;
                 }
+            } else {
                 result.append(c);
+                i++;
             }
         }
-
-        if (current.length() > 0) {
-            result.append(convertChineseToNumber(current.toString()));
-        }
-
         return result.toString();
     }
 
