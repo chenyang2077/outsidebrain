@@ -474,15 +474,16 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     if (isInSearchMode) {
-                        // 退出搜索模式
-                        isInSearchMode = false;
-                        // 把当前目录切换到搜索结果里的文件夹
-                        currentDirectory = file;
-                        // 加载真实文件列表
-                        loadFileList();
-                        updateLevelHint();
-                        // 清空搜索显示
-                        clearSearchKeyword();
+                        isInSearchMode = false;                  // 退出搜索
+                        etSearch.setText("");                    // 清空搜索框文字 ✅
+                        etSearch.clearFocus();                   // 清除输入框焦点
+                        clearSearchKeyword();                    // 清空搜索记录
+                        hideCustomPathTip();                     // 隐藏路径提示 ✅
+                        hidePasteButton();                       // 隐藏粘贴按钮
+                        currentDirectory = file;                 // 跳转到点击的文件夹
+                        loadFileList();                          // 刷新文件列表
+                        updateLevelHint();                       // 更新路径提示
+                        PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                         return;
                     }
 
