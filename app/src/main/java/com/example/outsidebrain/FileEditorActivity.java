@@ -4,43 +4,35 @@
 功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，文件分享功能，限制操作范围保障数据安全
 所属模块：文件编辑模块
 开发语言：Java
-
 */
 package com.example.outsidebrain;
 
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.Toast;
 import android.database.Cursor;
-import android.net.Uri;
 import android.provider.OpenableColumns;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import androidx.appcompat.app.AppCompatActivity;
-import android.os.Handler;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -68,22 +60,9 @@ public class FileEditorActivity extends AppCompatActivity {
     private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
     private static final Pattern FULL_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})*$");
-    private static final SimpleDateFormat CONTENT_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    private static final Pattern LAST_LINE_TIMESTAMP_PATTERN = Pattern.compile("^\\(\\d{4}-\\d{2}-\\d{2}\\)$");
     private int cursorPosition = 0;
-    private Uri uriFromExternal = null;       // 外部文件的uri
-
-    private ProgressDialog mBackDialog;
-    private Handler mDelayHandler = new Handler();
-    private Runnable mShowDialogRunnable;
-    private boolean isNavigatingBack = false;
-    private String externalFolderPath = null;
-    private String externalParentFolderPath = null; // 外部文件所在目录
-    private boolean isOpenedFromExternal = false;
+    private Uri uriFromExternal = null;
     private String originalFileNameForEdit;
-    private String externalFileName = null; // 用来保存外部文件名
-    // 只加这三行，不动你任何原有变量
-    private Handler mHandler = new Handler(Looper.getMainLooper());
     private String savedNewFilePath = "";
 
     @Override
@@ -202,13 +181,9 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-
-
-
     // 获取外部文件真实路径（你的权限完全支持）
     private String getRealPathFromUri(Uri uri) {
         if (uri == null) return null;
-
         if ("content".equals(uri.getScheme())) {
             String[] projection = {android.provider.MediaStore.Files.FileColumns.DATA};
             Cursor cursor = null;

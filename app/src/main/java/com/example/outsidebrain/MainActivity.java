@@ -23,9 +23,6 @@ import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Map;
@@ -46,11 +43,9 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.text.InputType;
 import android.text.TextUtils;
-import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -64,7 +59,6 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
-import android.widget.PopupMenu;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -99,23 +93,11 @@ import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import android.content.Context;
-import android.view.ContextThemeWrapper;
 import androidx.appcompat.app.AppCompatDelegate;
 import java.io.BufferedWriter;
 import android.icu.text.Transliterator;
 import java.io.OutputStreamWriter;
-import android.widget.PopupMenu;
-import android.view.Gravity;
-import android.content.Context;
-import android.view.ContextThemeWrapper;
-// 先确保你有这些 import（如果没有，加在类最顶部）
-import android.os.Build;
-import android.icu.text.Transliterator;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
@@ -140,7 +122,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInTransferStation = false;
     private File recycleBinDirectory;
     private boolean isInRecycleBin = false;
-    public static final int RESULT_REFRESH = 1001;
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
@@ -149,35 +130,17 @@ public class MainActivity extends AppCompatActivity {
     private View pasteButton;
     private Toast mPathToast; // 路径提示Toast
     private View mTouchOverlay; // 全屏触摸覆盖层（用于监听触摸消失）
-    // 自定义路径提示（替代Toast，无自动消失）
     private View mCustomTipView;
     private boolean mIsTipShowing = false;
     private boolean isJumping = false;
-    // ========== 新增全局变量：解决卡顿核心 ==========
     private View mReusableTipView; // 复用唯一的提示视图，避免重复inflate
     private long lastTipUpdateTime = 0; // 防抖时间戳，避免高频触发
     private String lastTipText = ""; // 缓存上一次提示文本，避免重复更新
     // 压缩专用 防重复点击
     private boolean isZipCompressing = false;
-
-    private String lastSearchKeyword = ""; // 保存搜索词
-    // 文件夹智能加载提示（快不弹，慢才弹）
-    private Handler mLoadingHandler = new Handler(Looper.getMainLooper());
-    // 保存搜索结果列表，避免返回时重刷
-    private List<File> lastSearchResultList = new ArrayList<>();
-
-    private Runnable mShowDialogRunnable;
-    private Handler mHandler = new Handler(Looper.getMainLooper());
-    // 分批加载配置
-    private ProgressDialog mBatchLoadingDialog;
-    private static final int BATCH_SIZE = 50;
     // 智能加载配置
     private ProgressDialog mLoadingDialog;
     private static final int FILE_COUNT_LIMIT = 100;
-    private static final int FIRST_BATCH = 50;
-
-    // 保存搜索列表滑动位置
-    private int lastSearchRecyclerPosition = 0;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
@@ -507,6 +470,19 @@ public class MainActivity extends AppCompatActivity {
                     if (copiedFile != null && file.equals(copiedFile)) {
                         hidePasteButton();
                         Toast.makeText(MainActivity.this, "禁止粘贴在所选文件夹内部", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (isInSearchMode) {
+                        // 退出搜索模式
+                        isInSearchMode = false;
+                        // 把当前目录切换到搜索结果里的文件夹
+                        currentDirectory = file;
+                        // 加载真实文件列表
+                        loadFileList();
+                        updateLevelHint();
+                        // 清空搜索显示
+                        clearSearchKeyword();
                         return;
                     }
 
