@@ -75,10 +75,11 @@ public class FileEditorActivity extends AppCompatActivity {
     private final Stack<String> undoStack = new Stack<>();
     private final Stack<String> redoStack = new Stack<>();
     private boolean isHistoryChange = false;
-
-    // ==========================
-    // 键盘悬浮按钮（安全新增）
-    // ==========================
+    private View btnUndo;
+    private View btnRedo;
+    // 顶部变量区加这个
+    private boolean hasContentChanged = false;
+    // 按钮容器（你原来的 btn_container）
     private LinearLayout btnContainer;
 
     @Override
@@ -152,9 +153,8 @@ public class FileEditorActivity extends AppCompatActivity {
         // 绑定撤销/重做按钮
         findViewById(R.id.btn_undo).setOnClickListener(v -> doUndo());
         findViewById(R.id.btn_redo).setOnClickListener(v -> doRedo());
-
-        // 键盘弹出监听
-        setupKeyboardListener();
+        btnUndo = findViewById(R.id.btn_undo);
+        btnRedo = findViewById(R.id.btn_redo);
     }
 
     // ==========================
@@ -165,6 +165,17 @@ public class FileEditorActivity extends AppCompatActivity {
         undoStack.clear();
         redoStack.clear();
         undoStack.push(initContent);
+        updateUndoRedoBtnVisibility();
+    }
+
+    private void updateUndoRedoBtnVisibility() {
+        if (btnUndo == null || btnRedo == null) return;
+
+        boolean canUndo = undoStack.size() > 1;
+        boolean canRedo = !redoStack.isEmpty();
+
+        btnUndo.setVisibility(canUndo ? View.VISIBLE : View.GONE);
+        btnRedo.setVisibility(canRedo ? View.VISIBLE : View.GONE);
     }
 
     // ==========================
@@ -182,6 +193,7 @@ public class FileEditorActivity extends AppCompatActivity {
         etContent.setText(target);
         etContent.setSelection(target.length());
         isSaved = false;
+        updateUndoRedoBtnVisibility();
     }
 
     // ==========================
@@ -199,6 +211,7 @@ public class FileEditorActivity extends AppCompatActivity {
         etContent.setText(target);
         etContent.setSelection(target.length());
         isSaved = false;
+        updateUndoRedoBtnVisibility();
     }
 
     // ==========================
@@ -236,6 +249,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
 
                 isSaved = false;
+
             }
         });
 
@@ -261,6 +275,14 @@ public class FileEditorActivity extends AppCompatActivity {
                     undoStack.push(oldText);
                     redoStack.clear();
                     isSaved = false;
+
+                    // ==============================================
+                    // 👇 👇 👇 只加这一句！！！
+                    // 只要用户改了字 → 按钮容器才显示
+                    // ==============================================
+                    btnContainer.setVisibility(View.VISIBLE);
+
+                    updateUndoRedoBtnVisibility();
                 }
             }
         });
@@ -269,17 +291,7 @@ public class FileEditorActivity extends AppCompatActivity {
     // ==========================
     // 键盘弹出/隐藏 控制按钮显示
     // ==========================
-    private void setupKeyboardListener() {
-        View rootView = getWindow().getDecorView().findViewById(android.R.id.content);
-        rootView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-            int heightDiff = rootView.getRootView().getHeight() - rootView.getHeight();
-            if (heightDiff > 200) {
-                btnContainer.setVisibility(View.VISIBLE);
-            } else {
-                btnContainer.setVisibility(View.GONE);
-            }
-        });
-    }
+
 
     // ==========================
     // 接收外部文件

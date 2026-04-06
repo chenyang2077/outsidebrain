@@ -39,34 +39,45 @@
         <LinearLayout
             android:id="@+id/btn_container"
             android:layout_width="wrap_content"
+            android:layout_height="56dp"
+        android:orientation="vertical"
+        android:layout_marginStart="6dp"
+        android:gravity="top"
+        android:visibility="gone">
+
+        <!-- 回撤 固定位置占位 -->
+        <FrameLayout
+            android:layout_width="30dp"
+        android:layout_height="25dp"
+        android:gravity="center">
+        <TextView
+            android:id="@+id/btn_undo"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="0dp"
-            android:gravity="center"
-            android:visibility="gone">
+            android:text="↩️"
+            android:textSize="20sp"
+            android:textColor="#757575"
+            android:clickable="true"
+            android:focusable="true"/>
+    </FrameLayout>
 
-            <TextView
-                android:id="@+id/btn_undo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="↩️"
-                android:textSize="20sp"
-                android:textColor="#757575"
-                android:clickable="true"
-                android:focusable="true"/>
+    <!-- 重做 固定位置占位 -->
+    <FrameLayout
+        android:layout_width="30dp"
+        android:layout_height="25dp"
+        android:gravity="center">
+        <TextView
+            android:id="@+id/btn_redo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="↪️"
+            android:textSize="20sp"
+            android:textColor="#757575"
+            android:clickable="true"
+            android:focusable="true"/>
+    </FrameLayout>
 
-            <TextView
-                android:id="@+id/btn_redo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="↪️"
-                android:textSize="20sp"
-                android:textColor="#757575"
-                android:clickable="true"
-                android:focusable="true"/>
-
-        </LinearLayout>
+</LinearLayout>
 
     </LinearLayout>
 
