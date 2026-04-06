@@ -1,55 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 新增外层 ScrollView -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"> <!-- 这个属性很重要，确保子视图能填满 ScrollView 的可见区域 -->
+    android:background="@color/editorBgColor"
+    android:orientation="vertical"
+    android:padding="3dp">
 
-    <!-- 你原来的 LinearLayout，宽度改为 match_parent，高度改为 wrap_content -->
+    <!-- 标题栏 → 固定置顶，不会滑动 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/editorBgColor"
-        android:orientation="vertical"
-        android:padding="3dp">
+        android:minHeight="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/editor_border"
+        android:layout_marginBottom="4dp"
+        android:paddingHorizontal="10dp"
+        android:paddingEnd="0dp">
 
-        <!-- 标题编辑区（带边框）- 无修改 -->
         <EditText
             android:id="@+id/et_file_name"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:minHeight="56dp"
             android:gravity="center_vertical"
-            android:paddingHorizontal="10dp"
-            android:background="@drawable/editor_border"
+            android:padding="0dp"
+            android:background="@null"
             android:hint=":"
             app:hintTextColor="#AAAAAA"
             android:textColor="@color/editorTextColor"
             android:textSize="20sp"
             android:textStyle="bold"
             android:singleLine="true"
-        android:inputType="text|textNoSuggestions"
-        android:imeOptions="actionDone"
-        android:layout_marginBottom="4dp"/>
+            android:inputType="text|textNoSuggestions"
+            android:imeOptions="actionDone"/>
 
-        <!-- 内容编辑区（带边框）- 核心修改在这里 -->
-        <EditText
-            android:id="@+id/et_content"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-        android:background="@drawable/editor_border2"
-        android:padding="5dp"
-        android:hint="请输入文件内容..."
-        app:hintTextColor="#888888"
-        android:textColor="@color/editorTextColor"
-        android:textSize="16sp"
-        android:gravity="top|left"
-        android:inputType="textMultiLine|textNoSuggestions"
-        android:scrollbars="none"
-        android:overScrollMode="never"
-        android:lineSpacingExtra="3dp"/>
+        <LinearLayout
+            android:id="@+id/btn_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="0dp"
+            android:gravity="center"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/btn_undo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↩️"
+                android:textSize="20sp"
+                android:textColor="#757575"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btn_redo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↪️"
+                android:textSize="20sp"
+                android:textColor="#757575"
+                android:clickable="true"
+                android:focusable="true"/>
+
+        </LinearLayout>
 
     </LinearLayout>
 
-</ScrollView>
+    <!-- 内容区 → 只有这里可以滑动 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <EditText
+            android:id="@+id/et_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/editor_border2"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:paddingRight="5dp"
+            android:paddingLeft="9dp"
+            android:hint="请输入文件内容..."
+            app:hintTextColor="#888888"
+            android:textColor="@color/editorTextColor"
+            android:textSize="16sp"
+            android:gravity="top|left"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:lineSpacingExtra="3dp"/>
+
+    </ScrollView>
+
+</LinearLayout>
