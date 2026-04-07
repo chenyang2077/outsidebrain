@@ -184,51 +184,40 @@ public class FileEditorActivity extends AppCompatActivity {
     // ==========================
 // 撤销
 // ==========================
+    // ==========================
+// 撤销（标准光标行为）
+// ==========================
     private void doUndo() {
         if (undoStack.size() <= 1) {
             Toast.makeText(this, "已到最初状态", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 👇 先保存当前光标位置
-        int cursorPos = etContent.getSelectionStart();
-
         String current = etContent.getText().toString();
         redoStack.push(current);
         String target = undoStack.pop();
         isHistoryChange = true;
         etContent.setText(target);
-
-        // 👇 恢复光标到原来位置（不跳到最后）
-        int validPos = Math.min(cursorPos, target.length());
-        etContent.setSelection(validPos);
-
+        // 标准：光标回到当前版本末尾
+        etContent.setSelection(target.length());
         isSaved = false;
         updateUndoRedoBtnVisibility();
     }
 
     // ==========================
-// 重做
+// 重做（标准光标行为）
 // ==========================
     private void doRedo() {
         if (redoStack.isEmpty()) {
             Toast.makeText(this, "无可用重做", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 👇 先保存当前光标位置
-        int cursorPos = etContent.getSelectionStart();
-
         String current = etContent.getText().toString();
         undoStack.push(current);
         String target = redoStack.pop();
         isHistoryChange = true;
         etContent.setText(target);
-
-        // 👇 恢复光标到原来位置
-        int validPos = Math.min(cursorPos, target.length());
-        etContent.setSelection(validPos);
-
+        // 标准：光标回到当前版本末尾
+        etContent.setSelection(target.length());
         isSaved = false;
         updateUndoRedoBtnVisibility();
     }
