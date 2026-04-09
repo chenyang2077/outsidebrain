@@ -853,7 +853,34 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     private String cleanFileName(String fileName) {
-        return fileName.replaceAll("[\\\\/:*?\"<>|]", "");
+        if (fileName == null || fileName.trim().isEmpty()) {
+            return "新建文件";
+        }
+
+        // 去除首尾空格、换行、制表符
+        String cleaned = fileName.trim();
+
+        // 替换所有系统禁止的非法字符
+        cleaned = cleaned.replaceAll("[\\\\/:*?\"<>|]", "");
+
+        // 去除换行、回车
+        cleaned = cleaned.replaceAll("[\\n\\r\\t]", "");
+
+        // 去除开头和结尾的点（防止生成隐藏文件）
+        cleaned = cleaned.replaceAll("^\\.+", "").replaceAll("\\.+$", "");
+
+        // 如果清理后为空，给默认名称
+        if (cleaned.isEmpty()) {
+            return "新建文件";
+        }
+
+        // 限制文件名长度
+        int maxLength = 120;
+        if (cleaned.length() > maxLength) {
+            cleaned = cleaned.substring(0, maxLength);
+        }
+
+        return cleaned;
     }
 
     private String readFileContent(File file) throws IOException {

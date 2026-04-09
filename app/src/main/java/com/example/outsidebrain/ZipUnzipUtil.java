@@ -110,6 +110,7 @@ public class ZipUnzipUtil {
     private static void processDirectoryEntry(ZipFile zipFile, ZipEntry entry,
                                               RootDirInfo rootDirInfo, File rootTargetDir) throws IOException {
         String entryName = entry.getName().replace("\\", "/");
+        entryName = cleanZipEntryName(entryName);
         String relativePath;
 
         if (rootDirInfo.hasSingleRootFolder) {
@@ -138,6 +139,7 @@ public class ZipUnzipUtil {
                                         RootDirInfo rootDirInfo, File rootTargetDir,
                                         Set<String> existingCleanNames, int sequenceNumber) throws IOException {
         String entryName = entry.getName().replace("\\", "/");
+        entryName = cleanZipEntryName(entryName);
         String relativePath;
         if (rootDirInfo.hasSingleRootFolder) {
             relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
@@ -173,6 +175,30 @@ public class ZipUnzipUtil {
             return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber);
         }
         return sequenceNumber;
+    }
+
+    // 🔥 【新增】解压专用：清理文件名/目录名非法字符
+    private static String cleanZipEntryName(String name) {
+        if (name == null) return "";
+
+        // 替换路径符号，防止解压错位
+        name = name.replace('/', '_').replace('\\', '_');
+
+        // 过滤所有系统禁止的字符
+        name = name.replaceAll("[\\\\/:*?\"<>|]", "");
+
+        // 过滤换行、Tab
+        name = name.replaceAll("[\\n\\r\\t]", "");
+
+        // 去除首尾空格和点
+        name = name.trim().replaceAll("^\\.+", "").replaceAll("\\.+$", "");
+
+        // 空值处理
+        if (name.isEmpty()) {
+            return "未知文件";
+        }
+
+        return name;
     }
 
     /**

@@ -3090,6 +3090,12 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
+            newName = cleanFileName(newName);
+
+            if (newName.isEmpty()) {
+                Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
             if (isFolder) {
                 File newFolder = new File(file.getParentFile(), newName);
@@ -3223,6 +3229,37 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         input.postDelayed(() -> imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT), 100);
+    }
+
+    // 去除名称非法字符
+    private String cleanFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            return "新建文件";
+        }
+
+        String cleaned = fileName.trim();
+
+        // 替换所有系统禁止的非法字符
+        cleaned = cleaned.replaceAll("[\\\\/:*?\"<>|]", "");
+
+        // 去除换行、回车
+        cleaned = cleaned.replaceAll("[\\n\\r\\t]", "");
+
+        // 去除开头和结尾的点（防止生成隐藏文件）
+        cleaned = cleaned.replaceAll("^\\.+", "").replaceAll("\\.+$", "");
+
+        // 如果清理后为空，给默认名称
+        if (cleaned.isEmpty()) {
+            return "新建文件";
+        }
+
+        // 限制文件名长度
+        int maxLength = 120;
+        if (cleaned.length() > maxLength) {
+            cleaned = cleaned.substring(0, maxLength);
+        }
+
+        return cleaned;
     }
 
     // ==============================
