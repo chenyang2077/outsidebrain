@@ -178,27 +178,34 @@ public class ZipUnzipUtil {
     }
 
     // 🔥 【新增】解压专用：清理文件名/目录名非法字符
+    // 🔥 修复后：只清理文件名非法字符，不破坏路径 /
     private static String cleanZipEntryName(String name) {
         if (name == null) return "";
 
-        // 替换路径符号，防止解压错位
-        name = name.replace('/', '_').replace('\\', '_');
+        // 1. 保留路径分隔符 /，只清理 文件名 里的非法字符
+        // 只过滤 Windows 非法字符，不处理 /
+        name = name.replaceAll("[\\\\:*?\"<>|]", "");
 
-        // 过滤所有系统禁止的字符
-        name = name.replaceAll("[\\\\/:*?\"<>|]", "");
-
-        // 过滤换行、Tab
+        // 2. 过滤换行、Tab
         name = name.replaceAll("[\\n\\r\\t]", "");
 
-        // 去除首尾空格和点
-        name = name.trim().replaceAll("^\\.+", "").replaceAll("\\.+$", "");
-
-        // 空值处理
-        if (name.isEmpty()) {
-            return "未知文件";
+        // 3. 分割路径，只清理每一段的首尾空格和点
+        String[] parts = name.split("/");
+        StringBuilder cleanedPath = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            // 清理每一段（文件夹名/文件名）的首尾空格和点
+            part = part.trim().replaceAll("^\\.+", "").replaceAll("\\.+$", "");
+            if (part.isEmpty()) {
+                part = "未知文件";
+            }
+            cleanedPath.append(part);
+            if (i < parts.length - 1) {
+                cleanedPath.append("/"); // 保留路径分隔符
+            }
         }
 
-        return name;
+        return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
 
     /**

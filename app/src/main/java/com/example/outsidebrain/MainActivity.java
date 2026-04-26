@@ -559,6 +559,30 @@ public class MainActivity extends AppCompatActivity {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
+
+                    // ========== 新增：图片文件也显示路径提示 ==========
+                    if (isInSearchMode) {
+                        String showPath;
+                        String fullPath = file.getAbsolutePath();
+
+                        if (isInTransferStation) {
+                            String basePath = transferStationDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else if (isInRecycleBin) {
+                            String basePath = getFilesDir().getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else {
+                            String basePath = rootDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        }
+
+                        if (showPath.startsWith(File.separator)) {
+                            showPath = showPath.substring(1);
+                        }
+                        MainActivity.this.showCustomPathTip(showPath);
+                    }
+                    // ==============================================
+
                     openImageFile(file);
                     PreferenceUtils.saveLastPageType(MainActivity.this, "image");
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
