@@ -178,27 +178,22 @@ public class FileEditorActivity extends AppCompatActivity {
         btnRedo.setVisibility(canRedo ? View.VISIBLE : View.GONE);
     }
 
-    // ==========================
-    // 撤销
-    // ==========================
-    // ==========================
-// 撤销
-// ==========================
-    // ==========================
+
 // 撤销（标准光标行为）
 // ==========================
     private void doUndo() {
         if (undoStack.size() <= 1) {
-            Toast.makeText(this, "已到最初状态", Toast.LENGTH_SHORT).show();
-            return;
+        Toast.makeText(this, "已到最初状态", Toast.LENGTH_SHORT).show();
+        return;
         }
-        String current = etContent.getText().toString();
-        redoStack.push(current);
-        String target = undoStack.pop();
+        String currentContent = etContent.getText().toString();
+        redoStack.push(currentContent);
+        String targetContent = undoStack.pop();
+
         isHistoryChange = true;
-        etContent.setText(target);
-        // 标准：光标回到当前版本末尾
-        etContent.setSelection(target.length());
+        etContent.setText(targetContent);
+    // ✅ 智能光标：放在变化位置后面
+        setSmartCursorAfterChange(currentContent, targetContent);
         isSaved = false;
         updateUndoRedoBtnVisibility();
     }
@@ -211,15 +206,50 @@ public class FileEditorActivity extends AppCompatActivity {
             Toast.makeText(this, "无可用重做", Toast.LENGTH_SHORT).show();
             return;
         }
-        String current = etContent.getText().toString();
-        undoStack.push(current);
-        String target = redoStack.pop();
+        String currentContent = etContent.getText().toString();
+        undoStack.push(currentContent);
+        String targetContent = redoStack.pop();
+
         isHistoryChange = true;
-        etContent.setText(target);
-        // 标准：光标回到当前版本末尾
-        etContent.setSelection(target.length());
+        etContent.setText(targetContent);
+        // ✅ 智能光标：放在变化位置后面
+        setSmartCursorAfterChange(currentContent, targetContent);
         isSaved = false;
         updateUndoRedoBtnVisibility();
+    }
+
+    /**
+     * 智能光标：对比新旧文本，把光标放在 变化区域的后面
+     * @param oldText 变化前
+     * @param newText 变化后
+     */
+    /**
+     * 撤销/重做 智能定位光标
+     * 撤销：光标放变化段后方
+     * 重做：光标放变化段后方
+     */
+    private void setSmartCursorAfterChange(String beforeText, String afterText) {
+        // 找到首部相同长度
+        int sameStart = 0;
+        int minLen = Math.min(beforeText.length(), afterText.length());
+        while (sameStart < minLen
+                && beforeText.charAt(sameStart) == afterText.charAt(sameStart)) {
+            sameStart++;
+        }
+
+        // 找到尾部相同长度
+        int sameEnd = 0;
+        while (sameEnd < minLen - sameStart
+                && beforeText.charAt(beforeText.length() - 1 - sameEnd)
+                == afterText.charAt(afterText.length() - 1 - sameEnd)) {
+            sameEnd++;
+        }
+
+        // 变化区域终点 = 光标目标位置（变化内容后面）
+        int targetPos = afterText.length() - sameEnd;
+        // 边界保护
+        targetPos = Math.max(0, Math.min(targetPos, afterText.length()));
+        etContent.setSelection(targetPos);
     }
 
     // ==========================
@@ -351,43 +381,7 @@ public class FileEditorActivity extends AppCompatActivity {
         }
     }
 
-    private String getRealPathFromUri(Uri uri) {
-        if (uri == null) return null;
-        if ("content".equals(uri.getScheme())) {
-            String[] projection = {android.provider.MediaStore.Files.FileColumns.DATA};
-            Cursor cursor = null;
-            try {
-                cursor = getContentResolver().query(uri, projection, null, null, null);
-                if (cursor != null && cursor.moveToFirst()) {
-                    int columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATA);
-                    return cursor.getString(columnIndex);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                if (cursor != null) cursor.close();
-            }
-        } else if ("file".equals(uri.getScheme())) {
-            return uri.getPath();
-        }
-        return null;
-    }
 
-    private String getFileNameFromUri(Uri uri) {
-        String fileName = "未命名文件.txt";
-        Cursor cursor = getContentResolver().query(uri, null, null, null, null);
-        if (cursor != null) {
-            int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-            if (nameIndex != -1 && cursor.moveToFirst()) {
-                fileName = cursor.getString(nameIndex);
-            }
-            cursor.close();
-        }
-        if (!fileName.toLowerCase().endsWith(".txt")) {
-            fileName += ".txt";
-        }
-        return fileName;
-    }
 
     private void recoverFromCrash() {
         File rootDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
