@@ -1889,39 +1889,36 @@ public class MainActivity extends AppCompatActivity {
      * 2. 写入软件使用说明内容，保存到当前目录。
      */
     private void createTestFile() {
-        // 修复核心：使用全局的currentDirectory（主页根目录），而非直接getFilesDir()
+        // 检查目录是否可写
         if (currentDirectory == null || !currentDirectory.canWrite()) {
             Toast.makeText(this, "创建测试文件失败：目标目录不可写", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 简化：固定文件名，移除随机字符和时间戳
+        // 目标文件：放在当前目录下
         File testFile = new File(currentDirectory, "使用说明与注意事项.txt");
 
-        try {
-            // 检查文件是否已存在，避免重复创建
-            if (testFile.exists()) {
-                Toast.makeText(this, "测试文件已存在，无需重复创建", Toast.LENGTH_SHORT).show();
-                return;
+        // 如果文件已存在，直接返回
+        if (testFile.exists()) {
+            Toast.makeText(this, "测试文件已存在，无需重复创建", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 从 assets 复制文件
+        try (InputStream in = getAssets().open("instructions.txt");
+             OutputStream out = new FileOutputStream(testFile)) {
+
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = in.read(buffer)) > 0) {
+                out.write(buffer, 0, len);
             }
 
-            // 创建文件并写入内容
-            if (testFile.createNewFile()) {
-                String content = getResources().getString(R.string.app_usage_instructions);
-                // 确保字符编码为UTF-8，避免乱码
-                try (BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(
-                                new FileOutputStream(testFile),
-                                StandardCharsets.UTF_8)
-                )) {
-                    writer.write(content);
-                }
-            } else {
-                Toast.makeText(this, "测试文件创建失败：无法新建文件", Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
+            Toast.makeText(this, "文件复制成功！", Toast.LENGTH_SHORT).show();
+
+        } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "创建测试文件失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "复制失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
