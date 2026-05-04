@@ -3128,20 +3128,17 @@ public class MainActivity extends AppCompatActivity {
         try {
             Uri fileUri;
 
-            // ==================== 关键优化 ====================
-            // 图片：插入媒体库 → 微信不删后缀
-            // 其他文件(TXT/ZIP)：保持原来的 FileProvider 分享
-            // ==================================================
+            // -------------- 你原来的正确代码 完全保留 --------------
             if (isImageFile(file)) {
-                // 图片特殊处理，让微信信任，保留后缀
-                fileUri = Uri.parse(MediaStore.Images.Media.insertImage(
+                // 保留你原来的逻辑：微信不删后缀 ✅
+                String path = MediaStore.Images.Media.insertImage(
                         getContentResolver(),
                         file.getAbsolutePath(),
                         file.getName(),
                         "Shared Image"
-                ));
+                );
+                fileUri = Uri.parse(path);
             } else {
-                // TXT / ZIP 正常走 FileProvider
                 fileUri = FileProvider.getUriForFile(
                         this,
                         getPackageName() + ".fileprovider",
@@ -3150,16 +3147,21 @@ public class MainActivity extends AppCompatActivity {
             }
 
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType(getMimeType(file.getName()));
             shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
             shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            Intent chooser = Intent.createChooser(shareIntent, "分享文件");
-            if (shareIntent.resolveActivity(getPackageManager()) != null) {
-                startActivity(chooser);
+            // ====================== 【关键：必须这样设置才能显示缩略图】 ======================
+            if (isImageFile(file)) {
+                shareIntent.setType("image/*"); // 强制图片类型，系统才会渲染缩略图
+                shareIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png"});
             } else {
-                Toast.makeText(this, "未找到可分享的应用", Toast.LENGTH_SHORT).show();
+                shareIntent.setType(getMimeType(file.getName()));
             }
+            // ==================================================================================
+
+            Intent chooser = Intent.createChooser(shareIntent, "分享文件");
+            startActivity(chooser);
+
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(this, "分享失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
