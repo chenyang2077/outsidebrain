@@ -22,6 +22,7 @@ import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import java.util.Collections;
 import java.util.Comparator;
@@ -555,7 +556,7 @@ public class MainActivity extends AppCompatActivity {
                         });
                     }).start();
                     PreferenceUtils.saveLastPageType(MainActivity.this, "editor");
-                }else if (file.getName().toLowerCase().endsWith(".zip")) {
+                }else if (isZipFile(file)) {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
@@ -1662,16 +1663,113 @@ public class MainActivity extends AppCompatActivity {
      * @param file 待判断文件
      * @return 是否为图片文件
      */
-    private boolean isImageFile(File file) {
-        if (file.isDirectory()) return false;
 
+    private boolean isImageFile(File file) {
+        if (file == null || file.isDirectory() || !file.exists()) {
+            return false;
+        }
+
+        // 先保留后缀判断，兼容日常使用
         String fileName = file.getName().toLowerCase();
+        boolean extMatch = false;
         for (String ext : IMAGE_EXTENSIONS) {
             if (fileName.endsWith(ext)) {
-                return true;
+                extMatch = true;
+                break;
             }
         }
-        return false;
+        if (!extMatch) {
+            return false;
+        }
+
+        // 再加文件头魔数校验，防伪装病毒
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] header = new byte[10];
+            int readLen = fis.read(header);
+            if (readLen < 4) {
+                return false;
+            }
+
+            // JPG / JPEG
+            if (header[0] == (byte)0xFF && header[1] == (byte)0xD8 && header[2] == (byte)0xFF) {
+                return true;
+            }
+            // PNG
+            if (header[0] == (byte)0x89 && header[1] == (byte)0x50 && header[2] == (byte)0x4E && header[3] == (byte)0x47) {
+                return true;
+            }
+            // GIF
+            if (header[0] == (byte)0x47 && header[1] == (byte)0x49 && header[2] == (byte)0x46) {
+                return true;
+            }
+            // BMP
+            if (header[0] == (byte)0x42 && header[1] == (byte)0x4D) {
+                return true;
+            }
+            // WebP
+            if (header[0] == (byte)0x52 && header[1] == (byte)0x49 && header[2] == (byte)0x46 && header[3] == (byte)0x46) {
+                return true;
+            }
+
+            // 后缀对但文件头不对，判定为伪装文件，拦截
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    private boolean isTextFile(File file) {
+        if (file == null || file.isDirectory() || !file.exists()) {
+            return false;
+        }
+
+        // 先判断后缀
+        String name = file.getName().toLowerCase();
+        if (!name.endsWith(".txt")) {
+            return false;
+        }
+
+        // 再判断文件头是不是文本字符
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] head = new byte[16];
+            int len = fis.read(head);
+            if (len <= 0) return true; // 空txt允许
+
+            for (int i = 0; i < len; i++) {
+                byte b = head[i];
+                // 不可打印字符 → 不是文本
+                if ((b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D) || b == 0x7F) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isZipFile(File file) {
+        if (file == null || file.isDirectory() || !file.exists()) {
+            return false;
+        }
+
+        // 后缀判断
+        String name = file.getName().toLowerCase();
+        if (!name.endsWith(".zip")) {
+            return false;
+        }
+
+        // 校验ZIP文件头 50 4B 03 04
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] head = new byte[4];
+            if (fis.read(head) != 4) return false;
+
+            return head[0] == 0x50 && head[1] == 0x4B &&
+                    (head[2] == 0x03 || head[2] == 0x05 || head[2] == 0x07) &&
+                    (head[3] == 0x04 || head[3] == 0x06 || head[3] == 0x08);
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -2752,7 +2850,7 @@ public class MainActivity extends AppCompatActivity {
                     if (!moveFolderToRecycleBin(file, subTargetFolder)) {
                         return false;
                     }
-                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                } else if (isTextFile(file)) {
                     String originalName = file.getName();
                     String newFileName = processTxtForCutOperation(originalName);
                     File targetFile = new File(targetFolder, newFileName);
@@ -3026,12 +3124,31 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show();
             return;
         }
+
         try {
-            Uri fileUri = FileProvider.getUriForFile(
-                    this,
-                    getPackageName() + ".fileprovider",
-                    file
-            );
+            Uri fileUri;
+
+            // ==================== 关键优化 ====================
+            // 图片：插入媒体库 → 微信不删后缀
+            // 其他文件(TXT/ZIP)：保持原来的 FileProvider 分享
+            // ==================================================
+            if (isImageFile(file)) {
+                // 图片特殊处理，让微信信任，保留后缀
+                fileUri = Uri.parse(MediaStore.Images.Media.insertImage(
+                        getContentResolver(),
+                        file.getAbsolutePath(),
+                        file.getName(),
+                        "Shared Image"
+                ));
+            } else {
+                // TXT / ZIP 正常走 FileProvider
+                fileUri = FileProvider.getUriForFile(
+                        this,
+                        getPackageName() + ".fileprovider",
+                        file
+                );
+            }
+
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
             shareIntent.setType(getMimeType(file.getName()));
             shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
@@ -4177,16 +4294,7 @@ public class MainActivity extends AppCompatActivity {
     private String processTxtForCutOperation(String originalName) {
         return processTxtForCutOperation(originalName, false);
     }
-    // 通过文件名判断是否为图片
-    private boolean isImageFileByName(String fileName) {
-        String lowerFileName = fileName.toLowerCase();
-        for (String ext : IMAGE_EXTENSIONS) {
-            if (lowerFileName.endsWith(ext)) {
-                return true;
-            }
-        }
-        return false;
-    }
+
     /**
      * 生成6位随机字符串（字母+数字组合）
      */

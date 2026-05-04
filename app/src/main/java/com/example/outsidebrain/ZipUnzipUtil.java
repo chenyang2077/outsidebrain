@@ -147,6 +147,19 @@ public class ZipUnzipUtil {
             relativePath = entryName;
         }
         File targetFile = new File(rootTargetDir, relativePath);
+        // ==================== 安全加固：防 ZipSlip 路径穿越 ====================
+        try {
+            String canonicalTarget = targetFile.getCanonicalPath();
+            String canonicalRoot = rootTargetDir.getCanonicalPath();
+            if (!canonicalTarget.startsWith(canonicalRoot + File.separator)) {
+                Log.w(TAG, "发现危险文件，已跳过：" + entryName);
+                return sequenceNumber;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "安全校验失败，跳过文件：" + entryName);
+            return sequenceNumber;
+        }
+// ====================================================================
         File parentDir = targetFile.getParentFile();
 
         // 核心修改4：仅创建文件的父文件夹（无序号），确保文件能存放即可
