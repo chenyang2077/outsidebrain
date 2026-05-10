@@ -1,4 +1,4 @@
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 
 import org.junit.Test;
 

@@ -5,13 +5,12 @@
 所属模块：文件解压模块
 开发语言：Java
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.os.Environment;
 import android.util.Log;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;

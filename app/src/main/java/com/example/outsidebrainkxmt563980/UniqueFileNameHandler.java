@@ -5,7 +5,7 @@
 所属模块：文件命名模块
 开发语言：Java
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.text.TextUtils;
 import java.io.File;
 import java.text.SimpleDateFormat;

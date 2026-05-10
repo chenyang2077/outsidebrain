@@ -5,7 +5,7 @@
 所属模块：文件编辑模块
 开发语言：Java
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 
 import android.content.Context;
 import android.content.Intent;
@@ -15,7 +15,6 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.view.ViewTreeObserver;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;

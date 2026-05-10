@@ -5,7 +5,7 @@
 所属模块：偏好设置模块
 开发语言：Java
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.content.Context;
 import android.content.SharedPreferences;
 /**

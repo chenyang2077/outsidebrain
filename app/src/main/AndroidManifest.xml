@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.outsidebrain">
+    package="com.example.outsidebrainkxmt563980">
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
@@ -16,7 +16,7 @@
         android:requestLegacyExternalStorage="true"
         tools:targetApi="30">
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.outsidebrainkxmt563980.MainActivity"
             android:launchMode="singleTop"
             android:exported="true">
             <intent-filter>
@@ -25,15 +25,15 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".ImageViewerActivity"
+            android:name="com.example.outsidebrainkxmt563980.ImageViewerActivity"
             android:exported="false"
             android:theme="@style/Theme.OutsideBrain.NoActionBar.Fullscreen">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value=".MainActivity" />
+                android:value="com.example.outsidebrainkxmt563980.MainActivity" />
         </activity>
         <activity
-            android:name=".FileEditorActivity"
+            android:name="com.example.outsidebrainkxmt563980.FileEditorActivity"
             android:exported="true">
 
             <!-- 外部打开 TXT 正确写法（不会报错，全安卓版本通用） -->

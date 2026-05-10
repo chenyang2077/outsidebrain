@@ -7,7 +7,7 @@
 所属模块：主界面模块
 开发语言：Java
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
@@ -95,9 +95,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import android.content.Context;
 import androidx.appcompat.app.AppCompatDelegate;
-import java.io.BufferedWriter;
+
 import android.icu.text.Transliterator;
-import java.io.OutputStreamWriter;
+
 import java.util.HashMap;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
