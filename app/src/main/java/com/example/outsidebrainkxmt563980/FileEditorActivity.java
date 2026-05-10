@@ -76,11 +76,8 @@ public class FileEditorActivity extends AppCompatActivity {
     private boolean isHistoryChange = false;
     private View btnUndo;
     private View btnRedo;
-    // 顶部变量区加这个
     private boolean hasContentChanged = false;
-    // 按钮容器（你原来的 btn_container）
     private LinearLayout btnContainer;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -88,7 +85,6 @@ public class FileEditorActivity extends AppCompatActivity {
         etFileName = findViewById(R.id.et_file_name);
         etContent = findViewById(R.id.et_content);
         btnContainer = findViewById(R.id.btn_container);
-
         String filePath = getIntent().getStringExtra("file_path");
         String currentDirPath = getIntent().getStringExtra("current_dir_path");
         isPreEdit = getIntent().getBooleanExtra("is_pre_edit", false);
@@ -97,7 +93,6 @@ public class FileEditorActivity extends AppCompatActivity {
         searchKeyword = sp.getString("current_keyword", "").trim();
         handleExternalFileIntent(getIntent());
         recoverFromCrash();
-
         if (!isPreEdit && filePath != null) {
             targetFile = new File(filePath);
             if (targetFile.exists()) {
@@ -113,7 +108,6 @@ public class FileEditorActivity extends AppCompatActivity {
             targetFile = new File(filePath);
             originalFileNameForEdit = targetFile.getName();
             loadExistingFileData(needHandleTimestamp);
-
             if (etContent != null) {
                 etContent.postDelayed(() -> {
                     String fileContent = etContent.getText().toString();
@@ -144,18 +138,13 @@ public class FileEditorActivity extends AppCompatActivity {
         if (etContent != null && TextUtils.isEmpty(etContent.getText().toString())) {
             etContent.post(() -> showKeyboard(etContent));
         }
-
-        // 初始化撤销栈
         initUndoHistory();
         setupTextChangeListeners();
-
-        // 绑定撤销/重做按钮
         findViewById(R.id.btn_undo).setOnClickListener(v -> doUndo());
         findViewById(R.id.btn_redo).setOnClickListener(v -> doRedo());
         btnUndo = findViewById(R.id.btn_undo);
         btnRedo = findViewById(R.id.btn_redo);
     }
-
     // ==========================
     // 初始化撤销历史
     // ==========================
@@ -166,18 +155,13 @@ public class FileEditorActivity extends AppCompatActivity {
         undoStack.push(initContent);
         updateUndoRedoBtnVisibility();
     }
-
     private void updateUndoRedoBtnVisibility() {
         if (btnUndo == null || btnRedo == null) return;
-
         boolean canUndo = undoStack.size() > 1;
         boolean canRedo = !redoStack.isEmpty();
-
         btnUndo.setVisibility(canUndo ? View.VISIBLE : View.GONE);
         btnRedo.setVisibility(canRedo ? View.VISIBLE : View.GONE);
     }
-
-
 // 撤销（标准光标行为）
 // ==========================
     private void doUndo() {
@@ -188,15 +172,12 @@ public class FileEditorActivity extends AppCompatActivity {
         String currentContent = etContent.getText().toString();
         redoStack.push(currentContent);
         String targetContent = undoStack.pop();
-
         isHistoryChange = true;
         etContent.setText(targetContent);
-    // ✅ 智能光标：放在变化位置后面
         setSmartCursorAfterChange(currentContent, targetContent);
         isSaved = false;
         updateUndoRedoBtnVisibility();
     }
-
     // ==========================
 // 重做（标准光标行为）
 // ==========================
@@ -208,15 +189,12 @@ public class FileEditorActivity extends AppCompatActivity {
         String currentContent = etContent.getText().toString();
         undoStack.push(currentContent);
         String targetContent = redoStack.pop();
-
         isHistoryChange = true;
         etContent.setText(targetContent);
-        // ✅ 智能光标：放在变化位置后面
         setSmartCursorAfterChange(currentContent, targetContent);
         isSaved = false;
         updateUndoRedoBtnVisibility();
     }
-
     /**
      * 智能光标：对比新旧文本，把光标放在 变化区域的后面
      * @param oldText 变化前
@@ -228,29 +206,22 @@ public class FileEditorActivity extends AppCompatActivity {
      * 重做：光标放变化段后方
      */
     private void setSmartCursorAfterChange(String beforeText, String afterText) {
-        // 找到首部相同长度
         int sameStart = 0;
         int minLen = Math.min(beforeText.length(), afterText.length());
         while (sameStart < minLen
                 && beforeText.charAt(sameStart) == afterText.charAt(sameStart)) {
             sameStart++;
         }
-
-        // 找到尾部相同长度
         int sameEnd = 0;
         while (sameEnd < minLen - sameStart
                 && beforeText.charAt(beforeText.length() - 1 - sameEnd)
                 == afterText.charAt(afterText.length() - 1 - sameEnd)) {
             sameEnd++;
         }
-
-        // 变化区域终点 = 光标目标位置（变化内容后面）
         int targetPos = afterText.length() - sameEnd;
-        // 边界保护
         targetPos = Math.max(0, Math.min(targetPos, afterText.length()));
         etContent.setSelection(targetPos);
     }
-
     // ==========================
     // 文字监听：记录历史
     // ==========================
@@ -278,7 +249,6 @@ public class FileEditorActivity extends AppCompatActivity {
                                 Toast.LENGTH_SHORT).show();
                     });
                 }
-
                 if (!cleanedTitle.equals(original)) {
                     int cursorPos = etFileName.getSelectionStart();
                     s.replace(0, s.length(), cleanedTitle);
@@ -289,7 +259,6 @@ public class FileEditorActivity extends AppCompatActivity {
 
             }
         });
-
         etContent.addTextChangedListener(new android.text.TextWatcher() {
             private String oldText = "";
 
@@ -312,11 +281,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     undoStack.push(oldText);
                     redoStack.clear();
                     isSaved = false;
-
-                    // ==============================================
-                    // 👇 👇 👇 只加这一句！！！
-                    // 只要用户改了字 → 按钮容器才显示
-                    // ==============================================
                     btnContainer.setVisibility(View.VISIBLE);
 
                     updateUndoRedoBtnVisibility();
@@ -324,25 +288,17 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         });
     }
-
-    // ==========================
-    // 键盘弹出/隐藏 控制按钮显示
-    // ==========================
-
-
     // ==========================
     // 接收外部文件
     // ==========================
     private void handleExternalFileIntent(Intent intent) {
         if (intent == null) return;
         if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
-
         Uri uri = intent.getData();
         if (uri == null) {
             finish();
             return;
         }
-
         try {
             InputStream is = getContentResolver().openInputStream(uri);
             BufferedReader br = new BufferedReader(new InputStreamReader(is));
@@ -353,7 +309,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }
             br.close();
             is.close();
-
             String fileName = "未命名文件";
             Cursor cursor = getContentResolver().query(uri, null, null, null, null);
             if (cursor != null) {
@@ -363,24 +318,19 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
                 cursor.close();
             }
-
             this.uriFromExternal = uri;
             this.targetFile = null;
             this.isPreEdit = false;
-
             if (fileName.toLowerCase().endsWith(".txt")) {
                 fileName = fileName.substring(0, fileName.lastIndexOf("."));
             }
             etFileName.setText(fileName);
             etContent.setText(content.toString());
-
         } catch (Exception e) {
             e.printStackTrace();
             finish();
         }
     }
-
-
 
     private void recoverFromCrash() {
         File rootDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
@@ -416,7 +366,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 }
             }
         }
-
         SharedPreferences sp = getSharedPreferences("save_state", Context.MODE_PRIVATE);
         Map<String, ?> allEntries = sp.getAll();
         for (Map.Entry<String, ?> entry : allEntries.entrySet()) {
@@ -428,7 +377,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }
         }
     }
-
     private void showKeyboard(EditText editText) {
         editText.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -436,7 +384,6 @@ public class FileEditorActivity extends AppCompatActivity {
             imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
         }
     }
-
     private String[] parseTimestampStructure(String fileNameWithoutExt) {
         if (TextUtils.isEmpty(fileNameWithoutExt)) return new String[0];
         Matcher fullMatcher = FULL_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
@@ -519,7 +466,7 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     // ==============================
-    // 自动保存
+    // 保存
     // ==============================
     private void autoSave() {
         if (isSaved) return;
@@ -529,14 +476,12 @@ public class FileEditorActivity extends AppCompatActivity {
                 OutputStream os = getContentResolver().openOutputStream(uriFromExternal, "wt");
                 os.write(content.getBytes(StandardCharsets.UTF_8));
                 os.close();
-
                 isSaved = true;
                 Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 e.printStackTrace();
                 Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
             }
-
             hideSoftInput();
             finish();
             return;
@@ -544,10 +489,8 @@ public class FileEditorActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("save_state", Context.MODE_PRIVATE);
         String fileName = targetFile != null ? targetFile.getName() : etFileName.getText().toString().trim();
         sp.edit().putBoolean("is_saving_" + fileName, true).apply();
-
         String inputTitle = etFileName.getText().toString();
         String content = etContent.getText().toString();
-
         String rootFolderName = getIntent().getStringExtra("root_folder_name");
         boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
         boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
@@ -580,13 +523,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 timestampSuffix = "_" + randomStr + "_" + millisTimestamp;
             }
             File targetDirectory = currentDir;
-
             String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
             String tempFileName = finalCoreName + timestampSuffix + ".txt";
             File uniqueFile = new File(targetDirectory, tempFileName);
-
             targetFile = uniqueFile;
-
             try {
                 if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
                     Toast.makeText(this, "无法创建目标目录", Toast.LENGTH_SHORT).show();
@@ -594,9 +534,7 @@ public class FileEditorActivity extends AppCompatActivity {
                     finish();
                     return;
                 }
-
                 String finalContent = content;
-
                 boolean saveSuccess = atomicSave(targetFile, finalContent);
                 if (saveSuccess) {
                     isSaved = true;
@@ -606,7 +544,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     Toast.makeText(this, "创建文件失败", Toast.LENGTH_SHORT).show();
                 }
                 sp.edit().putBoolean("is_saving_" + targetFile.getName(), false).apply();
-
             } catch (Exception e) {
                 e.printStackTrace();
                 Toast.makeText(this, "创建异常：" + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -619,7 +556,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 finish();
                 return;
             }
-
             String originalContent = "";
             try {
                 originalContent = readFileContent(targetFile);
@@ -630,7 +566,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 finish();
                 return;
             }
-
             File actualDirectory = targetFile.getParentFile();
             String originalFileName = targetFile.getName();
             String originalFileNameWithoutExt = originalFileName.endsWith(".txt")
@@ -654,7 +589,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-
                 String tip = isTitleEmpty && isContentEmpty
                         ? "文件名和内容均为空，放弃修改"
                         : (isTitleEmpty ? "文件名称为空，放弃修改" : "文件内容为空，放弃修改");
@@ -663,7 +597,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 finish();
                 return;
             }
-
             if (TextUtils.isEmpty(cleanedNewTitle)) {
                 cleanedNewTitle = cleanedOriginalTitle;
             }
@@ -696,7 +629,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     newTimestampSuffix = suffixBuilder.toString();
                 }
             }
-
             String newFileName;
             if (needCheckDuplicate) {
                 String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
@@ -704,7 +636,6 @@ public class FileEditorActivity extends AppCompatActivity {
             } else {
                 newFileName = cleanedNewTitle + newTimestampSuffix + ".txt";
             }
-
             File newFile = new File(actualDirectory, newFileName);
             boolean fileOperationSuccess = true;
             if (!targetFile.getAbsolutePath().equals(newFile.getAbsolutePath())) {
@@ -849,33 +780,19 @@ public class FileEditorActivity extends AppCompatActivity {
         if (fileName == null || fileName.trim().isEmpty()) {
             return "新建文件";
         }
-
-        // 去除首尾空格、换行、制表符
         String cleaned = fileName.trim();
-
-        // 替换所有系统禁止的非法字符
         cleaned = cleaned.replaceAll("[\\\\/:*?\"<>|]", "");
-
-        // 去除换行、回车
         cleaned = cleaned.replaceAll("[\\n\\r\\t]", "");
-
-        // 去除开头和结尾的点（防止生成隐藏文件）
         cleaned = cleaned.replaceAll("^\\.+", "").replaceAll("\\.+$", "");
-
-        // 如果清理后为空，给默认名称
         if (cleaned.isEmpty()) {
             return "新建文件";
         }
-
-        // 限制文件名长度
         int maxLength = 120;
         if (cleaned.length() > maxLength) {
             cleaned = cleaned.substring(0, maxLength);
         }
-
         return cleaned;
     }
-
     private String readFileContent(File file) throws IOException {
         StringBuilder content = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
@@ -895,53 +812,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 : trimmedContent.substring(0, MAX_TITLE_LEN) + "…";
     }
 
-    private void writeFileContent(File file, String content) {
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            fos.write(content.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "写入内容失败", Toast.LENGTH_SHORT).show();
-        }
-    }
 
-    private void addFolderToZip(File folder, String parentEntryName, ZipOutputStream zos) throws IOException {
-        ZipEntry dirEntry = new ZipEntry(parentEntryName + "/");
-        dirEntry.setTime(folder.lastModified());
-        zos.putNextEntry(dirEntry);
-        zos.closeEntry();
-        File[] files = folder.listFiles();
-        if (files == null) return;
-        for (File file : files) {
-            if (file.isDirectory()) {
-                String newEntryName = parentEntryName + "/" + file.getName();
-                addFolderToZip(file, newEntryName, zos);
-            } else {
-                ZipEntry zipEntry = new ZipEntry(parentEntryName + "/" + file.getName());
-                zos.putNextEntry(zipEntry);
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    byte[] buffer = new byte[BUFFER_SIZE];
-                    int length;
-                    while ((length = fis.read(buffer)) > 0) {
-                        zos.write(buffer, 0, length);
-                    }
-                }
-                zos.closeEntry();
-            }
-        }
-    }
-
-    private String getMimeType(String fileName) {
-        if (TextUtils.isEmpty(fileName)) return "application/octet-stream";
-        String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase(Locale.getDefault());
-        switch (extension) {
-            case "txt":
-                return "text/plain";
-            case "zip":
-                return "application/zip";
-            default:
-                return "application/octet-stream";
-        }
-    }
 
     private void hideSoftInput() {
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
@@ -968,7 +839,7 @@ public class FileEditorActivity extends AppCompatActivity {
     }
 
     // ==========================
-    // 后台自动保存（完全保留）
+    // 后台自动保存
     // ==========================
     @Override
     protected void onPause() {
@@ -993,29 +864,24 @@ public class FileEditorActivity extends AppCompatActivity {
         }
         String inputTitle = etFileName.getText().toString().trim();
         String content = etContent.getText().toString();
-
         SharedPreferences sp = getSharedPreferences("save_state", Context.MODE_PRIVATE);
         String fileName = targetFile != null ? targetFile.getName() : inputTitle;
         sp.edit().putBoolean("is_saving_" + fileName, true).commit();
-
         try {
             String rootFolderName = getIntent().getStringExtra("root_folder_name");
             boolean isRootDirectory = getIntent().getBooleanExtra("is_root_directory", false);
             boolean needHandleTimestamp = getIntent().getBooleanExtra("need_handle_timestamp", true);
             if (rootFolderName == null) rootFolderName = ROOT_FOLDER_NAME;
             File rootDir = new File(getFilesDir(), rootFolderName);
-
             if (!rootDir.exists()) {
                 rootDir.mkdirs();
             }
-
             if (isPreEdit) {
                 if (TextUtils.isEmpty(inputTitle) && TextUtils.isEmpty(content)) {
                     isSaved = true;
                     sp.edit().putBoolean("is_saving_" + fileName, false).commit();
                     return;
                 }
-
                 String rawTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
                 String cleanedTitle = cleanFileName(rawTitle.trim());
                 String timestampSuffix = needHandleTimestamp
@@ -1025,12 +891,10 @@ public class FileEditorActivity extends AppCompatActivity {
                 if (!targetDirectory.exists()) {
                     targetDirectory.mkdirs();
                 }
-
                 String finalCoreName = getNonConflictCoreNameInFolder(targetDirectory, cleanedTitle);
                 String tempFileName = finalCoreName + timestampSuffix + ".txt";
                 File uniqueFile = new File(targetDirectory, tempFileName);
                 targetFile = uniqueFile;
-
                 String finalContent = content;
                 boolean createSuccess = atomicSaveSync(targetFile, finalContent);
                 if (createSuccess) {
@@ -1038,14 +902,12 @@ public class FileEditorActivity extends AppCompatActivity {
                     savedNewFilePath = targetFile.getAbsolutePath();
                     isSaved = true;
                 }
-
             } else {
                 if (targetFile == null || !targetFile.exists()) {
                     isSaved = true;
                     sp.edit().putBoolean("is_saving_" + fileName, false).commit();
                     return;
                 }
-
                 String originalContent = readFileContent(targetFile);
                 File actualDirectory = targetFile.getParentFile();
                 String originalFileName = targetFile.getName();
@@ -1058,7 +920,6 @@ public class FileEditorActivity extends AppCompatActivity {
                 String cleanedNewTitle = TextUtils.isEmpty(inputTitle.trim())
                         ? cleanedOriginalTitle
                         : removeAllTimestampFormats(cleanFileName(inputTitle.trim()));
-
                 boolean isTitleEmpty = TextUtils.isEmpty(cleanedNewTitle);
                 boolean isContentEmpty = TextUtils.isEmpty(content);
                 if (isTitleEmpty || isContentEmpty) {
@@ -1072,7 +933,6 @@ public class FileEditorActivity extends AppCompatActivity {
                     sp.edit().putBoolean("is_saving_" + fileName, false).commit();
                     return;
                 }
-
                 if (TextUtils.isEmpty(cleanedNewTitle)) {
                     cleanedNewTitle = cleanedOriginalTitle;
                 }
@@ -1099,7 +959,6 @@ public class FileEditorActivity extends AppCompatActivity {
                         }
                         newTimestamps.add(newMillisTimestamp);
                     }
-
                     if (!TextUtils.isEmpty(newRandomStr) && !newTimestamps.isEmpty()) {
                         StringBuilder suffixBuilder = new StringBuilder("_").append(newRandomStr);
                         for (String ts : newTimestamps) {
@@ -1108,7 +967,6 @@ public class FileEditorActivity extends AppCompatActivity {
                         newTimestampSuffix = suffixBuilder.toString();
                     }
                 }
-
                 String newFileName;
                 if (needCheckDuplicate) {
                     String finalCoreName = getNonConflictCoreNameInFolder(actualDirectory, cleanedNewTitle);
@@ -1129,22 +987,18 @@ public class FileEditorActivity extends AppCompatActivity {
                     targetFile = newFile;
                     Log.d("FileEditor", "同步保存-文件名更新：" + originalFileName + " → " + newFileName);
                 }
-
                 String finalContent = content;
                 atomicSaveSync(targetFile, finalContent);
                 isSaved = true;
             }
-
             String finalFileName = targetFile != null ? targetFile.getName() : fileName;
             sp.edit().putBoolean("is_saving_" + finalFileName, false).commit();
-
         } catch (Exception e) {
             e.printStackTrace();
             isSaved = true;
             sp.edit().putBoolean("is_saving_" + fileName, false).commit();
             runOnUiThread(() -> Toast.makeText(this, "保存失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
         }
-
         if (targetFile != null && targetFile.exists()) {
             PreferenceUtils.saveLastPageType(this, "editor");
             PreferenceUtils.saveLastEditedFile(this, targetFile.getAbsolutePath());
@@ -1152,7 +1006,6 @@ public class FileEditorActivity extends AppCompatActivity {
             Log.d("FileEditor", "同步保存完成，录入新文件名路径：" + targetFile.getAbsolutePath());
         }
     }
-
     private void atomicCopyFileSync(File sourceFile, File targetFile) throws IOException {
         FileInputStream fis = new FileInputStream(sourceFile);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -1164,7 +1017,6 @@ public class FileEditorActivity extends AppCompatActivity {
         fis.close();
         atomicSaveSync(targetFile, new String(bos.toByteArray(), StandardCharsets.UTF_8));
     }
-
     @Override
     protected void onResume() {
         super.onResume();
@@ -1181,32 +1033,6 @@ public class FileEditorActivity extends AppCompatActivity {
             }, 100);
 
             savedNewFilePath = "";
-        }
-    }
-
-    private File getNonConflictFile(File file) {
-        if (!file.exists()) {
-            return file;
-        }
-        String name = file.getName();
-        String parent = file.getParent();
-        String baseName;
-        String ext = "";
-        int lastDot = name.lastIndexOf(".");
-        if (lastDot > 0) {
-            baseName = name.substring(0, lastDot);
-            ext = name.substring(lastDot);
-        } else {
-            baseName = name;
-        }
-        int index = 1;
-        while (true) {
-            String newName = baseName + "(" + index + ")" + ext;
-            File newFile = new File(parent, newName);
-            if (!newFile.exists()) {
-                return newFile;
-            }
-            index++;
         }
     }
 }

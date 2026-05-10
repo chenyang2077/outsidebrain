@@ -1,5 +1,5 @@
 /*
-软件名称：红玉文档
+软件名称：快乐文字
 版本号：V1.0
 功能描述：生成无冲突文件名、清理文件名中的时间戳、解析文件名结构，保障文件命名唯一性
 所属模块：文件命名模块
@@ -154,7 +154,6 @@ public class UniqueFileNameHandler {
     private static class NameParts {
         String coreName;
         int suffix;
-
         NameParts(String coreName, int suffix) {
             this.coreName = coreName;
             this.suffix = suffix;
@@ -165,7 +164,7 @@ public class UniqueFileNameHandler {
      */
     public static class TimestampHandler {
         public static String generateRandomString() {
-            return UniqueFileNameHandler.generateRandomString(); // 复用外部方法
+            return UniqueFileNameHandler.generateRandomString();
         }
         public static String generateMillisTimestamp() {
             return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
