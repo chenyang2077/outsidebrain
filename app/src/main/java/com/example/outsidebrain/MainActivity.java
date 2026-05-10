@@ -150,6 +150,7 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         etSearch = findViewById(R.id.et_search);
@@ -158,7 +159,6 @@ public class MainActivity extends AppCompatActivity {
         preEditFileBtn = findViewById(R.id.add_button);
         ImageButton menuButton = findViewById(R.id.menu_btn);
         menuButton.setOnClickListener(v -> showPopupMenu(v));
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         fileList = new ArrayList<>();
         searchResultList = new ArrayList<>();
         fileAdapter = new FileAdapter();
