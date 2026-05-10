@@ -1,5 +1,5 @@
 /*
-软件名称：快乐文字
+软件名称：红玉文档
 版本号：V1.0
 功能描述：1. 基础文件管理：支持TXT文件/文件夹整理、ZIP压缩解压、文件/文件夹复制与移动；
         2. 文件浏览编辑：支持TXT文件/图片浏览、TXT文件编辑；
@@ -129,15 +129,14 @@ public class MainActivity extends AppCompatActivity {
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
     private View pasteButton;
-    private Toast mPathToast; // 路径提示Toast
-    private View mTouchOverlay; // 全屏触摸覆盖层（用于监听触摸消失）
+    private Toast mPathToast;
+    private View mTouchOverlay;
     private View mCustomTipView;
     private boolean mIsTipShowing = false;
     private boolean isJumping = false;
-    private View mReusableTipView; // 复用唯一的提示视图，避免重复inflate
-    private long lastTipUpdateTime = 0; // 防抖时间戳，避免高频触发
-    private String lastTipText = ""; // 缓存上一次提示文本，避免重复更新
-    // 压缩专用 防重复点击
+    private View mReusableTipView;
+    private long lastTipUpdateTime = 0;
+    private String lastTipText = "";
     private boolean isZipCompressing = false;
     // 智能加载配置
     private ProgressDialog mLoadingDialog;
@@ -145,7 +144,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
     /**
      * 页面创建初始化：
-     private static final Pattern FIRST_LINE_PATH_PATTERN = Pattern.compile("^【[^】]*】$");
      * 1. 绑定布局控件，初始化视图组件；2. 设置夜间模式、文件列表适配器；3. 初始化回收站/中转站目录； 4. 设置搜索框/菜单按钮/新增按钮点击事件； 5. 检查存储权限，初始化根目录。
      */
     @Override
@@ -254,72 +252,52 @@ public class MainActivity extends AppCompatActivity {
      * 显示可点击的路径提示，点击跳转到对应文件夹
      */
     private void showCustomPathTip(String fullRelativePath) {
-        // ========== 修复1：防抖：50ms内不重复执行，避免高频创建视图 ==========
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastTipUpdateTime < 50) {
             return;
         }
         lastTipUpdateTime = currentTime;
-
-        // ========== 修复2：先隐藏旧视图（保留原有逻辑） ==========
         hideCustomPathTip();
-
-        // ========== 原有路径解析逻辑：完全保留 ==========
         String folderPath;
         String fileName;
         int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
         if (lastSepIndex == -1) {
-            folderPath = "";       // 根目录下
+            folderPath = "";
             fileName = fullRelativePath;
         } else {
             folderPath = fullRelativePath.substring(0, lastSepIndex);
             fileName = fullRelativePath.substring(lastSepIndex + 1);
         }
-
         String tipText;
         if (TextUtils.isEmpty(folderPath)) {
             tipText = "根目录" + "\n" + fileName;
         } else {
             tipText = folderPath + "\n" + fileName;
         }
-
-        // ========== 修复3：文本未变化则直接返回，避免无效操作 ==========
         if (tipText.equals(lastTipText)) {
             return;
         }
         lastTipText = tipText;
-
-        // ========== 修复4：复用视图，避免重复inflate ==========
         if (mReusableTipView == null) {
-            // 仅第一次调用时加载布局，后续复用
             mReusableTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
         }
-        mCustomTipView = mReusableTipView; // 替换原有mCustomTipView为复用视图
-
-        // ========== 原有文本设置+点击事件：完全保留 ==========
+        mCustomTipView = mReusableTipView;
         TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
         tvTip.setText(tipText);
-
         View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
         tipContainer.setOnClickListener(v -> {
-            // 防重复点击：正在跳转时不响应第二次点击
             if (isJumping) {
                 return;
             }
             isJumping = true;
-
-            // 显示加载提示
             ProgressDialog jumpDialog = new ProgressDialog(MainActivity.this);
             jumpDialog.setMessage("正在跳转...");
             jumpDialog.setCancelable(false);
             jumpDialog.show();
-
             hideCustomPathTip();
-
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
                     File baseDir;
-
                     if (isInTransferStation) {
                         baseDir = transferStationDirectory;
                     } else if (isInRecycleBin) {
@@ -327,7 +305,6 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         baseDir = rootDirectory;
                     }
-
                     File targetFile = new File(baseDir, fullRelativePath);
                     File targetFolder = targetFile.getParentFile();
 
@@ -336,7 +313,6 @@ public class MainActivity extends AppCompatActivity {
                         etSearch.setText("");
                         currentDirectory = targetFolder;
                         loadFileList();
-
                         PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                         PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
                         PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
@@ -345,7 +321,6 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     Toast.makeText(MainActivity.this, "跳转失败", Toast.LENGTH_SHORT).show();
                 } finally {
-                    // 跳转逻辑执行完，关闭对话框，释放点击
                     isJumping = false;
                     if (jumpDialog.isShowing()) {
                         jumpDialog.dismiss();
@@ -353,10 +328,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         });
-
-        // ========== 修复5：提前计算位置，避免post异步调整导致的闪屏 ==========
         ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
-
         int screenWidth = rootView.getWidth();
         int bottomMargin = dp2px(80);
         mCustomTipView.measure(
@@ -367,23 +339,17 @@ public class MainActivity extends AppCompatActivity {
         int tipHeight = mCustomTipView.getMeasuredHeight();
         int left = (screenWidth - tipWidth) / 2;
         int top = rootView.getHeight() - bottomMargin - tipHeight;
-
         mCustomTipView.setX(left);
         mCustomTipView.setY(top);
-
         if (mCustomTipView.getParent() != null) {
             ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
         }
         rootView.addView(mCustomTipView);
-
         ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
         params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         mCustomTipView.setLayoutParams(params);
-
         mIsTipShowing = true;
-
-        // 修复：MotionEvent.ACTION_DOWN
         rootView.setOnTouchListener((view, event) -> {
             if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
                 hideCustomPathTip();
@@ -395,13 +361,9 @@ public class MainActivity extends AppCompatActivity {
     private void hideCustomPathTip() {
         if (mIsTipShowing && mCustomTipView != null && mCustomTipView.getParent() != null) {
             ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
-            // ========== 核心修改：注释掉mCustomTipView = null，保留复用视图 ==========
-            // mCustomTipView = null; // 不要置空！保留视图引用以便复用
             mIsTipShowing = false;
         }
     }
-
-    // 工具方法：dp转px（如果已有可忽略）
     private int dp2px(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -433,7 +395,6 @@ public class MainActivity extends AppCompatActivity {
             params.width = defaultIconSize;
             params.height = defaultIconSize;
             holder.ivIcon.setLayoutParams(params);
-
             if (file.isDirectory()) {
                 holder.itemView.setBackgroundResource(R.drawable.item_folder_rounded_bg);
                 int iconSize = dp2px(holder.itemView.getContext(), 36);
@@ -462,10 +423,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
                 displayFileName = formatFileNameForDisplay(file.getName());
             }
-
-            // 统一设置处理后的文件名
             holder.tvName.setText(displayFileName);
-
             holder.itemView.setOnClickListener(v -> {
                 if (file.isDirectory()) {
                     if (copiedFile != null && file.equals(copiedFile)) {
@@ -473,24 +431,21 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(MainActivity.this, "禁止粘贴在所选文件夹内部", Toast.LENGTH_SHORT).show();
                         return;
                     }
-
                     if (isInSearchMode) {
-                        isInSearchMode = false;                  // 退出搜索
-                        etSearch.setText("");                    // 清空搜索框文字 ✅
-                        etSearch.clearFocus();                   // 清除输入框焦点
-                        clearSearchKeyword();                    // 清空搜索记录
-                        hideCustomPathTip();                     // 隐藏路径提示 ✅
-                        hidePasteButton();                       // 隐藏粘贴按钮
-                        currentDirectory = file;                 // 跳转到点击的文件夹
-                        loadFileList();                          // 刷新文件列表
-                        updateLevelHint();                       // 更新路径提示
+                        isInSearchMode = false;
+                        etSearch.setText("");
+                        etSearch.clearFocus();
+                        clearSearchKeyword();
+                        hideCustomPathTip();
+                        hidePasteButton();
+                        currentDirectory = file;
+                        loadFileList();
+                        updateLevelHint();
                         PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                         return;
                     }
-
                     File[] tempFiles = file.listFiles();
                     int totalCount = (tempFiles != null) ? tempFiles.length : 0;
-
                     if (totalCount <= FILE_COUNT_LIMIT) {
                         currentDirectory = file;
                         loadFileList();
@@ -500,15 +455,12 @@ public class MainActivity extends AppCompatActivity {
                         fileList.clear();
                         fileAdapter.setData(fileList);
                         updateLevelHint();
-
                         mLoadingDialog = new ProgressDialog(MainActivity.this);
                         mLoadingDialog.setMessage("正在加载文件...");
                         mLoadingDialog.setCancelable(false);
                         mLoadingDialog.show();
-
                         new Thread(() -> loadFileList()).start();
                     }
-
                     PreferenceUtils.saveLastPageType(MainActivity.this, "main");
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, "");
@@ -517,11 +469,9 @@ public class MainActivity extends AppCompatActivity {
                     hidePasteButton();
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
-
                     if (isInSearchMode) {
                         String showPath;
                         String fullPath = file.getAbsolutePath();
-
                         if (isInTransferStation) {
                             String basePath = transferStationDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
@@ -532,14 +482,11 @@ public class MainActivity extends AppCompatActivity {
                             String basePath = rootDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
                         }
-
                         if (showPath.startsWith(File.separator)) {
                             showPath = showPath.substring(1);
                         }
-
                         MainActivity.this.showCustomPathTip(showPath);
                     }
-
                     new Thread(() -> {
                         boolean corrected = file.getName().toLowerCase().endsWith(".txt");
                         runOnUiThread(() -> {
@@ -560,12 +507,9 @@ public class MainActivity extends AppCompatActivity {
                     showZipExtractDialog(file);
                 } else if (isImageFile(file)) {
                     hidePasteButton();
-
-                    // ========== 新增：图片文件也显示路径提示 ==========
                     if (isInSearchMode) {
                         String showPath;
                         String fullPath = file.getAbsolutePath();
-
                         if (isInTransferStation) {
                             String basePath = transferStationDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
@@ -576,14 +520,11 @@ public class MainActivity extends AppCompatActivity {
                             String basePath = rootDirectory.getAbsolutePath();
                             showPath = fullPath.replace(basePath, "");
                         }
-
                         if (showPath.startsWith(File.separator)) {
                             showPath = showPath.substring(1);
                         }
                         MainActivity.this.showCustomPathTip(showPath);
                     }
-                    // ==============================================
-
                     openImageFile(file);
                     PreferenceUtils.saveLastPageType(MainActivity.this, "image");
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
@@ -621,9 +562,6 @@ public class MainActivity extends AppCompatActivity {
                     .replaceAll(randomStrRegex, "");
             return cleanName + extension;
         }
-        /**
-         * 文件列表项ViewHolder，绑定视图控件
-         */
         class FileViewHolder extends RecyclerView.ViewHolder {
             ImageView ivIcon;
             TextView tvName;
@@ -633,15 +571,9 @@ public class MainActivity extends AppCompatActivity {
                 tvName = itemView.findViewById(R.id.name);
             }
         }
-        /**
-         * dp转px，适配不同屏幕密度
-         */
         private int dp2px(Context context, float dp) {
             return (int) (dp * context.getResources().getDisplayMetrics().density + 0.5f);
         }
-        /**
-         * 绘制带序号的文件夹图标
-         */
         private void drawFolderIconWithNumber(ImageView imageView, int number) {
             Drawable folderDrawable = ContextCompat.getDrawable(imageView.getContext(), R.drawable.ic_folder);
             if (folderDrawable == null) {
@@ -723,7 +655,6 @@ public class MainActivity extends AppCompatActivity {
             return Long.compare(f2.lastModified(), f1.lastModified());
         }
     }
-
     /**
      * 从文件名提取毫秒时间戳：
      * 1. 仅处理TXT文件；
@@ -747,7 +678,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return 0;
     }
-
     /**
      * 更新搜索框层级提示：
      * 1. 回收站/中转站目录显示对应提示；
@@ -776,37 +706,26 @@ public class MainActivity extends AppCompatActivity {
         }
         etSearch.setHint(levelStr.toString());
     }
-
-
     /**
      * 提取文件名开头的多级数字序号（支持任意层级小数点）
      * @param fileName 文件名
      * @return 数字列表（如"1.25.5.25文件夹" → [1,25,5,25]，无数字则返回空列表）
      */
-
     private List<Long> extractMultiLevelNumberFromName(String fileName) {
         List<Long> numList = new ArrayList<>();
         if (fileName == null || fileName.isEmpty()) {
             return numList;
         }
-
-        // 匹配：数字 + (.或、数字) 【必须带符号】
         Pattern pattern = Pattern.compile("^([0-9]+([.、][0-9]*)*)");
         Matcher matcher = pattern.matcher(fileName);
-
         if (matcher.find()) {
             String numStr = matcher.group(1);
-
-            // 🔥 核心规则：必须包含 . 或 、 才识别
             boolean hasValidSymbol = numStr.contains(".") || numStr.contains("、");
             if (!hasValidSymbol) {
-                return numList; // 纯数字 → 不识别
+                return numList;
             }
-
-            // 统一把 、换成 . 再分段
             numStr = numStr.replace('、', '.');
             String[] numParts = numStr.split("\\.");
-
             for (String part : numParts) {
                 try {
                     if (!part.isEmpty()) {
@@ -817,15 +736,12 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-
         return numList;
     }
-
     // ==============================
 // 2. 中文数字映射 & 解析（全局共用）
 // ==============================
     private final Map<String, Integer> CN_NUM_MAP = new HashMap<>();
-
     {
         CN_NUM_MAP.put("零", 0);
         CN_NUM_MAP.put("一", 1);
@@ -842,7 +758,6 @@ public class MainActivity extends AppCompatActivity {
         CN_NUM_MAP.put("千", 1000);
         CN_NUM_MAP.put("万", 10000);
     }
-
     // 提取名称中连续中文数字
     private String parseChineseNumber(String input) {
         if (input == null || input.isEmpty()) {
@@ -852,12 +767,9 @@ public class MainActivity extends AppCompatActivity {
         StringBuilder result = new StringBuilder();
         int i = 0;
         int len = input.length();
-
         while (i < len) {
             char c = input.charAt(i);
             String charStr = String.valueOf(c);
-
-            // 如果当前是中文数字，并且 后面 有字符，且后面是 、或 .
             if (CN_NUM_MAP.containsKey(charStr) && i + 1 < len) {
                 char next = input.charAt(i + 1);
                 if (next == '、' || next == '.') {
@@ -870,7 +782,6 @@ public class MainActivity extends AppCompatActivity {
                     result.append(num);
                     i = j;
                 } else {
-                    // 不是 、或 . → 不转换，原样保留
                     result.append(c);
                     i++;
                 }
@@ -881,7 +792,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return result.toString();
     }
-
     private long convertChineseToNumber(String cn) {
         try {
             long total = 0;
@@ -905,7 +815,6 @@ public class MainActivity extends AppCompatActivity {
             return 0;
         }
     }
-
     /**
      * 文件夹排序（支持多级小数序号+汉字拼音首字母排序）：
      * 1. 提取文件夹名称开头的多级数字序号（如1.25.5.25）；
@@ -927,20 +836,15 @@ public class MainActivity extends AppCompatActivity {
         } else {
             transliterator = null;
         }
-
         Collections.sort(folders, new Comparator<File>() {
             @Override
             public int compare(File file1, File file2) {
                 String name1 = file1.getName();
                 String name2 = file2.getName();
-
-                // 统一解析中文数字
                 name1 = parseChineseNumber(name1);
                 name2 = parseChineseNumber(name2);
-
                 List<Long> numList1 = extractMultiLevelNumberFromName(name1);
                 List<Long> numList2 = extractMultiLevelNumberFromName(name2);
-
                 if (!numList1.isEmpty() && !numList2.isEmpty()) {
                     int minSize = Math.min(numList1.size(), numList2.size());
                     for (int i = 0; i < minSize; i++) {
@@ -967,7 +871,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
     /**
      * 转换拼音方法（参数直接用Transliterator，无需强转）
      */
@@ -986,7 +889,6 @@ public class MainActivity extends AppCompatActivity {
             return name.toLowerCase();
         }
     }
-
     /**
      * 压缩根文件夹：
      * 1. 弹出确认对话框，确认压缩操作；
@@ -1032,8 +934,6 @@ public class MainActivity extends AppCompatActivity {
                 .setCancelable(true)
                 .show();
     }
-
-
     /**
      * 异步压缩任务：
      * 1. 后台执行文件夹压缩，显示进度对话框；
@@ -1185,7 +1085,6 @@ public class MainActivity extends AppCompatActivity {
         progressDialog.setProgress(0);
         progressDialog.show();
     }
-
     /**
      * 更新进度对话框：设置当前进度值
      *
@@ -1204,7 +1103,6 @@ public class MainActivity extends AppCompatActivity {
             progressDialog.dismiss();
         }
     }
-
     /**
      * 页面销毁处理：
      * 1. 取消未完成的压缩任务，避免内存泄漏。
@@ -1216,7 +1114,6 @@ public class MainActivity extends AppCompatActivity {
             compressTask.cancel(true);
         }
     }
-
     /**
      * 启动文件预编辑：
      * 1. 校验当前目录有效性；
@@ -1234,7 +1131,6 @@ public class MainActivity extends AppCompatActivity {
         preEditIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(preEditIntent, REQUEST_EDIT_FILE);
     }
-
     /**
      * 显示弹出菜单：
      * 1. 创建主题化PopupMenu，加载菜单布局；
@@ -1301,12 +1197,6 @@ public class MainActivity extends AppCompatActivity {
             popupWindow.setBackgroundDrawable(new ColorDrawable(0xFF000000));
             popupWindow.setOutsideTouchable(true);
             popupWindow.setFocusable(true);
-
-            // ==========================
-            // 关键：全部去掉冲突的 selector
-            // ==========================
-
-            // 点击功能 100% 正常
             listView.setOnItemClickListener((parent, v, position, id) -> {
                 String text = menuList.get(position);
                 switch (text) {
@@ -1339,13 +1229,6 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-
-
-
-
-
-
-
     /**
      * 检查中转站权限：
      * 1. Android 11+ 检查MANAGE_EXTERNAL_STORAGE权限；
@@ -1378,7 +1261,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
-
     /**
      * 打开中转站目录：
      * 1. 设置中转站标识，切换当前目录为中转站；
@@ -1411,7 +1293,6 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-
     /**
      * 清空回收站：
      * 1. 递归删除回收站目录下所有文件/文件夹；
@@ -1434,7 +1315,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
-
     /**
      * 递归删除文件/文件夹：
      * 1. 处理文件夹：递归删除子项后删除自身；
@@ -1457,7 +1337,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return file.delete();
     }
-
     /**
      * 打开回收站目录：
      * 1. 校验回收站目录有效性；
@@ -1481,7 +1360,6 @@ public class MainActivity extends AppCompatActivity {
         PreferenceUtils.saveLastPageType(this, "recycle_bin");
         PreferenceUtils.saveLastFolderPath(this, recycleBinDirectory.getAbsolutePath());
     }
-
     /**
      * 退出回收站：
      * 1. 退出搜索模式，切换当前目录为根目录；
@@ -1503,7 +1381,6 @@ public class MainActivity extends AppCompatActivity {
         PreferenceUtils.saveLastPageType(this, "main");
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
     }
-
     /**
      * 检查文件内容是否包含关键词：
      * 1. 跳过ZIP/图片/其他非文本文件；
@@ -1522,36 +1399,26 @@ public class MainActivity extends AppCompatActivity {
      * @return 内容是否包含关键词
      */
     private boolean isContentContainKeyword(File file, String keyword) {
-        // 1. 空关键词直接返回false
         if (TextUtils.isEmpty(keyword)) {
             return false;
         }
-
-        // 2. 过滤非文本文件：ZIP压缩包、图片、其他非文本文件不检查
         if (file.getName().toLowerCase().endsWith(".zip") || isImageFile(file) || isOtherFile(file)) {
             return false;
         }
-
-        // 3. 读取文件内容，逐行检查关键词（忽略大小写）
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
-            String lowerKeyword = keyword.toLowerCase(); // 预转换关键词为小写，提升性能
-
+            String lowerKeyword = keyword.toLowerCase();
             while ((line = br.readLine()) != null) {
-                // 移除原逻辑中第一行路径标识的过滤，直接检查整行内容
                 if (line.toLowerCase().contains(lowerKeyword)) {
-                    return true; // 找到关键词，立即返回true
+                    return true;
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace(); // 文件读取失败时，返回false
+            e.printStackTrace();
         }
-
-        // 4. 未找到关键词或文件读取失败
         return false;
     }
-
     /**
      * 执行文件搜索：
      * 1. 获取搜索关键词，校验非空；
@@ -1570,35 +1437,27 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         saveSearchKeyword(keyword);
-
-        // 🔥 搜索开始：弹出提示框（文件多需要时间）
         ProgressDialog searchDialog = new ProgressDialog(this);
         searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
-        searchDialog.setCanceledOnTouchOutside(false); // 点击外部不消失
-        searchDialog.setCancelable(false); // 按返回键不消失
+        searchDialog.setCanceledOnTouchOutside(false);
+        searchDialog.setCancelable(false);
         searchDialog.show();
-
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
             recursiveSearch(currentDirectory, keyword);
             sortSearchResult();
-
             runOnUiThread(() -> {
-                // 🔥 搜索结束：关闭提示框
                 if (searchDialog.isShowing()) {
                     searchDialog.dismiss();
                 }
-
                 fileAdapter.setData(searchResultList);
                 Toast.makeText(MainActivity.this,
                         searchResultList.size() + " 个匹配结果",
                         Toast.LENGTH_SHORT).show();
             });
         }).start();
-
     }
-
     /**
      * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
      *
@@ -1608,7 +1467,6 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         sp.edit().putString("current_keyword", keyword).apply(); // 异步保存，不阻塞
     }
-
     /**
      * 清空搜索关键词：从SharedPreferences移除当前关键词
      */
@@ -1616,31 +1474,23 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         sp.edit().remove("current_keyword").apply();
     }
-
     /**
      * 递归搜索文件：
      * 1. 遍历当前目录下所有文件/文件夹；
      * 2. 文件夹：名称匹配则加入结果，递归搜索子目录，跳过末尾带#的文件夹；
      * 3. 文件：名称/内容匹配则加入结果。
-     *
      * @param dir     搜索目录
      * @param keyword 搜索关键词
      */
     private void recursiveSearch(File dir, String keyword) {
         if (dir == null || !dir.isDirectory()) return;
-
         File[] files = dir.listFiles();
         if (files == null) return;
-
         for (File file : files) {
             if (file.isDirectory()) {
-                // ======================
-                // 🔥 只跳过【子文件夹】末尾带 # 的，不跳过当前目录
-                // ======================
                 if (file.getName().endsWith("#")) {
                     continue;
                 }
-
                 if (file.getName().toLowerCase().contains(keyword.toLowerCase())) {
                     searchResultList.add(file);
                 }
@@ -1654,7 +1504,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     /**
      * 判断是否为图片文件：
      * 1. 检查文件扩展名是否在IMAGE_EXTENSIONS数组中；
@@ -1663,13 +1512,10 @@ public class MainActivity extends AppCompatActivity {
      * @param file 待判断文件
      * @return 是否为图片文件
      */
-
     private boolean isImageFile(File file) {
         if (file == null || file.isDirectory() || !file.exists()) {
             return false;
         }
-
-        // 先保留后缀判断，兼容日常使用
         String fileName = file.getName().toLowerCase();
         boolean extMatch = false;
         for (String ext : IMAGE_EXTENSIONS) {
@@ -1681,16 +1527,12 @@ public class MainActivity extends AppCompatActivity {
         if (!extMatch) {
             return false;
         }
-
-        // 再加文件头魔数校验，防伪装病毒
         try (FileInputStream fis = new FileInputStream(file)) {
             byte[] header = new byte[10];
             int readLen = fis.read(header);
             if (readLen < 4) {
                 return false;
             }
-
-            // JPG / JPEG
             if (header[0] == (byte)0xFF && header[1] == (byte)0xD8 && header[2] == (byte)0xFF) {
                 return true;
             }
@@ -1710,8 +1552,6 @@ public class MainActivity extends AppCompatActivity {
             if (header[0] == (byte)0x52 && header[1] == (byte)0x49 && header[2] == (byte)0x46 && header[3] == (byte)0x46) {
                 return true;
             }
-
-            // 后缀对但文件头不对，判定为伪装文件，拦截
             return false;
         } catch (Exception e) {
             return false;
@@ -1721,22 +1561,17 @@ public class MainActivity extends AppCompatActivity {
         if (file == null || file.isDirectory() || !file.exists()) {
             return false;
         }
-
-        // 先判断后缀
         String name = file.getName().toLowerCase();
         if (!name.endsWith(".txt")) {
             return false;
         }
-
-        // 再判断文件头是不是文本字符
         try (FileInputStream fis = new FileInputStream(file)) {
             byte[] head = new byte[16];
             int len = fis.read(head);
-            if (len <= 0) return true; // 空txt允许
+            if (len <= 0) return true;
 
             for (int i = 0; i < len; i++) {
                 byte b = head[i];
-                // 不可打印字符 → 不是文本
                 if ((b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D) || b == 0x7F) {
                     return false;
                 }
@@ -1746,19 +1581,14 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
-
     private boolean isZipFile(File file) {
         if (file == null || file.isDirectory() || !file.exists()) {
             return false;
         }
-
-        // 后缀判断
         String name = file.getName().toLowerCase();
         if (!name.endsWith(".zip")) {
             return false;
         }
-
-        // 校验ZIP文件头 50 4B 03 04
         try (FileInputStream fis = new FileInputStream(file)) {
             byte[] head = new byte[4];
             if (fis.read(head) != 4) return false;
@@ -1771,7 +1601,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
-
     /**
      * 判断是否为其他非文本/非压缩/非图片文件：
      * 1. 排除TXT/ZIP/图片文件，返回其他文件类型；
@@ -1826,11 +1655,9 @@ public class MainActivity extends AppCompatActivity {
         searchResultList.clear();
         searchResultList.addAll(folders);
         searchResultList.addAll(zipFiles);
-        searchResultList.addAll(txtAndImageFiles); // 合并后的TXT+图片组
+        searchResultList.addAll(txtAndImageFiles);
         searchResultList.addAll(otherFiles);
     }
-
-
     /**
      * 初始化外部存储（根目录）：
      * 1. 创建应用私有存储的根目录（主页根目录）；
@@ -1889,39 +1716,28 @@ public class MainActivity extends AppCompatActivity {
      * 2. 写入软件使用说明内容，保存到当前目录。
      */
     private void createTestFile() {
-        // 检查目录是否可写
         if (currentDirectory == null || !currentDirectory.canWrite()) {
             Toast.makeText(this, "创建测试文件失败：目标目录不可写", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 目标文件：放在当前目录下
         File testFile = new File(currentDirectory, "使用说明与注意事项.txt");
-
-        // 如果文件已存在，直接返回
         if (testFile.exists()) {
             Toast.makeText(this, "测试文件已存在，无需重复创建", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 从 assets 复制文件
         try (InputStream in = getAssets().open("instructions.txt");
              OutputStream out = new FileOutputStream(testFile)) {
-
             byte[] buffer = new byte[1024];
             int len;
             while ((len = in.read(buffer)) > 0) {
                 out.write(buffer, 0, len);
             }
-
             Toast.makeText(this, "文件复制成功！", Toast.LENGTH_SHORT).show();
-
         } catch (IOException e) {
             e.printStackTrace();
             Toast.makeText(this, "复制失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     /**
      * 恢复上次页面状态：
      * 1. 从SharedPreferences读取上次页面类型/文件夹路径；
@@ -1978,7 +1794,6 @@ public class MainActivity extends AppCompatActivity {
         }
         navigateToRootDirectory();
     }
-
     /**
      * 打开文件编辑器：
      * 1. 跳转到FileEditorActivity，传递文件路径等参数；
@@ -1994,7 +1809,6 @@ public class MainActivity extends AppCompatActivity {
         editIntent.putExtra("is_root_directory", currentDirectory.equals(rootDirectory));
         startActivityForResult(editIntent, REQUEST_EDIT_FILE);
     }
-
     /**
      * 页面暂停处理：
      * 1. 保存当前页面类型/文件夹路径到SharedPreferences；
@@ -2011,7 +1825,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     /**
      * 活动结果处理：
      * 1. 处理文件编辑返回结果，刷新文件列表；
@@ -2167,7 +1980,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     /**
      * 获取目录层级路径：
      * 1. 从当前目录向上遍历至根目录，记录每个层级的序号；
@@ -2212,31 +2024,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return levelPath;
     }
-
-    /**
-     * 提取文件名开头的数字（支持小数）：
-     * 1. 匹配文件名开头的数字（如1.2、3）；
-     * 2. 返回解析后的Double值，失败返回null。
-     * @param fileName 文件名
-     * @return 开头数字，无则返回null
-     */
-    private Double extractLeadingNumberFromName(String fileName) {
-        if (fileName == null || fileName.isEmpty()) {
-            return null;
-        }
-        Pattern pattern = Pattern.compile("^\\d+\\.?\\d*");
-        Matcher matcher = pattern.matcher(fileName);
-
-        if (matcher.find()) {
-            try {
-                return Double.parseDouble(matcher.group());
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        return null;
-    }
-
     /**
      * 格式化文件名用于显示：
      * 1. TXT文件去除所有时间戳后缀，显示核心名称；
@@ -2258,8 +2045,6 @@ public class MainActivity extends AppCompatActivity {
         processedName = OLD_TIMESTAMP_PATTERN.matcher(processedName).replaceAll("");
         return processedName;
     }
-
-
     /**
      * 退出中转站返回主页：
      * 1. 重置中转站标识，切换到根目录；
@@ -2274,7 +2059,6 @@ public class MainActivity extends AppCompatActivity {
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
         Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
-
     /**
      * 退出回收站返回主页：
      * 1. 重置回收站标识，切换到根目录；
@@ -2289,7 +2073,6 @@ public class MainActivity extends AppCompatActivity {
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
         Toast.makeText(this, "已返回主页", Toast.LENGTH_SHORT).show();
     }
-
     /**
      * 准备选项菜单：
      * 1. 根据当前目录（回收站/中转站/普通目录）调整菜单项显示；
@@ -2311,7 +2094,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return super.onPrepareOptionsMenu(menu);
     }
-
     /**
      * 显示新建文件夹对话框：
      * 1. 输入文件夹名称，校验非空/已存在；
@@ -2363,8 +2145,6 @@ public class MainActivity extends AppCompatActivity {
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
         }, 100);
     }
-
-
     /**
      * 获取文件显示名称：
      * 1. 文件夹：直接返回名称；
@@ -2405,27 +2185,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return fileName;
     }
-
-    /**
-     * 获取目录相对路径（相对于根目录）：
-     * 1. 从当前目录向上遍历至根目录，收集路径段；
-     * 2. 反转路径段，拼接为/分隔的相对路径。
-     *
-     * @param dir      目标目录
-     * @param rootName 根目录名称
-     * @return 相对路径
-     */
-    public static String getRelativeDirPath(File dir, String rootName) {
-        List<String> pathSegments = new ArrayList<>();
-        File current = dir;
-        while (current != null && !current.getName().equals(rootName)) {
-            pathSegments.add(current.getName());
-            current = current.getParentFile();
-        }
-        Collections.reverse(pathSegments);
-        return String.join("/", pathSegments);
-    }
-
     /**
      * 显示ZIP解压对话框：
      * 1. 确认解压操作，后台执行解压；
@@ -2467,7 +2226,6 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-
     /**
      * 显示文件夹操作选项弹窗（重命名、删除、压缩、复制、剪切）
      */
@@ -2544,7 +2302,6 @@ public class MainActivity extends AppCompatActivity {
         });
         builder.show();
     }
-
     /**
      * 显示文件删除确认弹窗，区分回收站（移至）和非回收站（永久删除）逻辑
      */
@@ -2578,7 +2335,6 @@ public class MainActivity extends AppCompatActivity {
         builder.setNegativeButton("取消", null)
                 .show();
     }
-
     /**
      * 将文件/文件夹移动到回收站目录，处理TXT文件和文件夹的特殊逻辑
      */
@@ -2586,8 +2342,6 @@ public class MainActivity extends AppCompatActivity {
         if (file == null || !file.exists()) {
             return false;
         }
-
-        // 加载提示（固定final，不会报错）
         final ProgressDialog recycleDialog = new ProgressDialog(this);
         recycleDialog.setMessage("正在移动到回收站，请稍候...");
         recycleDialog.setCanceledOnTouchOutside(false);
@@ -2598,8 +2352,6 @@ public class MainActivity extends AppCompatActivity {
             if (!recycleBinDirectory.exists()) {
                 recycleBinDirectory.mkdirs();
             }
-
-            // 文件夹
             if (file.isDirectory()) {
                 File targetFolder = new File(recycleBinDirectory, file.getName());
                 File safeFolder = getNonConflictFile(targetFolder);
@@ -2608,7 +2360,6 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (recycleDialog.isShowing()) {
                         recycleDialog.dismiss();
-                        // 成功不提示，只失败提示
                         if (!result) {
                             Toast.makeText(this, "移动失败", Toast.LENGTH_SHORT).show();
                         }
@@ -2616,25 +2367,19 @@ public class MainActivity extends AppCompatActivity {
                 });
                 return result;
             }
-
-            // 文件处理
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
             boolean isImg = isImageFile(file);
             boolean finalSuccess = false;
-
             if (isTxt || isImg) {
                 String originalName = file.getName();
                 String originalExt = getOriginalExtension(originalName);
                 String[] parsed = parseFileName(originalName);
                 String pureCoreName = parsed[0];
-
                 pureCoreName = getSafeCoreName(pureCoreName);
                 String finalCoreName = getNonConflictCoreNameInFolder(recycleBinDirectory, pureCoreName);
                 String timestampSuffix = generateNewTimestampSuffix(parsed);
                 String finalFileName = finalCoreName + timestampSuffix + originalExt;
-
                 File targetFile = new File(recycleBinDirectory, finalFileName);
-
                 boolean success = file.renameTo(targetFile);
                 if (!success) {
                     if (copyFileContent(file, targetFile)) {
@@ -2644,9 +2389,7 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     finalSuccess = true;
                 }
-
             } else {
-                // 普通文件
                 File targetFile = new File(recycleBinDirectory, file.getName());
                 File safeTarget = getNonConflictFile(targetFile);
                 boolean success = file.renameTo(safeTarget);
@@ -2659,8 +2402,6 @@ public class MainActivity extends AppCompatActivity {
                     finalSuccess = true;
                 }
             }
-
-            // 最终提示：成功不提示，失败才提示
             boolean finalResult = finalSuccess;
             runOnUiThread(() -> {
                 if (recycleDialog.isShowing()) {
@@ -2670,7 +2411,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
-
             return finalSuccess;
 
         } catch (Exception e) {

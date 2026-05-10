@@ -35,18 +35,13 @@
         <activity
             android:name="com.example.outsidebrainkxmt563980.FileEditorActivity"
             android:exported="true">
-
-            <!-- 外部打开 TXT 正确写法（不会报错，全安卓版本通用） -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-
-                <!-- 必须加 scheme，才能去掉报错 -->
                 <data android:scheme="file" />
                 <data android:scheme="content" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-
         </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
