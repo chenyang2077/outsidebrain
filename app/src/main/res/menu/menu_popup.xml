@@ -2,7 +2,10 @@
     <item android:id="@+id/action_home" android:title="返回主页"/>
     <item android:id="@+id/action_new_folder" android:title="新建文件夹"/>
     <item android:id="@+id/yasuo" android:title="压缩主页文件"/>
-    <item android:id="@+id/action_recycle_bin" android:title="回收站"/>
+
     <item android:id="@+id/action_clear_recycle_bin" android:title="清空回收站" android:visible="false"/>
+    <item android:id="@+id/action_generate_hash" android:title="定稿"/>
+
+    <item android:id="@+id/action_recycle_bin" android:title="回收站"/>
     <item android:id="@+id/action_transfer_station" android:title="中转站"/>
 </menu>

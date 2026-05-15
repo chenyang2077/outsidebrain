@@ -1142,8 +1142,6 @@ public class MainActivity extends AppCompatActivity {
     private void showPopupMenu(View view) {
         try {
             List<String> menuList = new ArrayList<>();
-
-            // 你的菜单逻辑
             if (isInRecycleBin) {
                 menuList.add("返回主页");
                 menuList.add("清空回收站");
@@ -1152,32 +1150,30 @@ public class MainActivity extends AppCompatActivity {
                 menuList.add("返回主页");
                 menuList.add("新建文件夹");
                 menuList.add("压缩主页文件");
+                menuList.add("定稿");
                 menuList.add("回收站");
             } else {
                 menuList.add("返回主页");
                 menuList.add("新建文件夹");
+                menuList.add("定稿");
                 menuList.add("回收站");
                 menuList.add("中转站");
             }
-
             ListView listView = new ListView(this);
             listView.setBackgroundResource(R.drawable.popup_menu_bg);
             listView.setDivider(null);
             listView.setDividerHeight(1);
-
             ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, 0, menuList) {
                 @Override
                 public View getView(int position, View convertView, ViewGroup parent) {
                     if (convertView == null) {
                         convertView = getLayoutInflater().inflate(android.R.layout.simple_list_item_1, parent, false);
                     }
-
                     TextView tv = convertView.findViewById(android.R.id.text1);
                     tv.setText(menuList.get(position));
                     tv.setTextColor(0xFFFFFFFF);
                     tv.setTextSize(18);
                     tv.setPadding(20, 16, 20, 16);
-
                     convertView.setBackgroundResource(R.drawable.menu_item_border);
                     convertView.setClickable(false);
                     convertView.setFocusable(false);
@@ -1185,9 +1181,7 @@ public class MainActivity extends AppCompatActivity {
                     return convertView;
                 }
             };
-
             listView.setAdapter(adapter);
-
             final PopupWindow popupWindow = new PopupWindow(
                     listView,
                     dp2px(140),
@@ -1219,6 +1213,9 @@ public class MainActivity extends AppCompatActivity {
                     case "中转站":
                         if (checkTransferPermission()) openTransferStation();
                         break;
+                    case "定稿":
+                        generateAllTxtHashTask();
+                        break;
                 }
                 popupWindow.dismiss();
             });
@@ -1228,6 +1225,155 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+    // 计算当前文件夹哈希值
+    private void generateAllTxtHashTask() {
+        if (currentDirectory == null || !currentDirectory.exists()) {
+            Toast.makeText(this, "当前目录无效", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ProgressDialog dialog = new ProgressDialog(this);
+        dialog.setMessage("正在扫描计算哈希...");
+        dialog.setCancelable(false);
+        dialog.show();
+        new AsyncTask<Void, Void, String>() {
+            private List<FileItem> validFiles = new ArrayList<>();
+            private List<String> skipped = new ArrayList<>();
+            private String totalHash;
+            @Override
+            protected String doInBackground(Void... voids) {
+                scanAllTxt(currentDirectory);
+                Collections.sort(validFiles, (a, b) -> a.fileHash.compareTo(b.fileHash));
+                StringBuilder allContent = new StringBuilder();
+                for (FileItem item : validFiles) {
+                    allContent.append(item.content).append("\n\n===== 文件分隔 =====\n\n");
+                }
+                totalHash = getSHA256(allContent.toString());
+                StringBuilder res = new StringBuilder();
+                res.append("========================================\n");
+                res.append("📌 所有文件合并后的总哈希：\n").append(totalHash).append("\n");
+                res.append("========================================\n\n");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy年MM月dd日 HH时mm分ss秒 SSS毫秒", Locale.getDefault());
+                String nowTime = sdf.format(new Date());
+                res.append("⏰ 生成时间：").append(nowTime).append("\n");
+                res.append("========================================\n\n");
+                res.append("===== 所有 TXT 按文件哈希排序 =====\n");
+                res.append("有效文件：").append(validFiles.size()).append(" 个\n");
+                res.append("跳过文件：").append(skipped.size()).append(" 个\n\n");
+                if (!skipped.isEmpty()) {
+                    res.append("---------- 被跳过的文件 ----------\n");
+                    for (String s : skipped) res.append(s).append("\n");
+                    res.append("----------------------------------------\n\n");
+                }
+                for (FileItem item : validFiles) {
+                    res.append("文件哈希：").append(item.fileHash).append("\n");
+                    res.append("路径：").append(item.relPath).append("\n");
+                    res.append("----------------------------------------\n");
+                }
+                res.append("\n========================================\n");
+                res.append("📄 生成原理说明：\n");
+                res.append("1. 递归扫描当前目录及所有子文件夹内TXT文件；\n");
+                res.append("2. 自动跳过文件名包含「所有文件总哈希值」的文件；\n");
+                res.append("3. 对每个有效TXT文件内容计算SHA‑256哈希值；\n");
+                res.append("4. 按单个文件哈希值从小到大排序；\n");
+                res.append("5. 按排序顺序拼接全部文件内容，计算整体SHA‑256总哈希；\n");
+                res.append("6. 附带高精度时间戳用于校验生成时刻，用于内容防篡改校验。\n");
+                res.append("========================================\n");
+                res.append("本软件由开发者陈阳2077开发维护，软件名“流动文档”\n");
+                res.append("========================================\n");
+                return res.toString();
+            }
+            @Override
+            protected void onPostExecute(String result) {
+                dialog.dismiss();
+                try {
+                    String folderName = currentDirectory.getName();
+                    String baseName = folderName + "_所有文件总哈希值.txt";
+                    File outFile = getNoDuplicateFile(currentDirectory, baseName);
+
+                    FileOutputStream fos = new FileOutputStream(outFile);
+                    fos.write(result.getBytes(StandardCharsets.UTF_8));
+                    fos.close();
+
+                    Toast.makeText(MainActivity.this, "完成：" + outFile.getName(), Toast.LENGTH_LONG).show();
+                    loadFileList();
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "保存失败", Toast.LENGTH_SHORT).show();
+                }
+            }
+            private void scanAllTxt(File dir) {
+                File[] files = dir.listFiles();
+                if (files == null) return;
+                for (File f : files) {
+                    if (f.isDirectory()) {
+                        scanAllTxt(f);
+                        continue;
+                    }
+                    String name = f.getName();
+                    if (!name.toLowerCase().endsWith(".txt")) continue;
+
+                    if (name.contains("所有文件总哈希值")) {
+                        skipped.add(getRelativePath(f));
+                        continue;
+                    }
+                    try {
+                        String content = readTxt(f);
+                        String hash = getSHA256(content);
+                        validFiles.add(new FileItem(f, getRelativePath(f), content, hash));
+                    } catch (Exception e) {}
+                }
+            }
+            private String readTxt(File f) throws Exception {
+                BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line).append("\n");
+                br.close();
+                return sb.toString();
+            }
+            private String getRelativePath(File f) {
+                String root = currentDirectory.getAbsolutePath();
+                String path = f.getAbsolutePath();
+                if (path.startsWith(root)) return path.substring(root.length() + 1);
+                return f.getName();
+            }
+            private File getNoDuplicateFile(File dir, String baseName) {
+                File file = new File(dir, baseName);
+                int i = 1;
+                while (file.exists()) {
+                    file = new File(dir, baseName.replace(".txt", "") + "(" + i + ").txt");
+                    i++;
+                }
+                return file;
+            }
+            private String getSHA256(String content) {
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                    byte[] bytes = md.digest(content.getBytes(StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    for (byte b : bytes) {
+                        String hex = Integer.toHexString(0xff & b);
+                        if (hex.length() == 1) sb.append("0");
+                        sb.append(hex);
+                    }
+                    return sb.toString();
+                } catch (Exception e) {
+                    return "";
+                }
+            }
+            class FileItem {
+                File file;
+                String relPath;
+                String content;
+                String fileHash;
+                public FileItem(File file, String relPath, String content, String fileHash) {
+                    this.file = file;
+                    this.relPath = relPath;
+                    this.content = content;
+                    this.fileHash = fileHash;
+                }
+            }
+        }.execute();
     }
     /**
      * 检查中转站权限：
