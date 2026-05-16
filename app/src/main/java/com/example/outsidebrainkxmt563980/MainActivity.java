@@ -1226,8 +1226,21 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    // 计算当前文件夹哈希值
+    // ====================== 一键生成 TXT 哈希总表（带确认对话框）======================
     private void generateAllTxtHashTask() {
+        // 先弹出确认框
+        new AlertDialog.Builder(this)
+                .setTitle("生成哈希总表")
+                .setMessage("确定要在当前文件夹生成哈希总表吗？\n\n将自动扫描所有子文件夹 TXT 文件，并按规则计算总哈希。")
+                .setPositiveButton("确认生成", (dialog, which) -> {
+                    dialog.dismiss();
+                    startRealHashGenerate(); // 真正开始生成
+                })
+                .setNegativeButton("取消", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+    // 计算当前文件夹哈希值
+    private void startRealHashGenerate() {
         if (currentDirectory == null || !currentDirectory.exists()) {
             Toast.makeText(this, "当前目录无效", Toast.LENGTH_SHORT).show();
             return;
