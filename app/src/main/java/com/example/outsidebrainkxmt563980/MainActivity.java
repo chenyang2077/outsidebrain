@@ -1259,17 +1259,17 @@ public class MainActivity extends AppCompatActivity {
                 Collections.sort(validFiles, (a, b) -> a.fileHash.compareTo(b.fileHash));
                 StringBuilder allContent = new StringBuilder();
                 for (FileItem item : validFiles) {
-                    allContent.append(item.content).append("\n\n===== 文件分隔 =====\n\n");
+                    allContent.append(item.content);
                 }
                 totalHash = getSHA256(allContent.toString());
                 StringBuilder res = new StringBuilder();
-                res.append("========================================\n");
+                res.append("==========================\n");
                 res.append("📌 所有文件合并后的总哈希：\n").append(totalHash).append("\n");
-                res.append("========================================\n\n");
+                res.append("==========================\n\n");
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyy年MM月dd日 HH时mm分ss秒 SSS毫秒", Locale.getDefault());
                 String nowTime = sdf.format(new Date());
                 res.append("⏰ 生成时间：").append(nowTime).append("\n");
-                res.append("========================================\n\n");
+                res.append("===========================\n\n");
                 res.append("===== 所有 TXT 按文件哈希排序 =====\n");
                 res.append("有效文件：").append(validFiles.size()).append(" 个\n");
                 res.append("跳过文件：").append(skipped.size()).append(" 个\n\n");
@@ -1283,7 +1283,7 @@ public class MainActivity extends AppCompatActivity {
                     res.append("路径：").append(item.relPath).append("\n");
                     res.append("----------------------------------------\n");
                 }
-                res.append("\n========================================\n");
+                res.append("\n==========================\n");
                 res.append("📄 生成原理说明：\n");
                 res.append("1. 递归扫描当前目录及所有子文件夹内TXT文件；\n");
                 res.append("2. 自动跳过文件名包含「所有文件总哈希值」的文件；\n");
@@ -1291,9 +1291,9 @@ public class MainActivity extends AppCompatActivity {
                 res.append("4. 按单个文件哈希值从小到大排序；\n");
                 res.append("5. 按排序顺序拼接全部文件内容，计算整体SHA‑256总哈希；\n");
                 res.append("6. 附带高精度时间戳用于校验生成时刻，用于内容防篡改校验。\n");
-                res.append("========================================\n");
+                res.append("=============================\n");
                 res.append("本软件由开发者陈阳2077开发维护，软件名“流动文档”\n");
-                res.append("========================================\n");
+                res.append("=============================\n");
                 return res.toString();
             }
             @Override
