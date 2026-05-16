@@ -1351,11 +1351,46 @@ public class MainActivity extends AppCompatActivity {
                 return f.getName();
             }
             private File getNoDuplicateFile(File dir, String baseName) {
-                String nameWithoutExt = baseName.replace(".txt", "");
+                String corePrefix = baseName.replace(".txt", "");
                 String randomStr = generateRandomString();
                 String timestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-                String finalFileName = nameWithoutExt + "_" + randomStr + "_" + timestamp + ".txt";
-                return new File(dir, finalFileName);
+                boolean coreExists = false;
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        String fn = f.getName();
+                        if (fn.matches("^" + Pattern.quote(corePrefix) + "(\\(\\d+\\))?_.+")) {
+                            coreExists = true;
+                            break;
+                        }
+                    }
+                }
+                int serial = 0;
+                if (coreExists) {
+                    int maxNum = 0;
+                    for (File f : files) {
+                        String fn = f.getName();
+                        if (fn.startsWith(corePrefix)) {
+                            String part = fn.substring(corePrefix.length());
+                            if (part.startsWith("(")) {
+                                int end = part.indexOf(")");
+                                if (end > 1) {
+                                    try {
+                                        int num = Integer.parseInt(part.substring(1, end));
+                                        if (num > maxNum) maxNum = num;
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+                    }
+                    serial = maxNum + 1;
+                }
+                StringBuilder sb = new StringBuilder(corePrefix);
+                if (serial > 0) {
+                    sb.append("(").append(serial).append(")");
+                }
+                sb.append("_").append(randomStr).append("_").append(timestamp);
+                return new File(dir, sb + ".txt");
             }
             private String getSHA256(String content) {
                 try {
