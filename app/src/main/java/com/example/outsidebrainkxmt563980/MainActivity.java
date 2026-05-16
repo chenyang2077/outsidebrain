@@ -1351,13 +1351,11 @@ public class MainActivity extends AppCompatActivity {
                 return f.getName();
             }
             private File getNoDuplicateFile(File dir, String baseName) {
-                File file = new File(dir, baseName);
-                int i = 1;
-                while (file.exists()) {
-                    file = new File(dir, baseName.replace(".txt", "") + "(" + i + ").txt");
-                    i++;
-                }
-                return file;
+                String nameWithoutExt = baseName.replace(".txt", "");
+                String randomStr = generateRandomString();
+                String timestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+                String finalFileName = nameWithoutExt + "_" + randomStr + "_" + timestamp + ".txt";
+                return new File(dir, finalFileName);
             }
             private String getSHA256(String content) {
                 try {
