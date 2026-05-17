@@ -1230,8 +1230,8 @@ public class MainActivity extends AppCompatActivity {
     private void generateAllTxtHashTask() {
         // 先弹出确认框
         new AlertDialog.Builder(this)
-                .setTitle("生成哈希总表")
-                .setMessage("确定要在当前文件夹生成哈希总表吗？\n\n将自动扫描所有子文件夹 TXT 文件，并按规则计算总哈希。")
+                .setTitle("生成防篡改文件")
+                .setMessage("此操作要为当前文件夹所有TXT文件生成哈希值，\n\n并合并计算总哈希值，存入一个新的TXT文件。")
                 .setPositiveButton("确认生成", (dialog, which) -> {
                     dialog.dismiss();
                     startRealHashGenerate(); // 真正开始生成
@@ -1286,7 +1286,7 @@ public class MainActivity extends AppCompatActivity {
                 res.append("\n==========================\n");
                 res.append("📄 生成原理说明：\n");
                 res.append("1. 递归扫描当前目录及所有子文件夹内TXT文件；\n");
-                res.append("2. 自动跳过文件名包含「所有文件总哈希值」的文件；\n");
+                res.append("2. 自动跳过文件名包含「_所有文件总哈希值」的文件；\n");
                 res.append("3. 对每个有效TXT文件内容计算SHA‑256哈希值；\n");
                 res.append("4. 按单个文件哈希值从小到大排序；\n");
                 res.append("5. 按排序顺序拼接全部文件内容，计算整体SHA‑256总哈希；\n");
@@ -1325,7 +1325,7 @@ public class MainActivity extends AppCompatActivity {
                     String name = f.getName();
                     if (!name.toLowerCase().endsWith(".txt")) continue;
 
-                    if (name.contains("所有文件总哈希值")) {
+                    if (name.contains("_所有文件总哈希值")) {
                         skipped.add(getRelativePath(f));
                         continue;
                     }
