@@ -1,5 +1,5 @@
 /*
-软件名称：红玉文档软件V1.0
+软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：实现TXT文件编辑、保存、重命名，自动处理时间戳、命名冲突，文件分享功能，限制操作范围保障数据安全
 所属模块：文件编辑模块
@@ -34,9 +34,12 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -518,8 +521,8 @@ public class FileEditorActivity extends AppCompatActivity {
             String cleanedTitle = cleanFileName(titleWithoutEdgeSpace);
             String timestampSuffix = "";
             if (needHandleTimestamp) {
-                String randomStr = UniqueFileNameHandler.generateRandomString();
-                String millisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+                String randomStr = generateRandomString();
+                String millisTimestamp = TimestampHandler.generateMillisTimestamp();
                 timestampSuffix = "_" + randomStr + "_" + millisTimestamp;
             }
             File targetDirectory = currentDir;
@@ -606,9 +609,9 @@ public class FileEditorActivity extends AppCompatActivity {
                 String[] timestampStruct = parseTimestampStructure(originalFileNameWithoutExt);
                 String newRandomStr = "";
                 ArrayList<String> newTimestamps = new ArrayList<>();
-                String newMillisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+                String newMillisTimestamp = TimestampHandler.generateMillisTimestamp();
                 if (timestampStruct.length == 0) {
-                    newRandomStr = UniqueFileNameHandler.generateRandomString();
+                    newRandomStr = generateRandomString();
                     newTimestamps.add(newMillisTimestamp);
                 } else if (timestampStruct.length == 2) {
                     newRandomStr = timestampStruct[0];
@@ -885,7 +888,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 String rawTitle = TextUtils.isEmpty(inputTitle) ? getContentSubtitle(content) : inputTitle;
                 String cleanedTitle = cleanFileName(rawTitle.trim());
                 String timestampSuffix = needHandleTimestamp
-                        ? "_" + UniqueFileNameHandler.generateRandomString() + "_" + UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp()
+                        ? "_" + generateRandomString() + "_" + TimestampHandler.generateMillisTimestamp()
                         : "";
                 File targetDirectory = currentDir != null ? currentDir : rootDir;
                 if (!targetDirectory.exists()) {
@@ -943,10 +946,10 @@ public class FileEditorActivity extends AppCompatActivity {
                     String[] timestampStruct = parseTimestampStructure(originalFileNameWithoutExt);
                     String newRandomStr = "";
                     ArrayList<String> newTimestamps = new ArrayList<>();
-                    String newMillisTimestamp = UniqueFileNameHandler.TimestampHandler.generateMillisTimestamp();
+                    String newMillisTimestamp = TimestampHandler.generateMillisTimestamp();
 
                     if (timestampStruct.length == 0) {
-                        newRandomStr = UniqueFileNameHandler.generateRandomString();
+                        newRandomStr = generateRandomString();
                         newTimestamps.add(newMillisTimestamp);
                     } else if (timestampStruct.length == 2) {
                         newRandomStr = timestampStruct[0];
@@ -1033,6 +1036,55 @@ public class FileEditorActivity extends AppCompatActivity {
             }, 100);
 
             savedNewFilePath = "";
+        }
+    }
+    public static String generateRandomString() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(6);
+        Random random = new Random();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 时间戳处理内部类：生成时间戳、处理TXT文件名时间戳更新
+     */
+    public static class TimestampHandler {
+        public static String generateRandomString() {
+            return generateRandomString();
+        }
+        public static String generateMillisTimestamp() {
+            return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
+        }
+        public static String processTxtFileName(String originalFileName) {
+            if (!originalFileName.toLowerCase().endsWith(".txt")) {
+                return originalFileName;
+            }
+            String fileNameWithoutExt = originalFileName.substring(0, originalFileName.lastIndexOf("."));
+            String ext = originalFileName.substring(originalFileName.lastIndexOf("."));
+
+            Matcher targetMatcher = MainActivity.TARGET_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+            Matcher incrementMatcher = MainActivity.INCREMENT_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+            Matcher oldMatcher = MainActivity.OLD_TIMESTAMP_PATTERN.matcher(fileNameWithoutExt);
+
+            String newFileNameWithoutExt;
+            String newTimestamp = generateMillisTimestamp();
+
+            if (incrementMatcher.find()) {
+                String targetPart = incrementMatcher.group(1);
+                newFileNameWithoutExt = fileNameWithoutExt.replaceAll("(" + MainActivity.TARGET_TIMESTAMP_PATTERN.pattern() + ")(_\\d{17})+$",
+                        targetPart + "_" + newTimestamp);
+            } else if (targetMatcher.find()) {
+                newFileNameWithoutExt = fileNameWithoutExt + "_" + newTimestamp;
+            } else {
+                String cleanName = oldMatcher.replaceAll("");
+                String randomStr = generateRandomString();
+                newFileNameWithoutExt = cleanName + "_" + randomStr + "_" + newTimestamp;
+            }
+
+            return newFileNameWithoutExt + ext;
         }
     }
 }

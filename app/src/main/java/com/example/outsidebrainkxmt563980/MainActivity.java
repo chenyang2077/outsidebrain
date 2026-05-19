@@ -1,5 +1,5 @@
-/*
-软件名称：红玉文档软件V1.0
+/**
+软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：1. 基础文件管理：支持TXT文件/文件夹整理、ZIP压缩解压、文件/文件夹复制与移动；
         2. 文件浏览编辑：支持TXT文件/图片浏览、TXT文件编辑；
@@ -95,9 +95,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import android.content.Context;
 import androidx.appcompat.app.AppCompatDelegate;
-
 import android.icu.text.Transliterator;
-
 import java.util.HashMap;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
@@ -128,6 +126,9 @@ public class MainActivity extends AppCompatActivity {
     public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
+    private static final Pattern SUFFIX_PATTERN = Pattern.compile("^(.*?)\\((\\d+)\\)$");
+    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
+    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
     private View pasteButton;
     private Toast mPathToast;
     private View mTouchOverlay;
@@ -142,10 +143,9 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog mLoadingDialog;
     private static final int FILE_COUNT_LIMIT = 100;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
-    /**
-     * 页面创建初始化：
+    /**1·页面创建初始化：
      * 1. 绑定布局控件，初始化视图组件；2. 设置夜间模式、文件列表适配器；3. 初始化回收站/中转站目录； 4. 设置搜索框/菜单按钮/新增按钮点击事件； 5. 检查存储权限，初始化根目录。
-     */
+     **/
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
@@ -238,131 +238,8 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
     }
-
     /**
-     * 显示自定义路径提示（TXT文件所在文件夹的实际展示序号层级 + 文件夹路径+文件名分行显示）
-     */
-    /**
-     * 显示可点击的路径提示，点击跳转到对应文件夹
-     */
-    private void showCustomPathTip(String fullRelativePath) {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastTipUpdateTime < 50) {
-            return;
-        }
-        lastTipUpdateTime = currentTime;
-        hideCustomPathTip();
-        String folderPath;
-        String fileName;
-        int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
-        if (lastSepIndex == -1) {
-            folderPath = "";
-            fileName = fullRelativePath;
-        } else {
-            folderPath = fullRelativePath.substring(0, lastSepIndex);
-            fileName = fullRelativePath.substring(lastSepIndex + 1);
-        }
-        String tipText;
-        if (TextUtils.isEmpty(folderPath)) {
-            tipText = "根目录" + "\n" + fileName;
-        } else {
-            tipText = folderPath + "\n" + fileName;
-        }
-        if (tipText.equals(lastTipText)) {
-            return;
-        }
-        lastTipText = tipText;
-        if (mReusableTipView == null) {
-            mReusableTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
-        }
-        mCustomTipView = mReusableTipView;
-        TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
-        tvTip.setText(tipText);
-        View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
-        tipContainer.setOnClickListener(v -> {
-            if (isJumping) {
-                return;
-            }
-            isJumping = true;
-            ProgressDialog jumpDialog = new ProgressDialog(MainActivity.this);
-            jumpDialog.setMessage("正在跳转...");
-            jumpDialog.setCancelable(false);
-            jumpDialog.show();
-            hideCustomPathTip();
-            new Handler(Looper.getMainLooper()).post(() -> {
-                try {
-                    File baseDir;
-                    if (isInTransferStation) {
-                        baseDir = transferStationDirectory;
-                    } else if (isInRecycleBin) {
-                        baseDir = getFilesDir();
-                    } else {
-                        baseDir = rootDirectory;
-                    }
-                    File targetFile = new File(baseDir, fullRelativePath);
-                    File targetFolder = targetFile.getParentFile();
-
-                    if (targetFolder != null && targetFolder.exists() && targetFolder.isDirectory()) {
-                        isInSearchMode = false;
-                        etSearch.setText("");
-                        currentDirectory = targetFolder;
-                        loadFileList();
-                        PreferenceUtils.saveLastPageType(MainActivity.this, "main");
-                        PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
-                        PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
-                        PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
-                    }
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "跳转失败", Toast.LENGTH_SHORT).show();
-                } finally {
-                    isJumping = false;
-                    if (jumpDialog.isShowing()) {
-                        jumpDialog.dismiss();
-                    }
-                }
-            });
-        });
-        ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
-        int screenWidth = rootView.getWidth();
-        int bottomMargin = dp2px(80);
-        mCustomTipView.measure(
-                View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        );
-        int tipWidth = mCustomTipView.getMeasuredWidth();
-        int tipHeight = mCustomTipView.getMeasuredHeight();
-        int left = (screenWidth - tipWidth) / 2;
-        int top = rootView.getHeight() - bottomMargin - tipHeight;
-        mCustomTipView.setX(left);
-        mCustomTipView.setY(top);
-        if (mCustomTipView.getParent() != null) {
-            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
-        }
-        rootView.addView(mCustomTipView);
-        ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
-        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-        params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        mCustomTipView.setLayoutParams(params);
-        mIsTipShowing = true;
-        rootView.setOnTouchListener((view, event) -> {
-            if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
-                hideCustomPathTip();
-                rootView.setOnTouchListener(null);
-            }
-            return false;
-        });
-    }
-    private void hideCustomPathTip() {
-        if (mIsTipShowing && mCustomTipView != null && mCustomTipView.getParent() != null) {
-            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
-            mIsTipShowing = false;
-        }
-    }
-    private int dp2px(int dp) {
-        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
-    }
-    /**
-     * 文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
+     * 2·文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
      */
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
         private List<File> mData = new ArrayList<>();
@@ -594,6 +471,129 @@ public class MainActivity extends AppCompatActivity {
             imageView.setImageBitmap(bitmap);
         }
     }
+    /**
+     * 显示自定义路径提示（TXT文件所在文件夹的实际展示序号层级 + 文件夹路径+文件名分行显示）
+     */
+    /**
+     * 显示可点击的路径提示，点击跳转到对应文件夹
+     */
+    private void showCustomPathTip(String fullRelativePath) {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastTipUpdateTime < 50) {
+            return;
+        }
+        lastTipUpdateTime = currentTime;
+        hideCustomPathTip();
+        String folderPath;
+        String fileName;
+        int lastSepIndex = fullRelativePath.lastIndexOf(File.separator);
+        if (lastSepIndex == -1) {
+            folderPath = "";
+            fileName = fullRelativePath;
+        } else {
+            folderPath = fullRelativePath.substring(0, lastSepIndex);
+            fileName = fullRelativePath.substring(lastSepIndex + 1);
+        }
+        String tipText;
+        if (TextUtils.isEmpty(folderPath)) {
+            tipText = "根目录" + "\n" + fileName;
+        } else {
+            tipText = folderPath + "\n" + fileName;
+        }
+        if (tipText.equals(lastTipText)) {
+            return;
+        }
+        lastTipText = tipText;
+        if (mReusableTipView == null) {
+            mReusableTipView = LayoutInflater.from(this).inflate(R.layout.layout_custom_tip, null);
+        }
+        mCustomTipView = mReusableTipView;
+        TextView tvTip = mCustomTipView.findViewById(R.id.tv_custom_tip);
+        tvTip.setText(tipText);
+        View tipContainer = mCustomTipView.findViewById(R.id.tip_container);
+        tipContainer.setOnClickListener(v -> {
+            if (isJumping) {
+                return;
+            }
+            isJumping = true;
+            ProgressDialog jumpDialog = new ProgressDialog(MainActivity.this);
+            jumpDialog.setMessage("正在跳转...");
+            jumpDialog.setCancelable(false);
+            jumpDialog.show();
+            hideCustomPathTip();
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    File baseDir;
+                    if (isInTransferStation) {
+                        baseDir = transferStationDirectory;
+                    } else if (isInRecycleBin) {
+                        baseDir = getFilesDir();
+                    } else {
+                        baseDir = rootDirectory;
+                    }
+                    File targetFile = new File(baseDir, fullRelativePath);
+                    File targetFolder = targetFile.getParentFile();
+
+                    if (targetFolder != null && targetFolder.exists() && targetFolder.isDirectory()) {
+                        isInSearchMode = false;
+                        etSearch.setText("");
+                        currentDirectory = targetFolder;
+                        loadFileList();
+                        PreferenceUtils.saveLastPageType(MainActivity.this, "main");
+                        PreferenceUtils.saveLastFolderPath(MainActivity.this, targetFolder.getAbsolutePath());
+                        PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                        PreferenceUtils.saveLastViewedImage(MainActivity.this, null);
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "跳转失败", Toast.LENGTH_SHORT).show();
+                } finally {
+                    isJumping = false;
+                    if (jumpDialog.isShowing()) {
+                        jumpDialog.dismiss();
+                    }
+                }
+            });
+        });
+        ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
+        int screenWidth = rootView.getWidth();
+        int bottomMargin = dp2px(80);
+        mCustomTipView.measure(
+                View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        );
+        int tipWidth = mCustomTipView.getMeasuredWidth();
+        int tipHeight = mCustomTipView.getMeasuredHeight();
+        int left = (screenWidth - tipWidth) / 2;
+        int top = rootView.getHeight() - bottomMargin - tipHeight;
+        mCustomTipView.setX(left);
+        mCustomTipView.setY(top);
+        if (mCustomTipView.getParent() != null) {
+            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
+        }
+        rootView.addView(mCustomTipView);
+        ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
+        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        mCustomTipView.setLayoutParams(params);
+        mIsTipShowing = true;
+        rootView.setOnTouchListener((view, event) -> {
+            if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
+                hideCustomPathTip();
+                rootView.setOnTouchListener(null);
+            }
+            return false;
+        });
+    }
+    private void hideCustomPathTip() {
+        if (mIsTipShowing && mCustomTipView != null && mCustomTipView.getParent() != null) {
+            ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
+            mIsTipShowing = false;
+        }
+    }
+    private int dp2px(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
     /**
      * 导航至根目录：1. 退出搜索模式，清空搜索框； 2. 重置回收站/中转站标识； 3. 加载根目录文件列表，更新层级提示； 4. 保存页面状态，延迟修正TXT文件路径。
      */
@@ -1861,26 +1861,15 @@ public class MainActivity extends AppCompatActivity {
         if (!currentDirectory.exists()) {
             boolean created = currentDirectory.mkdirs();
             if (!created) {
-                File createdDir = FileUtils.createUniqueFolder(
-                        privateStorageDir,
-                        ROOT_FOLDER_NAME
-                );
-                if (createdDir != null) {
-                    currentDirectory = createdDir;
-                    rootDirectory = createdDir;
-                    Toast.makeText(this, "在内部存储中创建根文件夹: " + createdDir.getName(), Toast.LENGTH_SHORT).show();
+                File fallbackDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
+                if (fallbackDir.mkdirs()) {
+                    currentDirectory = fallbackDir;
+                    rootDirectory = fallbackDir;
+                    Toast.makeText(this, "已使用兼容模式创建文件夹", Toast.LENGTH_SHORT).show();
                     createTestFile();
                 } else {
-                    File fallbackDir = new File(getFilesDir(), ROOT_FOLDER_NAME);
-                    if (fallbackDir.mkdirs()) {
-                        currentDirectory = fallbackDir;
-                        rootDirectory = fallbackDir;
-                        Toast.makeText(this, "已使用兼容模式创建文件夹", Toast.LENGTH_SHORT).show();
-                        createTestFile();
-                    } else {
-                        Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
+                    Toast.makeText(this, "无法创建根文件夹，请检查存储权限", Toast.LENGTH_SHORT).show();
+                    return;
                 }
             } else {
                 Toast.makeText(this, "感谢世界有你", Toast.LENGTH_SHORT).show();
@@ -2393,9 +2382,8 @@ public class MainActivity extends AppCompatActivity {
                     extractDialog.show();
 
                     new Thread(() -> {
-                        boolean result = FileUtils.unzipFile(zipFile, currentDirectory);
+                        boolean result = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
                         runOnUiThread(() -> {
-                            // 🔥 解压结束：关闭提示
                             if (extractDialog.isShowing()) {
                                 extractDialog.dismiss();
                             }
@@ -2694,86 +2682,7 @@ public class MainActivity extends AppCompatActivity {
         }
         return main + ext;
     }
-    /**
-     * 递归移动文件夹到回收站，处理其中TXT文件的时间戳更新
-     */
-    private boolean moveFolderToRecycleBin(File sourceFolder, File targetFolder) throws IOException {
-        if (!targetFolder.mkdirs()) {
-            Log.e("MoveToRecycle", "创建目标文件夹失败: " + targetFolder.getAbsolutePath());
-            return false;
-        }
-        File[] files = sourceFolder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    File subTargetFolder = new File(targetFolder, file.getName());
-                    if (!moveFolderToRecycleBin(file, subTargetFolder)) {
-                        return false;
-                    }
-                } else if (isTextFile(file)) {
-                    String originalName = file.getName();
-                    String newFileName = processTxtForCutOperation(originalName);
-                    File targetFile = new File(targetFolder, newFileName);
-                    if (!file.renameTo(targetFile)) {
-                        if (copyFileContent(file, targetFile)) {
-                            file.delete();
-                        } else {
-                            Log.e("MoveToRecycle", "处理TXT文件失败: " + originalName);
-                            return false;
-                        }
-                    }
-                } else {
-                    File targetFile = new File(targetFolder, file.getName());
-                    if (!file.renameTo(targetFile)) {
-                        if (copyFileContent(file, targetFile)) {
-                            file.delete();
-                        } else {
-                            Log.e("MoveToRecycle", "处理文件失败: " + file.getName());
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-        return deleteEmptyDirectory(sourceFolder);
-    }
-    /**
-     * 生成不重复的文件名，处理重名时添加序号后缀（如：文件(1).txt）
-     */
-    private String getUniqueFileName(File parentDir, String baseName) {
-        if (parentDir == null || !parentDir.exists() || !parentDir.isDirectory()) {
-            return baseName;
-        }
-        File baseFile = new File(parentDir, baseName);
-        if (!baseFile.exists()) {
-            return baseName;
-        }
-        String nameWithoutExt = baseName;
-        String extension = "";
-        int dotIndex = baseName.lastIndexOf('.');
-        if (dotIndex > 0) {
-            nameWithoutExt = baseName.substring(0, dotIndex);
-            extension = baseName.substring(dotIndex);
-        }
-        int maxSerial = 0;
-        Pattern pattern = Pattern.compile("^" + Pattern.quote(nameWithoutExt) + "\\((\\d+)\\)" + Pattern.quote(extension) + "$");
-        File[] files = parentDir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                Matcher matcher = pattern.matcher(file.getName());
-                if (matcher.matches()) {
-                    try {
-                        int serial = Integer.parseInt(matcher.group(1));
-                        if (serial > maxSerial) {
-                            maxSerial = serial;
-                        }
-                    } catch (NumberFormatException e) {
-                    }
-                }
-            }
-        }
-        return nameWithoutExt + "(" + (maxSerial + 1) + ")" + extension;
-    }
+
     /**
      * 递归删除文件/文件夹（包括所有子文件和子文件夹）
      */
@@ -3442,14 +3351,14 @@ public class MainActivity extends AppCompatActivity {
             }
             else if (sourceFile.getName().toLowerCase().endsWith(".txt") || isImageFile(sourceFile)) {
                 String originalName = sourceFile.getName();
-                String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+                String cleanName = removeTimestamp(originalName);
                 String originalExt = getOriginalExtension(originalName);
                 int lastDotIndex = cleanName.lastIndexOf(".");
                 if (lastDotIndex > 0) {
                     cleanName = cleanName.substring(0, lastDotIndex);
                 }
                 cleanName = getSafeCoreName(cleanName);
-                String randomStr = UniqueFileNameHandler.generateRandomString();
+                String randomStr = generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                 if (baseTimestamp.length() >= 12) {
                     String datePart = baseTimestamp.substring(0, 8);
@@ -3586,7 +3495,7 @@ public class MainActivity extends AppCompatActivity {
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
         if (randomStr == null || ts1 == null) {
-            randomStr = UniqueFileNameHandler.generateRandomString();
+            randomStr = generateRandomString();
             return "_" + randomStr + "_" + newTimestamp;
         } else if (ts2 == null) {
             return "_" + randomStr + "_" + ts1 + "_" + newTimestamp;
@@ -3634,7 +3543,7 @@ public class MainActivity extends AppCompatActivity {
                         String originalName = sourceFile.getName();
                         String originalExt = getOriginalExtension(originalName);
                         String cleanName = removeAllExtensions(originalName);
-                        String randomStr = UniqueFileNameHandler.generateRandomString();
+                        String randomStr = generateRandomString();
                         String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                         String timestampSuffix;
                         if (isCutOperation) {
@@ -3644,7 +3553,7 @@ public class MainActivity extends AppCompatActivity {
                             timestampSuffix = generateNewTimestampSuffix(parsed);
                             cleanName = pureCoreName;
                         } else {
-                            cleanName = UniqueFileNameHandler.removeTimestamp(cleanName);
+                            cleanName = removeTimestamp(cleanName);
                             cleanName = getSafeCoreName(cleanName);
 
                             if (baseTimestamp.length() >= 12) {
@@ -3818,13 +3727,13 @@ public class MainActivity extends AppCompatActivity {
                 currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
             } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
                 String originalName = sourceFile.getName();
-                String cleanName = UniqueFileNameHandler.removeTimestamp(originalName);
+                String cleanName = removeTimestamp(originalName);
                 if (cleanName.toLowerCase().endsWith(".txt")) {
                     cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
                 }
                 cleanName = getSafeCoreName(cleanName);
 
-                String randomStr = UniqueFileNameHandler.generateRandomString();
+                String randomStr = generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
 
                 if (baseTimestamp.length() >= 12) {
@@ -3856,6 +3765,33 @@ public class MainActivity extends AppCompatActivity {
         return currentSequence;
     }
     /**
+     * 清理文件名中的各类时间戳，返回纯文本标题
+     * @return String 清理后的文件名
+     */
+    public static String cleanTitle(String input) {
+        if (TextUtils.isEmpty(input)) {
+            return "";
+        }
+        String cleaned = MULTI_TIMESTAMP_PATTERN.matcher(input).replaceAll("");
+        cleaned = SINGLE_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        if (MainActivity.OLD_TIMESTAMP_PATTERN != null) {
+            cleaned = MainActivity.OLD_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        }
+        return cleaned.trim();
+    }
+
+    /**
+     * 移除文件名中的所有时间戳（含旧版格式）
+     * @return String 去时间戳后的文件名
+     */
+    public static String removeTimestamp(String fileName) {
+        String cleaned = cleanTitle(fileName);
+        if (MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN != null) {
+            cleaned = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        }
+        return cleaned;
+    }
+    /**
      * 修复：确保方法是 private（Activity 内可访问），参数为 File，返回 String
      * 剪切专用：当前目录生成唯一文件名（不加时间戳）
      */
@@ -3885,58 +3821,7 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-    /**
-     * 统一更新文件名的时间戳（TXT/图片通用，避免乱码）
-     * @param originalFile 原文件
-     * @return 带新时间戳的文件名（核心名+随机串+时间戳+原后缀）
-     */
-    private String updateFileNameWithTimestamp(File originalFile) {
-        String originalName = originalFile.getName();
-        boolean isTxtFile = originalName.toLowerCase().endsWith(".txt");
-        boolean isImageFile = isImageFile(originalFile);
-        String coreName = originalName;
-        String originalExt = "";
-        int lastDot = originalName.lastIndexOf(".");
-        if (lastDot > 0) {
-            coreName = originalName.substring(0, lastDot);
-            originalExt = originalName.substring(lastDot);
-        }
-        Matcher incrementMatcher = INCREMENT_TIMESTAMP_PATTERN.matcher(coreName);
-        if (incrementMatcher.find()) {
-            coreName = coreName.replace(incrementMatcher.group(), "");
-        }
-        Matcher targetMatcher = TARGET_TIMESTAMP_PATTERN.matcher(coreName);
-        if (targetMatcher.find()) {
-            coreName = coreName.replace(targetMatcher.group(), "");
-        }
-        coreName = coreName.replaceAll("_+$", "");
-        String randomStr = generateRandomString();
-        String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-        String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-        return coreName + timestampSuffix + originalExt;
-    }
-    /**
-     * 统一生成唯一文件名（避免重名，通用）
-     * @param targetDir 目标目录
-     * @param fileName 初始文件名
-     * @return 唯一文件名
-     */
-    private String getUniqueFileName统一(File targetDir, String fileName) {
-        String uniqueName = fileName;
-        int count = 1;
-        while (new File(targetDir, uniqueName).exists()) {
-            String core = uniqueName;
-            String ext = "";
-            int lastDot = uniqueName.lastIndexOf(".");
-            if (lastDot > 0) {
-                core = uniqueName.substring(0, lastDot);
-                ext = uniqueName.substring(lastDot);
-            }
-            uniqueName = core + "(" + count + ")" + ext;
-            count++;
-        }
-        return uniqueName;
-    }
+
     /**
      * 处理文件名加时间戳（区分TXT/图片，避免图片加.txt）
      * @param originalName 原文件名
@@ -3949,7 +3834,7 @@ public class MainActivity extends AppCompatActivity {
         if (lastDot > 0) {
             coreName = originalName.substring(0, lastDot);
         }
-        String randomStr = UniqueFileNameHandler.generateRandomString();
+        String randomStr = generateRandomString();
         String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
         String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
         if (isImageFile) {
@@ -3974,6 +3859,7 @@ public class MainActivity extends AppCompatActivity {
         }
         return sb.toString();
     }
+
 
     /**
      * 复制文件内容，使用缓冲区提高读写效率

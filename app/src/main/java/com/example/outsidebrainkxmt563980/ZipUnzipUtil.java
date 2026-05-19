@@ -1,5 +1,5 @@
 /*
-软件名称：红玉文档软件V1.0
+软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：实现ZIP压缩包智能解压、文件夹冲突自动规避、TXT/图片文件唯一命名、压缩包结构分析
 所属模块：文件解压模块
@@ -17,7 +17,6 @@ import java.util.zip.ZipFile;
 
 /**
  * 压缩包解压工具类：实现ZIP包智能解压，处理TXT/图片文件重命名、文件夹冲突规避、压缩包结构分析
- * 修复：解决解压出多余空文件夹（如文件夹（1））的问题
  */
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
@@ -168,7 +167,7 @@ public class ZipUnzipUtil {
         }
         return sequenceNumber;
     }
-    // 】解压专用：清理文件名/目录名非法字符
+    // 解压专用：清理文件名/目录名非法字符
     // 只清理文件名非法字符，不破坏路径
     private static String cleanZipEntryName(String name) {
         if (name == null) return "";
