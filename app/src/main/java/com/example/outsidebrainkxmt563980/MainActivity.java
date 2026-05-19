@@ -3768,7 +3768,7 @@ public class MainActivity extends AppCompatActivity {
      * 清理文件名中的各类时间戳，返回纯文本标题
      * @return String 清理后的文件名
      */
-    public static String cleanTitle(String input) {
+    public  String cleanTitle(String input) {
         if (TextUtils.isEmpty(input)) {
             return "";
         }
@@ -3784,7 +3784,7 @@ public class MainActivity extends AppCompatActivity {
      * 移除文件名中的所有时间戳（含旧版格式）
      * @return String 去时间戳后的文件名
      */
-    public static String removeTimestamp(String fileName) {
+    public  String removeTimestamp(String fileName) {
         String cleaned = cleanTitle(fileName);
         if (MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN != null) {
             cleaned = MainActivity.FILE_MILLIS_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");

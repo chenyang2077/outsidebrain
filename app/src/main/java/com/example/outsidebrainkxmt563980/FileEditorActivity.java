@@ -1038,7 +1038,7 @@ public class FileEditorActivity extends AppCompatActivity {
             savedNewFilePath = "";
         }
     }
-    public static String generateRandomString() {
+    public  String generateRandomString() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         StringBuilder sb = new StringBuilder(6);
         Random random = new Random();
