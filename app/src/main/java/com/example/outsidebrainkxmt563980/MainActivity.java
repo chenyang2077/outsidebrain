@@ -171,7 +171,6 @@ public class MainActivity extends AppCompatActivity {
         if (!transferStationDirectory.exists()) {
             transferStationDirectory.mkdirs();
         }
-
         String openFolder = getIntent().getStringExtra("open_folder");
         if (openFolder != null) {
             File dir = new File(openFolder);
@@ -181,7 +180,6 @@ public class MainActivity extends AppCompatActivity {
                 updateLevelHint();
             }
         }
-
         etSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -202,14 +200,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
             }
-
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (TextUtils.isEmpty(s)) {
                     updateLevelHint();
                 }
             }
-
             @Override
             public void afterTextChanged(android.text.Editable s) {
             }
@@ -224,7 +220,6 @@ public class MainActivity extends AppCompatActivity {
             hidePasteButton();
             startFilePreEdit();
         });
-        // ===== 新增：初始化全屏触摸覆盖层 =====
         mTouchOverlay = new View(this);
         ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -234,7 +229,6 @@ public class MainActivity extends AppCompatActivity {
         mTouchOverlay.setBackgroundColor(Color.TRANSPARENT);
         ((ViewGroup) getWindow().getDecorView()).addView(mTouchOverlay);
         mTouchOverlay.setVisibility(View.GONE);
-
         mTouchOverlay.setOnTouchListener((v, event) -> {
             if (mPathToast != null) {
                 mPathToast.cancel();
