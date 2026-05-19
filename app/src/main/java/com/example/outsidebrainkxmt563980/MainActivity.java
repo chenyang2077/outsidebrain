@@ -4099,7 +4099,6 @@ public class MainActivity extends AppCompatActivity {
     private void recoverFromCrash() {
         File rootDir = new File(getFilesDir(), "主页根目录");
         if (!rootDir.exists()) return;
-        // 扫描并恢复备份/临时文件（逻辑和FileEditorActivity里的recoverFromCrash()一致）
         File[] files = rootDir.listFiles((dir, name) ->
                 name.contains("_atomic_tmp_") || name.endsWith("_backup")
         );
