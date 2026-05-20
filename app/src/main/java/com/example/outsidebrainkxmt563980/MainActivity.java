@@ -278,7 +278,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_image_error);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
-            } else if (file.getName().toLowerCase().endsWith(".txt")) {
+            } else if (file.getName().toLowerCase().endsWith(".txt") && isTextFile(file)) {
                 holder.ivIcon.setImageResource(R.drawable.ic_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
@@ -336,7 +336,7 @@ public class MainActivity extends AppCompatActivity {
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, "");
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, "");
-                } else if (file.getName().toLowerCase().endsWith(".txt")) {
+                } else if (file.getName().toLowerCase().endsWith(".txt") && isTextFile(file)) {
                     hidePasteButton();
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
@@ -1752,19 +1752,21 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
         try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] head = new byte[16];
+            byte[] head = new byte[64];
             int len = fis.read(head);
             if (len <= 0) return true;
 
             for (int i = 0; i < len; i++) {
                 byte b = head[i];
-                if ((b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D) || b == 0x7F) {
+                // 放行：制表符、换行、回车、空格、常规可见字符、中文编码字节
+                // 只拦截：非法控制字符、删除符
+                if ((b < 0x09 || b == 0x0B || b == 0x0C || (b > 0x0D && b < 0x20)) || b == 0x7F) {
                     return false;
                 }
             }
             return true;
         } catch (Exception e) {
-            return false;
+            return true; // 读取异常默认放行，避免打不开正常文件
         }
     }
     private boolean isZipFile(File file) {
@@ -2044,7 +2046,7 @@ public class MainActivity extends AppCompatActivity {
                             folders.add(file);
                         } else if (file.getName().toLowerCase().endsWith(".zip")) {
                             zipFiles.add(file);
-                        } else if (file.getName().toLowerCase().endsWith(".txt") || isImageFile(file)) {
+                        } else if (file.getName().toLowerCase().endsWith(".txt") && isTextFile(file) || isImageFile(file)) {
                             txtAndImageFiles.add(file);
                         } else {
                             otherFiles.add(file);
