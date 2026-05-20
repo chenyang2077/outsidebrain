@@ -278,7 +278,7 @@ public class MainActivity extends AppCompatActivity {
                 holder.ivIcon.setImageResource(R.drawable.ic_image_error);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.folderColor));
-            } else if (file.getName().toLowerCase().endsWith(".txt") && isTextFile(file)) {
+            } else if (file.getName().toLowerCase().endsWith(".txt")) {
                 holder.ivIcon.setImageResource(R.drawable.ic_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
@@ -1758,15 +1758,14 @@ public class MainActivity extends AppCompatActivity {
 
             for (int i = 0; i < len; i++) {
                 byte b = head[i];
-                // 放行：制表符、换行、回车、空格、常规可见字符、中文编码字节
-                // 只拦截：非法控制字符、删除符
-                if ((b < 0x09 || b == 0x0B || b == 0x0C || (b > 0x0D && b < 0x20)) || b == 0x7F) {
+                // 只拦：空字节0x00（程序/压缩包特征）、删除符0x7F
+                if (b == 0x00 || b == 0x7F) {
                     return false;
                 }
             }
             return true;
         } catch (Exception e) {
-            return true; // 读取异常默认放行，避免打不开正常文件
+            return true; // 读取出错直接放行，绝不拦截正常文件
         }
     }
     private boolean isZipFile(File file) {
@@ -2046,7 +2045,7 @@ public class MainActivity extends AppCompatActivity {
                             folders.add(file);
                         } else if (file.getName().toLowerCase().endsWith(".zip")) {
                             zipFiles.add(file);
-                        } else if (file.getName().toLowerCase().endsWith(".txt") && isTextFile(file) || isImageFile(file)) {
+                        } else if (file.getName().toLowerCase().endsWith(".txt") || isImageFile(file)) {
                             txtAndImageFiles.add(file);
                         } else {
                             otherFiles.add(file);
