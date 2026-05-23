@@ -1251,11 +1251,16 @@ public class MainActivity extends AppCompatActivity {
             protected String doInBackground(Void... voids) {
                 scanAllTxt(currentDirectory);
                 Collections.sort(validFiles, (a, b) -> a.fileHash.compareTo(b.fileHash));
+
+                // ================== 已修改部分开始 ==================
+                // 只拼接每个文件的哈希值，不拼接内容
                 StringBuilder allContent = new StringBuilder();
                 for (FileItem item : validFiles) {
-                    allContent.append(item.content);
+                    allContent.append(item.fileHash);
                 }
                 totalHash = getSHA256(allContent.toString());
+                // ================== 已修改部分结束 ==================
+
                 StringBuilder res = new StringBuilder();
                 res.append("==========================\n");
                 res.append("📌 所有文件合并后的总哈希：\n").append(totalHash).append("\n");
@@ -1283,7 +1288,7 @@ public class MainActivity extends AppCompatActivity {
                 res.append("2. 自动跳过文件名包含「_所有文件总哈希值」的文件；\n");
                 res.append("3. 对每个有效TXT文件内容计算SHA‑256哈希值；\n");
                 res.append("4. 按单个文件哈希值从小到大排序；\n");
-                res.append("5. 按排序顺序拼接全部文件内容，计算整体SHA‑256总哈希；\n");
+                res.append("5. 按排序顺序拼接每个文件的哈希值，计算整体SHA‑256总哈希；\n");
                 res.append("6. 附带高精度时间戳用于校验生成时刻，用于内容防篡改校验。\n");
                 res.append("=============================\n");
                 res.append("本软件由开发者陈阳2077开发维护，软件名“流动文档”\n");
