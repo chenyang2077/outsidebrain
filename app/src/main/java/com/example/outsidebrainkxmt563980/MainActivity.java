@@ -1233,6 +1233,7 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", (dialog, which) -> dialog.dismiss())
                 .show();
     }
+
     // 计算当前文件夹哈希值
     private void startRealHashGenerate() {
         if (currentDirectory == null || !currentDirectory.exists()) {
@@ -1252,14 +1253,12 @@ public class MainActivity extends AppCompatActivity {
                 scanAllTxt(currentDirectory);
                 Collections.sort(validFiles, (a, b) -> a.fileHash.compareTo(b.fileHash));
 
-                // ================== 已修改部分开始 ==================
-                // 只拼接每个文件的哈希值，不拼接内容
+                // 拼接每个文件的哈希值
                 StringBuilder allContent = new StringBuilder();
                 for (FileItem item : validFiles) {
                     allContent.append(item.fileHash);
                 }
                 totalHash = getSHA256(allContent.toString());
-                // ================== 已修改部分结束 ==================
 
                 StringBuilder res = new StringBuilder();
                 res.append("==========================\n");
@@ -1286,10 +1285,12 @@ public class MainActivity extends AppCompatActivity {
                 res.append("📄 生成原理说明：\n");
                 res.append("1. 递归扫描当前目录及所有子文件夹内TXT文件；\n");
                 res.append("2. 自动跳过文件名包含「_所有文件总哈希值」的文件；\n");
-                res.append("3. 对每个有效TXT文件内容计算SHA‑256哈希值；\n");
-                res.append("4. 按单个文件哈希值从小到大排序；\n");
-                res.append("5. 按排序顺序拼接每个文件的哈希值，计算整体SHA‑256总哈希；\n");
-                res.append("6. 附带高精度时间戳用于校验生成时刻，用于内容防篡改校验。\n");
+                res.append("3. 读取内容后彻底清除：所有 Unicode 空白符、换行相关符号；\n");
+                res.append("4. 中文逗号「，」自动转为英文逗号「,」统一格式；\n");
+                res.append("5. 对清洗后的纯文本计算单个文件SHA‑256哈希；\n");
+                res.append("6. 按文件哈希从小到大排序；\n");
+                res.append("7. 按顺序拼接所有文件哈希值，计算最终总SHA‑256哈希值；\n");
+                res.append("8. 高精度时间戳用于防篡改校验。\n");
                 res.append("=============================\n");
                 res.append("本软件由开发者陈阳2077开发维护，软件名“流动文档”\n");
                 res.append("=============================\n");
@@ -1335,13 +1336,29 @@ public class MainActivity extends AppCompatActivity {
                     } catch (Exception e) {}
                 }
             }
+            // ==========================
+            // 【最强文本清洗】
+            // ==========================
             private String readTxt(File f) throws Exception {
                 BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
                 StringBuilder sb = new StringBuilder();
                 String line;
-                while ((line = br.readLine()) != null) sb.append(line).append("\n");
+                while ((line = br.readLine()) != null) {
+                    sb.append(line);
+                }
                 br.close();
-                return sb.toString();
+                String content = sb.toString();
+
+                // 清除所有 Unicode 空白符（最强）
+                content = content.replaceAll("\\p{Space}+", "");
+
+                // 清除所有换行、回车、换页符
+                content = content.replaceAll("[\\n\\r\\f\\u000B]", "");
+
+                // 中文逗号 → 英文逗号
+                content = content.replace("，", ",");
+
+                return content;
             }
             private String getRelativePath(File f) {
                 String root = currentDirectory.getAbsolutePath();
