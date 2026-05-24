@@ -4,6 +4,7 @@
 功能描述：实现ZIP压缩包智能解压、文件夹冲突自动规避、TXT/图片文件唯一命名、压缩包结构分析
 所属模块：文件解压模块
 开发语言：Java
+源码状态：完整未删减
 */
 package com.example.outsidebrainkxmt563980;
 import android.os.Environment;
@@ -167,8 +168,10 @@ public class ZipUnzipUtil {
         }
         return sequenceNumber;
     }
-    // 解压专用：清理文件名/目录名非法字符
-    // 只清理文件名非法字符，不破坏路径
+    /**
+     // 解压专用：清理文件名/目录名非法字符
+     // 只清理文件名非法字符，不破坏路径
+     */
     private static String cleanZipEntryName(String name) {
         if (name == null) return "";
         name = name.replaceAll("[\\\\:*?\"<>|]", "");
@@ -188,10 +191,6 @@ public class ZipUnzipUtil {
         }
         return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
-    /**
-     * 统一处理TXT/图片文件重命名，生成唯一的带时间戳和随机字符的文件名
-     * @return int 更新后的序列号
-     */
     /**
      * 统一处理TXT/图片文件重命名：不清理旧时间戳，只追加/更新最后一个时间戳
      * @return int 更新后的序列号
@@ -243,7 +242,6 @@ public class ZipUnzipUtil {
             return sequenceNumber;
         }
     }
-
     /**
      * 判断是否是需要处理的图片文件（通过后缀）
      */
@@ -256,7 +254,6 @@ public class ZipUnzipUtil {
         }
         return false;
     }
-
     /**
      * 生成6位随机字符串（包含大小写字母和数字），用于文件命名唯一标识
      * @return String 6位随机字符串
@@ -271,7 +268,6 @@ public class ZipUnzipUtil {
         }
         return sb.toString();
     }
-
     /**
      * 查找无冲突的基础文件名，添加数字后缀规避冲突
      * @return String 无冲突的基础名称
@@ -289,7 +285,6 @@ public class ZipUnzipUtil {
             counter++;
         }
     }
-
     /**
      * 递归收集指定目录下所有TXT/图片文件的清洁名称（去时间戳）
      */
@@ -318,7 +313,6 @@ public class ZipUnzipUtil {
             }
         }
     }
-
     /**
      * 复制文件内容，用于文件重命名失败时的兜底方案
      * @return boolean 复制是否成功
@@ -337,7 +331,6 @@ public class ZipUnzipUtil {
         }
         return true;
     }
-
     /**
      * 分析压缩包根目录结构，判断是否有单一根文件夹
      * @return RootDirInfo 根目录分析结果
