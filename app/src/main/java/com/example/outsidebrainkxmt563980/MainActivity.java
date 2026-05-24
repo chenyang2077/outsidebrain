@@ -1,4 +1,4 @@
-/**
+/*
 软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：1. 基础文件管理：支持TXT文件/文件夹整理、ZIP压缩解压、文件/文件夹复制与移动；
@@ -1590,16 +1590,6 @@ public class MainActivity extends AppCompatActivity {
         PreferenceUtils.saveLastFolderPath(this, rootDirectory.getAbsolutePath());
     }
     /**
-     * 检查文件内容是否包含关键词：
-     * 1. 跳过ZIP/图片/其他非文本文件；
-     * 2. 读取文件内容，跳过首行路径标识后匹配关键词；
-     * 3. 返回匹配结果。
-     *
-     * @param file    待检查文件
-     * @param keyword 搜索关键词
-     * @return 是否包含关键词
-     */
-    /**
      * 检查文件内容中是否包含指定关键词（忽略大小写）
      * 过滤规则：不检查ZIP压缩包、图片文件、其他非文本文件
      * @param file 待检查的文件
@@ -2894,7 +2884,6 @@ public class MainActivity extends AppCompatActivity {
         try {
             Uri fileUri;
             if (isImageFile(file)) {
-                // 保留你原来的逻辑：微信不删后缀 ✅
                 String path = MediaStore.Images.Media.insertImage(
                         getContentResolver(),
                         file.getAbsolutePath(),
@@ -3162,22 +3151,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return false;
-    }
-    // 当前文件夹查重，自动加 (1)(2)
-    private String getUniqueFileNameInCurrentDir(File folder, String baseName) {
-        if (folder == null || !folder.exists()) return baseName;
-        File test = new File(folder, baseName);
-        if (!test.exists()) return baseName;
-
-        int dot = baseName.lastIndexOf(".");
-        String name = dot == -1 ? baseName : baseName.substring(0, dot);
-        String ext = dot == -1 ? "" : baseName.substring(dot);
-
-        int num = 1;
-        while (new File(folder, name + "(" + num + ")" + ext).exists()) {
-            num++;
-        }
-        return name + "(" + num + ")" + ext;
     }
     /**
      * 提取纯核心名（专门兼容双时间戳，仅用于编辑显示，不影响生成逻辑）
@@ -3708,17 +3681,6 @@ public class MainActivity extends AppCompatActivity {
         }
         fileOrFolder.delete();
     }
-    // 剪切文件夹：复制成功后删除原文件夹
-    private void deleteFolderAfterCopy(File folder) {
-        if (folder == null || !folder.exists()) return;
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                deleteFolderAfterCopy(file);
-            }
-        }
-        folder.delete();
-    }
     // 统一规则：裁剪主体名称，保留后缀、随机串、时间戳
     private String getSafeCoreName(String coreName) {
         final int MAX_LENGTH = 45;
@@ -3846,31 +3808,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 处理文件名加时间戳（区分TXT/图片，避免图片加.txt）
-     * @param originalName 原文件名
-     * @param isImageFile 是否为图片文件（true=图片，false=TXT）
-     * @return 带时间戳的新文件名（图片不加.txt，TXT加.txt）
-     */
-    private String processTxtForCutOperation(String originalName, boolean isImageFile) {
-        String coreName = originalName;
-        int lastDot = originalName.lastIndexOf(".");
-        if (lastDot > 0) {
-            coreName = originalName.substring(0, lastDot);
-        }
-        String randomStr = generateRandomString();
-        String newTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-        String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-        if (isImageFile) {
-            return coreName + timestampSuffix;
-        } else {
-            return coreName + timestampSuffix + ".txt";
-        }
-    }
-    private String processTxtForCutOperation(String originalName) {
-        return processTxtForCutOperation(originalName, false);
-    }
-
-    /**
      * 生成6位随机字符串（字母+数字组合）
      */
     private String generateRandomString() {
@@ -3882,8 +3819,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return sb.toString();
     }
-
-
     /**
      * 复制文件内容，使用缓冲区提高读写效率
      */
