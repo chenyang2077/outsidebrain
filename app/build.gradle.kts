@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.outsidebrain"
+    namespace = "com.example.outsidebrainkxmt563980"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.outsidebrain"
+        applicationId = "com.example.outsidebrainkxmt563980"
         minSdk = 24
         targetSdk = 35
         versionCode = 1

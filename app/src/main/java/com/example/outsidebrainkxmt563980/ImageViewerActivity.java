@@ -1,11 +1,12 @@
 /*
-软件名称：快乐文字
+软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：加载指定文件夹下的图片并按规则排序，支持图片缩放、回弹居中、上下滑动翻页，首屏加载完成后开启预加载优化体验
 所属模块：图片浏览模块
 开发语言：Java
+源码状态：完整未删减
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.content.Context;
 import android.graphics.Matrix;
 import android.graphics.PointF;

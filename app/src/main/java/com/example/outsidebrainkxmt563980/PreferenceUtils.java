@@ -1,11 +1,12 @@
 /*
-软件名称：快乐文字
+软件名称：流动文档软件V1.0
 版本号：V1.0
 功能描述：基于Android SharedPreferences实现应用本地轻量级数据持久化存储，管理用户操作历史记录，恢复用户上次操作状态
 所属模块：偏好设置模块
 开发语言：Java
+源码状态：完整未删减
 */
-package com.example.outsidebrain;
+package com.example.outsidebrainkxmt563980;
 import android.content.Context;
 import android.content.SharedPreferences;
 /**
