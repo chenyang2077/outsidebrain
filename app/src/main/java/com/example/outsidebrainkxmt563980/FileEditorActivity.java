@@ -56,6 +56,8 @@ public class FileEditorActivity extends AppCompatActivity {
     private File currentDir;
     private File targetFile;
     private boolean isSaved = true;
+    // 历史版本保存（自动备份旧文件）
+    private File historyVersionDir;
     private static final int MAX_TITLE_LEN = 31;
     private static final String ROOT_FOLDER_NAME = "主页根目录";
     private String searchKeyword;
@@ -521,6 +523,7 @@ public class FileEditorActivity extends AppCompatActivity {
                     sp.edit().putBoolean("is_saving_" + fileName, false).commit();
                     return;
                 }
+                saveFileHistoryVersion(targetFile);
                 String originalContent = readFileContent(targetFile);
                 File actualDirectory = targetFile.getParentFile();
                 String originalFileName = targetFile.getName();
@@ -717,6 +720,7 @@ public class FileEditorActivity extends AppCompatActivity {
                 finish();
                 return;
             }
+            saveFileHistoryVersion(targetFile);
             String originalContent = "";
             try {
                 originalContent = readFileContent(targetFile);
@@ -1086,6 +1090,46 @@ public class FileEditorActivity extends AppCompatActivity {
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.hideSoftInputFromWindow(etContent.getWindowToken(), 0);
+        }
+    }
+    /**
+     * 保存修改前的历史版本到「0.修改历史版本」，重名自动加序号
+     */
+    private void saveFileHistoryVersion(File originalFile) {
+        try {
+            // 1. 初始化历史版本目录（删了也会自动重建）
+            File recycleBin = new File(getFilesDir(), "回收站");
+            historyVersionDir = new File(recycleBin, "0.修改历史版本");
+            if (!historyVersionDir.exists()) {
+                historyVersionDir.mkdirs();
+            }
+
+            // 2. 读取修改【前】的内容
+            String oldContent = readFileContent(originalFile);
+
+            // 3. 构建历史文件名（保留原名）
+            String originalFileName = originalFile.getName();
+            String baseName = originalFileName.endsWith(".txt")
+                    ? originalFileName.substring(0, originalFileName.lastIndexOf(".txt"))
+                    : originalFileName;
+
+            // 4. 重名自动加序号（核心！）
+            String finalFileName = originalFileName;
+            int index = 1;
+            File testFile = new File(historyVersionDir, finalFileName);
+            while (testFile.exists()) {
+                finalFileName = baseName + "(" + index + ").txt";
+                testFile = new File(historyVersionDir, finalFileName);
+                index++;
+            }
+
+            // 5. 保存历史版本
+            File historyFile = new File(historyVersionDir, finalFileName);
+            atomicSaveSync(historyFile, oldContent);
+
+            Log.d("历史版本保存", "成功：" + historyFile.getAbsolutePath());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

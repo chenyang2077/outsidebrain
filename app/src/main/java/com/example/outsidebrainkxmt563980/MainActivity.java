@@ -633,6 +633,11 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "无法创建回收站，请检查存储权限", Toast.LENGTH_SHORT).show();
             }
         }
+        File historyDir = new File(recycleBinDirectory, "0.修改历史版本");
+        if (!historyDir.exists()) {
+            historyDir.mkdirs();
+            Log.d("RecycleBin", "自动重建修改历史版本文件夹");
+        }
     }
     /**
      * TXT文件时间戳比较器：1. 优先按文件名中的17位时间戳降序排序； 2. 无时间戳时按文件最后修改时间降序排序。
@@ -1626,8 +1631,15 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
-            recursiveSearch(currentDirectory, keyword);
-            sortSearchResult();
+            if (keyword.startsWith("@")) {
+                String timeStr = keyword.substring(1).trim();
+                if (timeStr.length() == 8) {
+                    recursiveSearchByLastTimestamp(currentDirectory, timeStr);
+                }
+            } else {
+                recursiveSearch(currentDirectory, keyword);
+                sortSearchResult();
+            }
             runOnUiThread(() -> {
                 if (searchDialog.isShowing()) {
                     searchDialog.dismiss();
@@ -1638,6 +1650,47 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_SHORT).show();
             });
         }).start();
+    }
+    /**
+     * 递归：按文件名最后一个时间戳筛选（晚于指定时间）
+     */
+    private void recursiveSearchByLastTimestamp(File dir, String targetTime) {
+        if (dir == null || !dir.exists() || dir.listFiles() == null) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                recursiveSearchByLastTimestamp(f, targetTime);
+            } else {
+                String name = f.getName();
+                if (!name.toLowerCase().endsWith(".txt")) continue;
+
+                ArrayList<String> timestamps = extractAllTimestamps(name);
+                if (timestamps.isEmpty()) continue;
+                String lastTs = timestamps.get(timestamps.size() - 1);
+                if (lastTs.length() < 8) continue;
+
+                String fileDate = lastTs.substring(0, 8);
+                if (fileDate.compareTo(targetTime) >= 0) {
+                    if (!searchResultList.contains(f)) {
+                        searchResultList.add(f);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 提取文件名中所有 17位时间戳 yyyyMMddHHmmssSSS
+     */
+    private ArrayList<String> extractAllTimestamps(String fileName) {
+        ArrayList<String> list = new ArrayList<>();
+        Pattern pattern = Pattern.compile("\\d{17}");
+        Matcher matcher = pattern.matcher(fileName);
+        while (matcher.find()) {
+            list.add(matcher.group());
+        }
+        return list;
     }
     /**
      * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
