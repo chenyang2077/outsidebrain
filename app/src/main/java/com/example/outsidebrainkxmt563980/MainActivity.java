@@ -4173,16 +4173,22 @@ public class MainActivity extends AppCompatActivity {
         zipDialog.setMessage("正在压缩...");
         zipDialog.setCancelable(false);
         zipDialog.show();
-
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String zipName = keyword + ".zip";
+                    String zipName;
+                    if (keyword.startsWith("@") && keyword.length() == 9) {
+                        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                        String today = sdf.format(new Date());
+                        zipName = keyword + "-" + today + ".zip";
+                    } else {
+                        zipName = keyword + ".zip";
+                    }
                     File zipFile = new File(currentDirectory, zipName);
                     int index = 1;
                     while (zipFile.exists()) {
-                        zipName = keyword + "(" + index + ").zip";
+                        zipName = zipName.replace(".zip", "") + "(" + index + ").zip";
                         zipFile = new File(currentDirectory, zipName);
                         index++;
                     }
@@ -4191,29 +4197,22 @@ public class MainActivity extends AppCompatActivity {
                     ZipOutputStream zos = new ZipOutputStream(fos);
                     zos.setLevel(5);
                     for (File file : fileList) {
-                        if (file.isDirectory()) {
-                            continue;
-                        }
+                        if (file.isDirectory()) continue;
                         addFileToZip(zos, file);
                     }
                     zos.finish();
                     zos.close();
                     fos.close();
-
                     runOnUiThread(() -> {
                         zipDialog.dismiss();
                         Toast.makeText(MainActivity.this, "压缩完成：" + zipFileName, Toast.LENGTH_LONG).show();
                         performSearch();
                     });
-
                 } catch (Exception e) {
                     e.printStackTrace();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            zipDialog.dismiss();
-                            Toast.makeText(MainActivity.this, "压缩失败", Toast.LENGTH_SHORT).show();
-                        }
+                    runOnUiThread(() -> {
+                        zipDialog.dismiss();
+                        Toast.makeText(MainActivity.this, "压缩失败", Toast.LENGTH_SHORT).show();
                     });
                 }
             }

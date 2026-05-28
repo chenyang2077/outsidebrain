@@ -1097,37 +1097,73 @@ public class FileEditorActivity extends AppCompatActivity {
      */
     private void saveFileHistoryVersion(File originalFile) {
         try {
-            // 1. 初始化历史版本目录（删了也会自动重建）
             File recycleBin = new File(getFilesDir(), "回收站");
             historyVersionDir = new File(recycleBin, "0.修改历史版本");
             if (!historyVersionDir.exists()) {
                 historyVersionDir.mkdirs();
             }
 
-            // 2. 读取修改【前】的内容
-            String oldContent = readFileContent(originalFile);
-
-            // 3. 构建历史文件名（保留原名）
             String originalFileName = originalFile.getName();
-            String baseName = originalFileName.endsWith(".txt")
-                    ? originalFileName.substring(0, originalFileName.lastIndexOf(".txt"))
-                    : originalFileName;
+            String baseName = originalFileName.replace(".txt", "");
 
-            // 4. 重名自动加序号（核心！）
-            String finalFileName = originalFileName;
-            int index = 1;
-            File testFile = new File(historyVersionDir, finalFileName);
-            while (testFile.exists()) {
-                finalFileName = baseName + "(" + index + ").txt";
-                testFile = new File(historyVersionDir, finalFileName);
-                index++;
+            // 匹配两种格式：核心_随机_时间戳 / 核心_随机_时间戳_时间戳
+            String regex = "^(.+?)(_[^_]{6}_\\d+(?:_\\d+)?)$";
+            String coreName = baseName;
+            String suffixPart = "";
+
+            if (baseName.matches(regex)) {
+                coreName = baseName.replaceAll(regex, "$1");
+                suffixPart = baseName.replaceAll(regex, "$2");
             }
 
-            // 5. 保存历史版本
-            File historyFile = new File(historyVersionDir, finalFileName);
+            // 去掉核心名里可能带的序号 (1)(2)(3)，保证纯净
+            coreName = coreName.replaceAll("\\(\\d+\\)$", "");
+
+            // 文件夹：存在就不创建
+            File coreFolder = new File(historyVersionDir, coreName);
+            if (!coreFolder.exists()) {
+                coreFolder.mkdirs();
+            }
+
+            // ==========================================
+            // 正确查重：只统计【纯净核心名】数量
+            // ==========================================
+            int count = 0;
+            File[] files = coreFolder.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    if (f.isFile() && f.getName().endsWith(".txt")) {
+                        String fname = f.getName().replace(".txt", "");
+
+                        // 提取这个文件的纯净核心名
+                        String fileCore = fname;
+                        if (fname.matches(regex)) {
+                            fileCore = fname.replaceAll(regex, "$1");
+                        }
+                        // 去掉序号
+                        fileCore = fileCore.replaceAll("\\(\\d+\\)$", "");
+
+                        // 只要和当前核心一样 → 计数+1
+                        if (coreName.equals(fileCore)) {
+                            count++;
+                        }
+                    }
+                }
+            }
+
+            // 生成正确序号
+            String finalFileName;
+            if (count == 0) {
+                finalFileName = coreName + suffixPart + ".txt";
+            } else {
+                finalFileName = coreName + "(" + count + ")" + suffixPart + ".txt";
+            }
+
+            // 保存
+            String oldContent = readFileContent(originalFile);
+            File historyFile = new File(coreFolder, finalFileName);
             atomicSaveSync(historyFile, oldContent);
 
-            Log.d("历史版本保存", "成功：" + historyFile.getAbsolutePath());
         } catch (Exception e) {
             e.printStackTrace();
         }
