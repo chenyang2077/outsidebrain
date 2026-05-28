@@ -24,6 +24,15 @@ import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.util.Log;
+import android.widget.Toast;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import android.provider.Settings;
 import java.util.Collections;
 import java.util.Comparator;
@@ -34,7 +43,6 @@ import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import java.util.Random;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -63,7 +71,6 @@ import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.PopupWindow;
 import android.widget.TextView;
-import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
@@ -78,10 +85,6 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -90,10 +93,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 import android.content.Context;
 import androidx.appcompat.app.AppCompatDelegate;
 import android.icu.text.Transliterator;
@@ -140,7 +140,8 @@ public class MainActivity extends AppCompatActivity {
     private long lastTipUpdateTime = 0;
     private String lastTipText = "";
     private boolean isZipCompressing = false;
-    // 智能加载配置
+    private FrameLayout zipContainer;
+    private View btnZip;
     private ProgressDialog mLoadingDialog;
     private static final int FILE_COUNT_LIMIT = 100;
     private static final String[] IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"};
@@ -168,6 +169,27 @@ public class MainActivity extends AppCompatActivity {
         recoverFromCrash();
         isInSearchMode = false;
         initRecycleBin();
+        zipContainer = findViewById(R.id.zip_container);
+        btnZip = getLayoutInflater().inflate(R.layout.btn_zip, zipContainer, false);
+        zipContainer.addView(btnZip);
+        btnZip.setVisibility(View.GONE);
+        btnZip.setOnClickListener(v -> {
+            if (searchResultList == null || searchResultList.isEmpty()) {
+                Toast.makeText(this, "没有可压缩的文件", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("压缩确认")
+                    .setMessage("确定要将搜索到的文件压缩成 zip 吗？")
+                    .setPositiveButton("确定", (dialog, which) -> {
+                        dialog.dismiss();
+                        zipSearchResultsToCurrentDir(etSearch.getText().toString().trim(), searchResultList);
+                    })
+                    .setNegativeButton("取消", (dialog, which) -> {
+                        dialog.dismiss();
+                    })
+                    .show();
+        });
         transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
         if (!transferStationDirectory.exists()) {
             transferStationDirectory.mkdirs();
@@ -307,6 +329,7 @@ public class MainActivity extends AppCompatActivity {
                     if (isInSearchMode) {
                         isInSearchMode = false;
                         etSearch.setText("");
+                        if (btnZip != null) btnZip.setVisibility(View.GONE);
                         etSearch.clearFocus();
                         clearSearchKeyword();
                         hideCustomPathTip();
@@ -601,6 +624,7 @@ public class MainActivity extends AppCompatActivity {
             if (isInSearchMode) {
                 isInSearchMode = false;
                 etSearch.setText("");
+                if (btnZip != null) btnZip.setVisibility(View.GONE);
             }
             isInRecycleBin = false;
             isInTransferStation = false;
@@ -896,7 +920,7 @@ public class MainActivity extends AppCompatActivity {
     private void compressRootFolder() {
         new AlertDialog.Builder(this)
                 .setTitle("确认压缩")
-                .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n压缩后的文件将以“主页压缩包.zip”命名。")
+                .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n搜索“@20080202”这个格式可以将这个日期以后的txt文件进行压缩\n\n压缩后的文件将以“主页压缩包.zip”命名。")
                 .setPositiveButton("确认", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
@@ -1548,6 +1572,7 @@ public class MainActivity extends AppCompatActivity {
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
+            if (btnZip != null) btnZip.setVisibility(View.GONE);
         }
         isInRecycleBin = true;
         isInTransferStation = false;
@@ -1566,6 +1591,7 @@ public class MainActivity extends AppCompatActivity {
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
+            if (btnZip != null) btnZip.setVisibility(View.GONE);
         }
         if (rootDirectory == null || !rootDirectory.exists() || !rootDirectory.isDirectory()) {
             Toast.makeText(this, "根目录不存在", Toast.LENGTH_SHORT).show();
@@ -1620,6 +1646,7 @@ public class MainActivity extends AppCompatActivity {
             fileAdapter.setData(fileList);
             clearSearchKeyword();
             Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
+            if (btnZip != null) btnZip.setVisibility(View.GONE);
             return;
         }
         saveSearchKeyword(keyword);
@@ -1636,15 +1663,19 @@ public class MainActivity extends AppCompatActivity {
                 if (timeStr.length() == 8) {
                     recursiveSearchByLastTimestamp(currentDirectory, timeStr);
                 }
-            } else {
-                recursiveSearch(currentDirectory, keyword);
-                sortSearchResult();
             }
+            recursiveSearch(currentDirectory, keyword);
+            sortSearchResult();
             runOnUiThread(() -> {
                 if (searchDialog.isShowing()) {
                     searchDialog.dismiss();
                 }
                 fileAdapter.setData(searchResultList);
+                if (searchResultList.size() > 0) {
+                    btnZip.setVisibility(View.VISIBLE);
+                } else {
+                    btnZip.setVisibility(View.GONE);
+                }
                 Toast.makeText(MainActivity.this,
                         searchResultList.size() + " 个匹配结果",
                         Toast.LENGTH_SHORT).show();
@@ -3968,6 +3999,7 @@ public class MainActivity extends AppCompatActivity {
         if (isInSearchMode) {
             isInSearchMode = false;
             etSearch.setText("");
+            if (btnZip != null) btnZip.setVisibility(View.GONE);
             etSearch.clearFocus();
             fileAdapter.setData(fileList);
             clearSearchKeyword();
@@ -4128,5 +4160,88 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+    }
+    /**
+     * 压缩搜索结果到当前目录，重名自动加序号，文件名使用搜索关键词
+     */
+    private void zipSearchResultsToCurrentDir(final String keyword, final List<File> fileList) {
+        if (currentDirectory == null || !currentDirectory.exists()) {
+            Toast.makeText(this, "目录不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final ProgressDialog zipDialog = new ProgressDialog(this);
+        zipDialog.setMessage("正在压缩...");
+        zipDialog.setCancelable(false);
+        zipDialog.show();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String zipName = keyword + ".zip";
+                    File zipFile = new File(currentDirectory, zipName);
+                    int index = 1;
+                    while (zipFile.exists()) {
+                        zipName = keyword + "(" + index + ").zip";
+                        zipFile = new File(currentDirectory, zipName);
+                        index++;
+                    }
+                    final String zipFileName = zipFile.getName();
+                    FileOutputStream fos = new FileOutputStream(zipFile);
+                    ZipOutputStream zos = new ZipOutputStream(fos);
+                    zos.setLevel(5);
+                    for (File file : fileList) {
+                        if (file.isDirectory()) {
+                            continue;
+                        }
+                        addFileToZip(zos, file);
+                    }
+                    zos.finish();
+                    zos.close();
+                    fos.close();
+
+                    runOnUiThread(() -> {
+                        zipDialog.dismiss();
+                        Toast.makeText(MainActivity.this, "压缩完成：" + zipFileName, Toast.LENGTH_LONG).show();
+                        performSearch();
+                    });
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            zipDialog.dismiss();
+                            Toast.makeText(MainActivity.this, "压缩失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+    /**
+     * 递归添加文件到 ZIP
+     */
+    private void addFileToZip(ZipOutputStream zos, File file) throws IOException {
+        if (file.isDirectory()) {
+            return;
+        }
+        String basePath = rootDirectory.getAbsolutePath();
+        String fullPath = file.getAbsolutePath();
+        String relativePath = fullPath.replace(basePath, "");
+        if (relativePath.startsWith(File.separator)) {
+            relativePath = relativePath.substring(1);
+        }
+        String zipEntryName = relativePath.replace(File.separator, "}");
+        ZipEntry entry = new ZipEntry(zipEntryName);
+        zos.putNextEntry(entry);
+        FileInputStream fis = new FileInputStream(file);
+        byte[] buffer = new byte[8192];
+        int len;
+        while ((len = fis.read(buffer)) != -1) {
+            zos.write(buffer, 0, len);
+        }
+        fis.close();
+        zos.closeEntry();
     }
 }

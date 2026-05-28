@@ -13,7 +13,7 @@
         android:layout_height="match_parent"
         android:background="#000000"/>
 
-    <!-- 顶部容器（修改：添加粘贴按钮容器） -->
+    <!-- 顶部容器（保持不变） -->
     <LinearLayout
         android:id="@+id/top_container"
         android:layout_width="match_parent"
@@ -23,7 +23,6 @@
         android:gravity="center_vertical"
         android:paddingVertical="4dp">
 
-        <!-- 将原按钮ID修改为新名称，用于弹出菜单 -->
         <ImageButton
             android:id="@+id/menu_btn"
             android:layout_width="48dp"
@@ -32,17 +31,15 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_folder2"
             android:contentDescription="菜单按钮"
-
             android:background="@drawable/btn_click_bg"
-
-        android:clickable="true"
-        android:focusable="true"/>
+            android:clickable="true"
+            android:focusable="true"/>
 
         <LinearLayout
             android:id="@+id/search_bar"
             android:layout_width="0dp"
-            android:layout_height="48dp"
             android:layout_weight="1"
+            android:layout_height="48dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:background="@drawable/item_rounded_bg"
@@ -52,8 +49,8 @@
             <EditText
                 android:id="@+id/et_search"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
                 android:layout_weight="1"
+                android:layout_height="match_parent"
                 android:paddingHorizontal="12dp"
                 android:background="@null"
                 android:singleLine="true"
@@ -61,14 +58,24 @@
                 android:hint="Lv-1"
                 android:textColor="#FFFFFF"
                 android:inputType="text"
-            android:imeOptions="actionSearch"
-            />
+                android:imeOptions="actionSearch"/>
+
+            <!-- 你原来的粘贴按钮占位（完全没动！） -->
             <FrameLayout
                 android:id="@+id/paste_container"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginStart="4dp"
                 android:gravity="center_vertical"/>
+
+            <!-- 新增：压缩按钮占位（和你粘贴格式完全一样！） -->
+            <FrameLayout
+                android:id="@+id/zip_container"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginStart="4dp"
+                android:gravity="center_vertical"/>
+
             <Button
                 android:id="@+id/btn_search"
                 android:layout_width="wrap_content"
@@ -83,13 +90,9 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"/>
 
-            <!-- 新增：粘贴按钮容器（搜索按钮右侧） -->
-
-
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 原有文件列表（保持不变） -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/file_list"
         android:layout_width="match_parent"
@@ -100,7 +103,6 @@
         android:paddingBottom="2dp"
         android:layout_below="@id/top_container"/>
 
-    <!-- 原有悬浮按钮（保持不变） -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/add_button"
         android:layout_width="wrap_content"
