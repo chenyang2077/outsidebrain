@@ -579,24 +579,23 @@ public class MainActivity extends AppCompatActivity {
         ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
         int screenWidth = rootView.getWidth();
         int bottomMargin = dp2px(80);
-        mCustomTipView.measure(
-                View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        );
-        int tipWidth = mCustomTipView.getMeasuredWidth();
-        int tipHeight = mCustomTipView.getMeasuredHeight();
-        int left = (screenWidth - tipWidth) / 2;
-        int top = rootView.getHeight() - bottomMargin - tipHeight;
+        int tipWidth = screenWidth * 2 / 3;
+        int tipHeight = ViewGroup.LayoutParams.WRAP_CONTENT;
+        int left = screenWidth - tipWidth;
+        int top = rootView.getHeight() - bottomMargin - mCustomTipView.getMeasuredHeight();
+
         mCustomTipView.setX(left);
         mCustomTipView.setY(top);
+
         if (mCustomTipView.getParent() != null) {
             ((ViewGroup) mCustomTipView.getParent()).removeView(mCustomTipView);
         }
         rootView.addView(mCustomTipView);
         ViewGroup.LayoutParams params = mCustomTipView.getLayoutParams();
-        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        params.width = tipWidth;
         params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         mCustomTipView.setLayoutParams(params);
+
         mIsTipShowing = true;
         rootView.setOnTouchListener((view, event) -> {
             if (mIsTipShowing && event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -920,7 +919,7 @@ public class MainActivity extends AppCompatActivity {
     private void compressRootFolder() {
         new AlertDialog.Builder(this)
                 .setTitle("确认压缩")
-                .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n搜索“@20080202”这个格式可以将这个日期以后的txt文件进行压缩\n\n压缩后的文件将以“主页压缩包.zip”命名。")
+                .setMessage("确定要将整个主页内容压缩到当前目录吗？\n\n搜索“@20080202”这个格式可以将这个日期以后的txt文件进行压缩,区间也行“@20080202#20290202”\n\n压缩后的文件将以“主页压缩包.zip”命名。")
                 .setPositiveButton("确认", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
@@ -1660,27 +1659,85 @@ public class MainActivity extends AppCompatActivity {
             searchResultList.clear();
             if (keyword.startsWith("@")) {
                 String timeStr = keyword.substring(1).trim();
-                if (timeStr.length() == 8) {
-                    recursiveSearchByLastTimestamp(currentDirectory, timeStr);
+                if (timeStr.matches("\\d{8}[#]\\d{8}")) {
+                    String[] split = timeStr.split("[#]");
+                    String startDay = split[0];
+                    String endDay = split[1];
+                    scanTimeRangeNoSkip(currentDirectory, startDay, endDay);
+                }
+                else if (timeStr.length() == 8) {
+                    scanTimeSingleNoSkip(currentDirectory, timeStr);
                 }
             }
             recursiveSearch(currentDirectory, keyword);
             sortSearchResult();
+
             runOnUiThread(() -> {
-                if (searchDialog.isShowing()) {
-                    searchDialog.dismiss();
-                }
+                if (searchDialog.isShowing()) searchDialog.dismiss();
                 fileAdapter.setData(searchResultList);
-                if (searchResultList.size() > 0) {
-                    btnZip.setVisibility(View.VISIBLE);
-                } else {
-                    btnZip.setVisibility(View.GONE);
-                }
-                Toast.makeText(MainActivity.this,
-                        searchResultList.size() + " 个匹配结果",
-                        Toast.LENGTH_SHORT).show();
+                btnZip.setVisibility(searchResultList.isEmpty() ? View.GONE : View.VISIBLE);
+                Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
             });
         }).start();
+    }
+    /**
+     * 内部工具：单日期到今日搜索
+     */
+    private void scanTimeSingleNoSkip(File dir, String timeStr) {
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scanTimeSingleNoSkip(file, timeStr);
+            } else {
+                String name = file.getName();
+                String timeStamp = null;
+                int len = name.length();
+                for (int i = 0; i <= len - 8; i++) {
+                    String sub = name.substring(i, i + 8);
+                    if (sub.matches("\\d{8}")) {
+                        timeStamp = sub;
+                        break;
+                    }
+                }
+                if (timeStamp != null && timeStamp.equals(timeStr) && !searchResultList.contains(file)) {
+                    searchResultList.add(file);
+                }
+            }
+        }
+    }
+    /**
+     * 内部工具：日期区间搜索
+     */
+    private void scanTimeRangeNoSkip(File dir, String startDay, String endDay) {
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scanTimeRangeNoSkip(file, startDay, endDay);
+            } else {
+                String name = file.getName();
+                String timeStamp = null;
+                int len = name.length();
+                for (int i = 0; i <= len - 8; i++) {
+                    String sub = name.substring(i, i + 8);
+                    if (sub.matches("\\d{8}")) {
+                        timeStamp = sub;
+                        break;
+                    }
+                }
+                if (timeStamp != null) {
+                    if (timeStamp.compareTo(startDay) >= 0 && timeStamp.compareTo(endDay) <= 0) {
+                        if (!searchResultList.contains(file)) {
+                            searchResultList.add(file);
+                        }
+                    }
+                }
+            }
+        }
     }
     /**
      * 递归：按文件名最后一个时间戳筛选（晚于指定时间）
@@ -4178,10 +4235,15 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 try {
                     String zipName;
-                    if (keyword.startsWith("@") && keyword.length() == 9) {
-                        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
-                        String today = sdf.format(new Date());
-                        zipName = keyword + "-" + today + ".zip";
+                    if (keyword.startsWith("@")) {
+                        if (keyword.matches("@\\d{8}")) {
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                            String today = sdf.format(new Date());
+                            zipName = keyword + "#" + today + ".zip";
+                        }
+                        else {
+                            zipName = keyword + ".zip";
+                        }
                     } else {
                         zipName = keyword + ".zip";
                     }
