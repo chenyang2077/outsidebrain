@@ -12,6 +12,7 @@ import android.util.Log;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -30,6 +31,7 @@ public class ZipUnzipUtil {
             Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}");
     private static final Pattern OLD_TIMESTAMP_PATTERN =
             Pattern.compile("_\\d{13,17}");
+
     private static final Set<String> IMAGE_SUFFIXES = new HashSet<String>() {{
         add(".png");
         add(".jpg");
@@ -77,13 +79,30 @@ public class ZipUnzipUtil {
                 }
             }
 
-            // 按文件原始修改时间升序排序（最稳定不乱序）
+            // ===================== 最终正确排序 =====================
             Collections.sort(fileEntries, new Comparator<ZipEntry>() {
                 @Override
                 public int compare(ZipEntry o1, ZipEntry o2) {
-                    return Long.compare(o1.getTime(), o2.getTime());
+                    long t1 = extractTimestampFromFileName(o1.getName());
+                    long t2 = extractTimestampFromFileName(o2.getName());
+
+                    boolean has1 = t1 > 0;
+                    boolean has2 = t2 > 0;
+
+                    // 无时间戳 → 全部排在前面，优先处理
+                    if (!has1 && has2) return -1;
+                    if (has1 && !has2) return 1;
+
+                    // 都无时间戳 → 按压缩包内原始时间排序
+                    if (!has1 && !has2) {
+                        return Long.compare(o1.getTime(), o2.getTime());
+                    }
+
+                    // 都有时间戳 → 按文件名最后一段时间戳排序
+                    return Long.compare(t1, t2);
                 }
             });
+            // =========================================================
 
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
@@ -103,6 +122,22 @@ public class ZipUnzipUtil {
             return false;
         }
     }
+
+    // ===================== 你自己项目的正则，最终正确提取 =====================
+    private static long extractTimestampFromFileName(String fileName) {
+        try {
+            Matcher matcher = OLD_TIMESTAMP_PATTERN.matcher(fileName);
+            long lastTimestamp = 0;
+            while (matcher.find()) {
+                String numStr = matcher.group().substring(1); // 去掉 "_"
+                lastTimestamp = Long.parseLong(numStr);
+            }
+            return lastTimestamp;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     /**
      * 处理压缩包目录项：仅创建原压缩包内的空文件夹，不生成带序号的冲突文件夹
      */

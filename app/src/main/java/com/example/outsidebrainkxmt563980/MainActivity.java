@@ -2590,31 +2590,67 @@ public class MainActivity extends AppCompatActivity {
      */
     private void confirmFileDeletion(File file) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-
         if (isInRecycleBin) {
             builder.setTitle("确认彻底删除")
                     .setMessage("确定要永久删除 " + getDisplayName(file) + " 吗？此操作不可恢复。")
                     .setPositiveButton("删除", (dialog, which) -> {
-                        if (performRecursiveDeletion(file)) {
-                            Toast.makeText(this, "已永久删除", Toast.LENGTH_SHORT).show();
-                            loadFileList();
-                        } else {
-                            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
-                        }
+                        androidx.appcompat.app.AlertDialog loadingDialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+                                .setMessage("正在删除，请稍候...")
+                                .setCancelable(false)
+                                .create();
+                        loadingDialog.show();
+                        new android.os.AsyncTask<Void, Void, Boolean>() {
+                            @Override
+                            protected Boolean doInBackground(Void... voids) {
+                                return performRecursiveDeletion(file);
+                            }
+                            @Override
+                            protected void onPostExecute(Boolean success) {
+                                super.onPostExecute(success);
+                                if (loadingDialog.isShowing()) {
+                                    loadingDialog.dismiss();
+                                }
+                                if (success) {
+                                    Toast.makeText(MainActivity.this, "已永久删除", Toast.LENGTH_SHORT).show();
+                                    loadFileList();
+                                } else {
+                                    Toast.makeText(MainActivity.this, "删除失败", Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        }.execute();
+
                     });
         } else {
             builder.setTitle("确认删除")
                     .setMessage("确定要将 " + getDisplayName(file) + " 移至回收站吗？")
                     .setPositiveButton("删除", (dialog, which) -> {
-                        if (moveToRecycleBin(file)) {
-                            Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show();
-                            loadFileList();
-                        } else {
-                            Toast.makeText(this, "删除操作失败", Toast.LENGTH_SHORT).show();
-                        }
+                        androidx.appcompat.app.AlertDialog loadingDialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+                                .setMessage("正在移至回收站...")
+                                .setCancelable(false)
+                                .create();
+                        loadingDialog.show();
+                        new android.os.AsyncTask<Void, Void, Boolean>() {
+                            @Override
+                            protected Boolean doInBackground(Void... voids) {
+                                return moveToRecycleBin(file);
+                            }
+                            @Override
+                            protected void onPostExecute(Boolean success) {
+                                super.onPostExecute(success);
+                                if (loadingDialog.isShowing()) {
+                                    loadingDialog.dismiss();
+                                }
+                                if (success) {
+                                    Toast.makeText(MainActivity.this, "已移至回收站", Toast.LENGTH_SHORT).show();
+                                    loadFileList();
+                                } else {
+                                    Toast.makeText(MainActivity.this, "删除操作失败", Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        }.execute();
+
                     });
         }
-
         builder.setNegativeButton("取消", null)
                 .show();
     }
@@ -2625,12 +2661,6 @@ public class MainActivity extends AppCompatActivity {
         if (file == null || !file.exists()) {
             return false;
         }
-        final ProgressDialog recycleDialog = new ProgressDialog(this);
-        recycleDialog.setMessage("正在移动到回收站，请稍候...");
-        recycleDialog.setCanceledOnTouchOutside(false);
-        recycleDialog.setCancelable(false);
-        runOnUiThread(recycleDialog::show);
-
         try {
             if (!recycleBinDirectory.exists()) {
                 recycleBinDirectory.mkdirs();
@@ -2639,15 +2669,6 @@ public class MainActivity extends AppCompatActivity {
                 File targetFolder = new File(recycleBinDirectory, file.getName());
                 File safeFolder = getNonConflictFile(targetFolder);
                 final boolean result = moveFolderToRecycleBinLikeCut(file, safeFolder);
-
-                runOnUiThread(() -> {
-                    if (recycleDialog.isShowing()) {
-                        recycleDialog.dismiss();
-                        if (!result) {
-                            Toast.makeText(this, "移动失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                });
                 return result;
             }
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
@@ -2686,23 +2707,9 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             boolean finalResult = finalSuccess;
-            runOnUiThread(() -> {
-                if (recycleDialog.isShowing()) {
-                    recycleDialog.dismiss();
-                    if (!finalResult) {
-                        Toast.makeText(this, "移动失败", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            });
-            return finalSuccess;
+            return finalResult;
         } catch (Exception e) {
             e.printStackTrace();
-            runOnUiThread(() -> {
-                if (recycleDialog.isShowing()) {
-                    recycleDialog.dismiss();
-                    Toast.makeText(this, "移动失败：异常", Toast.LENGTH_SHORT).show();
-                }
-            });
             return false;
         }
     }
