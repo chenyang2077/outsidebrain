@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -3761,6 +3762,7 @@ public class MainActivity extends AppCompatActivity {
             }
             File[] files = sourceDir.listFiles();
             if (files != null) {
+                Arrays.sort(files, Comparator.comparingLong(File::lastModified));
                 for (File file : files) {
                     if (file.isDirectory()) {
                         moveFolderWithTxtUpdate(file, targetDir, true);

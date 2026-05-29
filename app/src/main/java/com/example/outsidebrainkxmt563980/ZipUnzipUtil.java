@@ -30,8 +30,6 @@ public class ZipUnzipUtil {
             Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}");
     private static final Pattern OLD_TIMESTAMP_PATTERN =
             Pattern.compile("_\\d{13,17}");
-
-    // 定义需要处理的图片后缀
     private static final Set<String> IMAGE_SUFFIXES = new HashSet<String>() {{
         add(".png");
         add(".jpg");
@@ -68,7 +66,7 @@ public class ZipUnzipUtil {
             }
             String finalTargetPath = rootTargetDir.getAbsolutePath();
             Set<ZipEntry> dirEntries = new HashSet<>();
-            Set<ZipEntry> fileEntries = new HashSet<>();
+            List<ZipEntry> fileEntries = new ArrayList<>();
             Enumeration<? extends ZipEntry> entries = zf.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
@@ -78,6 +76,15 @@ public class ZipUnzipUtil {
                     fileEntries.add(entry);
                 }
             }
+
+            // 按文件原始修改时间升序排序（最稳定不乱序）
+            Collections.sort(fileEntries, new Comparator<ZipEntry>() {
+                @Override
+                public int compare(ZipEntry o1, ZipEntry o2) {
+                    return Long.compare(o1.getTime(), o2.getTime());
+                }
+            });
+
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
             }
@@ -164,7 +171,7 @@ public class ZipUnzipUtil {
         String fileName = targetFile.getName().toLowerCase();
         if (fileName.endsWith(".txt") || isImageFile(fileName)) {
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-            return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber);
+            return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber, entry);
         }
         return sequenceNumber;
     }
@@ -192,11 +199,11 @@ public class ZipUnzipUtil {
         return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
     /**
-     * 统一处理TXT/图片文件重命名：不清理旧时间戳，只追加/更新最后一个时间戳
+     * 统一处理TXT/图片文件重命名：使用压缩包自带原始修改时间（永久不乱序）
      * @return int 更新后的序列号
      */
     private static int processNamedFile(File targetFile, File rootDir,
-                                        Set<String> existingCleanNames, int sequenceNumber) {
+                                        Set<String> existingCleanNames, int sequenceNumber, ZipEntry entry) {
         if (targetFile == null || !targetFile.exists()) {
             return sequenceNumber;
         }
@@ -206,7 +213,11 @@ public class ZipUnzipUtil {
             String suffix = lastDot > 0 ? originalName.substring(lastDot) : "";
             String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
             String newFileName;
-            String newTs = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
+            long time = entry.getTime();
+            if (time <= 0) {
+                time = System.currentTimeMillis();
+            }
+            String newTs = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date(time));
             Pattern hasRandomAndTs = Pattern.compile("^.+_[A-Za-z0-9]{6}(_\\d{13,17}){1,2}$");
             Pattern hasOneTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}$");
             Pattern hasTwoTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}_\\d{13,17}$");
