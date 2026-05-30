@@ -7,6 +7,7 @@
 源码状态：完整未删减
 */
 package com.example.outsidebrainkxmt563980;
+
 import android.os.Environment;
 import android.util.Log;
 import java.io.*;
@@ -22,8 +23,8 @@ import java.util.zip.ZipFile;
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
     private static final String ROOT_FOLDER_NAME = "主页根目录";
-    private static final SimpleDateFormat BASE_TIMESTAMP_FORMAT =
-            new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+    private static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT =
+            new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
     private static final Pattern INCREMENT_TIMESTAMP_PATTERN =
             Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}(_\\d{13,17})*");
     private static final Pattern TARGET_TIMESTAMP_PATTERN =
@@ -39,10 +40,7 @@ public class ZipUnzipUtil {
     }};
 
     /**
-     * 核心解压方法：将ZIP文件解压到目标目录，自动处理文件夹冲突和TXT/图片文件重命名
-     * @param zipFilePath ZIP压缩包完整路径
-     * @param targetDir 解压目标根目录
-     * @return boolean 解压是否成功
+     * 核心解压方法：解压ZIP到目标目录，自动处理冲突与命名
      */
     public static boolean unzipToCurrentDir(String zipFilePath, String targetDir) {
         File zipFile = new File(zipFilePath);
@@ -66,7 +64,7 @@ public class ZipUnzipUtil {
             }
             String finalTargetPath = rootTargetDir.getAbsolutePath();
             Set<ZipEntry> dirEntries = new HashSet<>();
-            List<ZipEntry> fileEntries = new ArrayList<>(); // 改成 List 方便排序
+            List<ZipEntry> fileEntries = new ArrayList<>();
             Enumeration<? extends ZipEntry> entries = zf.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
@@ -76,47 +74,41 @@ public class ZipUnzipUtil {
                     fileEntries.add(entry);
                 }
             }
-            // ===================== 最终排序：不带时间戳优先 | 带时间戳靠后 | 时间戳大最后 =====================
+
+            // 排序规则：无时间戳优先 → 有时间戳按时间升序
             Collections.sort(fileEntries, new Comparator<ZipEntry>() {
                 @Override
                 public int compare(ZipEntry o1, ZipEntry o2) {
-                    String name1 = o1.getName();
-                    String name2 = o2.getName();
+                    String n1 = o1.getName();
+                    String n2 = o2.getName();
+                    boolean h1 = hasTimestampInName(n1);
+                    boolean h2 = hasTimestampInName(n2);
 
-                    // 使用【粘贴模块同款逻辑】判断是否带时间戳
-                    boolean has1 = hasTimestampInName(name1);
-                    boolean has2 = hasTimestampInName(name2);
+                    if (!h1 && h2) return -1;
+                    if (h1 && !h2) return 1;
 
-                    // 1. 不带时间戳 → 排前面
-                    if (!has1 && has2) return -1;
-                    if (has1 && !has2) return 1;
-
-                    // 2. 都带时间戳 → 按时间戳数字排序（小 → 大）
-                    if (has1 && has2) {
-                        long t1 = getTimestampFromName(name1);
-                        long t2 = getTimestampFromName(name2);
+                    if (h1 && h2) {
+                        long t1 = getTimestampFromName(n1);
+                        long t2 = getTimestampFromName(n2);
                         return Long.compare(t1, t2);
                     }
-
-                    // 3. 都不带 → 按文件原始时间排序
                     return Long.compare(o1.getTime(), o2.getTime());
                 }
             });
-            // =================================================================
 
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
             }
+
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
             Set<String> existingCleanNames = new HashSet<>();
             collectAllCleanFileNames(rootDir, existingCleanNames);
             int sequenceNumber = 0;
 
-            // 遍历已排序的文件
             for (ZipEntry entry : fileEntries) {
-                sequenceNumber = processFileEntry(zf, entry, rootDirInfo, rootTargetDir,
-                        existingCleanNames, sequenceNumber);
+                sequenceNumber = processFileEntry(zf, entry, rootDirInfo, rootTargetDir, existingCleanNames, sequenceNumber);
             }
+
             Log.d(TAG, "解压成功，目标路径: " + finalTargetPath);
             return true;
         } catch (IOException e) {
@@ -124,7 +116,114 @@ public class ZipUnzipUtil {
             return false;
         }
     }
-    // ===================== 复刻粘贴模块：判断是否含时间戳（纯字符串判断，无敌稳定） =====================
+
+    /**
+     * 单个文件解压处理：保留安全校验，对齐剪切逻辑
+     */
+    private static int processFileEntry(ZipFile zipFile, ZipEntry entry,
+                                        RootDirInfo rootDirInfo, File rootTargetDir,
+                                        Set<String> existingCleanNames, int sequenceNumber) throws IOException {
+        String entryName = entry.getName().replace("\\", "/");
+        entryName = cleanZipEntryName(entryName);
+        String relativePath;
+        if (rootDirInfo.hasSingleRootFolder) {
+            relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
+        } else {
+            relativePath = entryName;
+        }
+        File targetFile = new File(rootTargetDir, relativePath);
+
+        // ===================== 安全路径保护（完整保留） =====================
+        try {
+            String canonicalTarget = targetFile.getCanonicalPath();
+            String canonicalRoot = rootTargetDir.getCanonicalPath();
+            if (!canonicalTarget.startsWith(canonicalRoot + File.separator)) {
+                Log.w(TAG, "发现危险文件，已跳过：" + entryName);
+                return sequenceNumber;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "安全校验失败，跳过文件：" + entryName);
+            return sequenceNumber;
+        }
+
+        File parentDir = targetFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
+
+        // 写入文件
+        try (InputStream is = zipFile.getInputStream(entry);
+             OutputStream os = new FileOutputStream(targetFile)) {
+            byte[] buffer = new byte[1024 * 4];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                os.write(buffer, 0, len);
+            }
+        }
+
+        // 只处理TXT/图片
+        String fileName = targetFile.getName().toLowerCase();
+        if (fileName.endsWith(".txt") || isImageFile(fileName)) {
+            return processNamedFile(targetFile, existingCleanNames, sequenceNumber);
+        }
+        return sequenceNumber;
+    }
+
+    /**
+     * 文件重命名核心：完全对齐剪切模块逻辑，序列号放末尾
+     */
+    private static int processNamedFile(File targetFile,
+                                        Set<String> existingCleanNames, int sequenceNumber) {
+        if (targetFile == null || !targetFile.exists()) {
+            return sequenceNumber;
+        }
+        try {
+            String originalName = targetFile.getName();
+            String cleanName = removeTimestamp(originalName);
+            String originalExt = getOriginalExtension(originalName);
+            int lastDotIndex = cleanName.lastIndexOf(".");
+            if (lastDotIndex > 0) {
+                cleanName = cleanName.substring(0, lastDotIndex);
+            }
+            cleanName = getSafeCoreName(cleanName);
+            String randomStr = generateRandomString();
+            String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
+
+            // 稳定格式：时间戳末尾5位为序列号
+            String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
+            String finalTs = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
+
+            String finalName;
+            String[] parts = originalName.split("_");
+
+            // 三条核心规则（与剪切完全一致）
+            if (parts.length <= 2) {
+                finalName = cleanName + "_" + randomStr + "_" + finalTs + originalExt;
+            } else if (parts.length == 3) {
+                finalName = originalName.substring(0, originalName.lastIndexOf('.')) + "_" + finalTs + originalExt;
+            } else {
+                String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.'));
+                int lastUnder = nameWithoutExt.lastIndexOf('_');
+                String prefix = nameWithoutExt.substring(0, lastUnder);
+                finalName = prefix + "_" + finalTs + originalExt;
+            }
+
+            File newFile = new File(targetFile.getParentFile(), finalName);
+            if (targetFile.renameTo(newFile)) {
+                Log.d(TAG, "重命名成功: " + originalName + " → " + finalName);
+            } else if (copyFileContent(targetFile, newFile)) {
+                targetFile.delete();
+            }
+            return sequenceNumber;
+        } catch (Exception e) {
+            Log.e(TAG, "处理文件失败", e);
+            return sequenceNumber;
+        }
+    }
+
+    /**
+     * 判断文件名是否包含时间戳：纯字符串判断，稳定兼容
+     */
     private static boolean hasTimestampInName(String fileName) {
         int lastDot = fileName.lastIndexOf(".");
         if (lastDot > 0) {
@@ -144,7 +243,9 @@ public class ZipUnzipUtil {
         return true;
     }
 
-    // ===================== 提取末尾时间戳 =====================
+    /**
+     * 从文件名提取时间戳数字
+     */
     private static long getTimestampFromName(String fileName) {
         try {
             int lastDot = fileName.lastIndexOf(".");
@@ -158,81 +259,27 @@ public class ZipUnzipUtil {
             return 0;
         }
     }
+
     /**
-     * 处理压缩包目录项：仅创建原压缩包内的空文件夹，不生成带序号的冲突文件夹
+     * 创建压缩包内原有目录，不生成多余文件夹
      */
     private static void processDirectoryEntry(ZipFile zipFile, ZipEntry entry,
-                                              RootDirInfo rootDirInfo, File rootTargetDir) throws IOException {
-        String entryName = entry.getName().replace("\\", "/");
-        entryName = cleanZipEntryName(entryName);
-        String relativePath;
-
-        if (rootDirInfo.hasSingleRootFolder) {
-            relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
-        } else {
-            relativePath = entryName;
-        }
-
+                                              RootDirInfo rootDirInfo, File rootTargetDir) {
+        String entryName = cleanZipEntryName(entry.getName().replace("\\", "/"));
+        String relativePath = rootDirInfo.hasSingleRootFolder
+                ? entryName.substring(rootDirInfo.rootFolderName.length())
+                : entryName;
         if (relativePath.isEmpty() || relativePath.equals("/")) {
             return;
         }
         File targetDir = new File(rootTargetDir, relativePath);
-        if (!targetDir.exists() && !targetDir.mkdirs()) {
-            Log.w(TAG, "创建压缩包内空文件夹失败: " + targetDir.getAbsolutePath());
+        if (!targetDir.exists()) {
+            targetDir.mkdirs();
         }
     }
+
     /**
-     * 处理压缩包文件项，解压文件并对TXT/图片文件进行智能重命名
-     * @return int 更新后的序列号
-     */
-    private static int processFileEntry(ZipFile zipFile, ZipEntry entry,
-                                        RootDirInfo rootDirInfo, File rootTargetDir,
-                                        Set<String> existingCleanNames, int sequenceNumber) throws IOException {
-        String entryName = entry.getName().replace("\\", "/");
-        entryName = cleanZipEntryName(entryName);
-        String relativePath;
-        if (rootDirInfo.hasSingleRootFolder) {
-            relativePath = entryName.substring(rootDirInfo.rootFolderName.length());
-        } else {
-            relativePath = entryName;
-        }
-        File targetFile = new File(rootTargetDir, relativePath);
-        try {
-            String canonicalTarget = targetFile.getCanonicalPath();
-            String canonicalRoot = rootTargetDir.getCanonicalPath();
-            if (!canonicalTarget.startsWith(canonicalRoot + File.separator)) {
-                Log.w(TAG, "发现危险文件，已跳过：" + entryName);
-                return sequenceNumber;
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "安全校验失败，跳过文件：" + entryName);
-            return sequenceNumber;
-        }
-        File parentDir = targetFile.getParentFile();
-        if (parentDir != null && !parentDir.exists()) {
-            if (!parentDir.mkdirs()) {
-                Log.e(TAG, "创建文件父文件夹失败: " + parentDir.getAbsolutePath());
-                return sequenceNumber;
-            }
-        }
-        try (InputStream is = zipFile.getInputStream(entry);
-             OutputStream os = new FileOutputStream(targetFile)) {
-            byte[] buffer = new byte[1024 * 4];
-            int len;
-            while ((len = is.read(buffer)) != -1) {
-                os.write(buffer, 0, len);
-            }
-        }
-        String fileName = targetFile.getName().toLowerCase();
-        if (fileName.endsWith(".txt") || isImageFile(fileName)) {
-            File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-            return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber);
-        }
-        return sequenceNumber;
-    }
-    /**
-     // 解压专用：清理文件名/目录名非法字符
-     // 只清理文件名非法字符，不破坏路径
+     * 清理ZIP内文件名非法字符，不破坏路径结构
      */
     private static String cleanZipEntryName(String name) {
         if (name == null) return "";
@@ -241,164 +288,102 @@ public class ZipUnzipUtil {
         String[] parts = name.split("/");
         StringBuilder cleanedPath = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
-            String part = parts[i];
-            part = part.trim().replaceAll("^\\.+", "").replaceAll("\\.+$", "");
-            if (part.isEmpty()) {
-                part = "未知文件";
-            }
+            String part = parts[i].trim().replaceAll("^\\.+", "").replaceAll("\\.+$", "");
+            if (part.isEmpty()) part = "未知文件";
             cleanedPath.append(part);
-            if (i < parts.length - 1) {
-                cleanedPath.append("/");
-            }
+            if (i < parts.length - 1) cleanedPath.append("/");
         }
         return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
-    /**
-     * 统一处理TXT/图片文件重命名：不清理旧时间戳，只追加/更新最后一个时间戳
-     * @return int 更新后的序列号
-     */
-    private static int processNamedFile(File targetFile, File rootDir,
-                                        Set<String> existingCleanNames, int sequenceNumber) {
-        if (targetFile == null || !targetFile.exists()) {
-            return sequenceNumber;
-        }
-        try {
-            String originalName = targetFile.getName();
-            int lastDot = originalName.lastIndexOf(".");
-            String suffix = lastDot > 0 ? originalName.substring(lastDot) : "";
-            String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
-            String newFileName;
-            String seq5 = String.format("%05d", sequenceNumber % 100000);
-            int lastUnderline = nameWithoutExt.lastIndexOf("_");
-            if (lastUnderline != -1 && lastUnderline < nameWithoutExt.length() - 6) {
-                String prefix = nameWithoutExt.substring(0, lastUnderline + 1);
-                String oldNum = nameWithoutExt.substring(lastUnderline + 1);
 
-                if (oldNum.length() >= 10) {
-                    String keep = oldNum.substring(0, oldNum.length() - 5);
-                    String newNum = keep + seq5;
-                    newFileName = prefix + newNum + suffix;
-                } else {
-                    newFileName = nameWithoutExt + suffix;
-                }
-            } else {
-                String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
-                cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
-                cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
-                if (cleanName.trim().isEmpty()) {
-                    cleanName = suffix.equalsIgnoreCase(".txt") ? "未命名文件" : "未命名图片";
-                }
-                String uniqueBase = findUniqueBaseName(cleanName, existingCleanNames);
-                existingCleanNames.add(uniqueBase);
-                String randomStr = generateRandomString();
-                String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
-                newFileName = uniqueBase + "_" + randomStr + "_" + timeStamp + suffix;
-            }
-            File newFile = new File(targetFile.getParentFile(), newFileName);
-            if (targetFile.renameTo(newFile)) {
-                Log.d(TAG, "重命名成功: " + originalName + " → " + newFileName);
-            } else if (copyFileContent(targetFile, newFile)) {
-                targetFile.delete();
-                Log.d(TAG, "复制重命名成功: " + originalName + " → " + newFileName);
-            }
-            return sequenceNumber + 1;
-        } catch (Exception e) {
-            Log.e(TAG, "处理文件失败", e);
-            return sequenceNumber;
-        }
-    }
     /**
-     * 判断是否是需要处理的图片文件（通过后缀）
+     * 判断是否为图片文件
      */
     private static boolean isImageFile(String fileName) {
         String lowerFileName = fileName.toLowerCase();
         for (String suffix : IMAGE_SUFFIXES) {
-            if (lowerFileName.endsWith(suffix)) {
-                return true;
-            }
+            if (lowerFileName.endsWith(suffix)) return true;
         }
         return false;
     }
+
     /**
-     * 生成6位随机字符串（包含大小写字母和数字），用于文件命名唯一标识
-     * @return String 6位随机字符串
+     * 生成6位随机字符串，用于唯一命名
      */
     private static String generateRandomString() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         StringBuilder sb = new StringBuilder(6);
         Random random = new Random();
         for (int i = 0; i < 6; i++) {
-            int index = random.nextInt(chars.length());
-            sb.append(chars.charAt(index));
+            sb.append(chars.charAt(random.nextInt(chars.length())));
         }
         return sb.toString();
     }
+
     /**
-     * 查找无冲突的基础文件名，添加数字后缀规避冲突
-     * @return String 无冲突的基础名称
+     * 移除文件名中的时间戳，获取干净名称
      */
-    private static String findUniqueBaseName(String baseName, Set<String> existingNames) {
-        if (!existingNames.contains(baseName)) {
-            return baseName;
-        }
-        int counter = 1;
-        while (true) {
-            String candidate = baseName + "(" + counter + ")";
-            if (!existingNames.contains(candidate)) {
-                return candidate;
-            }
-            counter++;
-        }
+    private static String removeTimestamp(String name) {
+        if (name == null) return "";
+        name = name.replaceAll("\\.[^.]+$", "");
+        name = INCREMENT_TIMESTAMP_PATTERN.matcher(name).replaceAll("");
+        name = TARGET_TIMESTAMP_PATTERN.matcher(name).replaceAll("");
+        name = OLD_TIMESTAMP_PATTERN.matcher(name).replaceAll("");
+        return name.trim().isEmpty() ? "未命名" : name.trim();
     }
+
     /**
-     * 递归收集指定目录下所有TXT/图片文件的清洁名称（去时间戳）
+     * 获取文件后缀名
+     */
+    private static String getOriginalExtension(String fileName) {
+        int lastDot = fileName.lastIndexOf(".");
+        return lastDot > 0 ? fileName.substring(lastDot) : "";
+    }
+
+    /**
+     * 获取安全的核心文件名，过滤非法字符
+     */
+    private static String getSafeCoreName(String name) {
+        if (name == null || name.trim().isEmpty()) return "未命名文件";
+        return name.trim().replaceAll("[\\\\/:*?\"<>|]", "");
+    }
+
+    /**
+     * 递归收集已存在的干净文件名，防止冲突
      */
     private static void collectAllCleanFileNames(File dir, Set<String> namesSet) {
-        if (dir == null || !dir.isDirectory() || !dir.exists()) {
-            return;
-        }
+        if (dir == null || !dir.isDirectory() || !dir.exists()) return;
         File[] files = dir.listFiles();
-        if (files == null) {
-            return;
-        }
+        if (files == null) return;
         for (File file : files) {
             if (file.isDirectory()) {
                 collectAllCleanFileNames(file, namesSet);
             } else {
                 String fileName = file.getName().toLowerCase();
                 if (fileName.endsWith(".txt") || isImageFile(fileName)) {
-                    String nameWithoutExt = fileName.substring(0, fileName.lastIndexOf("."));
-                    String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
-                    cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
-                    cleanName = OLD_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
-                    if (!cleanName.trim().isEmpty()) {
-                        namesSet.add(cleanName);
-                    }
+                    String clean = removeTimestamp(file.getName());
+                    if (!clean.isEmpty()) namesSet.add(clean);
                 }
             }
         }
     }
+
     /**
-     * 复制文件内容，用于文件重命名失败时的兜底方案
-     * @return boolean 复制是否成功
+     * 文件复制兜底方法，重命名失败时使用
      */
     private static boolean copyFileContent(File source, File dest) throws IOException {
-        if (!dest.exists() && !dest.createNewFile()) {
-            return false;
-        }
+        if (!dest.exists()) dest.createNewFile();
         try (InputStream in = new FileInputStream(source);
              OutputStream out = new FileOutputStream(dest)) {
             byte[] buffer = new byte[1024];
-            int length;
-            while ((length = in.read(buffer)) > 0) {
-                out.write(buffer, 0, length);
-            }
+            int len;
+            while ((len = in.read(buffer)) > 0) out.write(buffer, 0, len);
         }
         return true;
     }
+
     /**
-     * 分析压缩包根目录结构，判断是否有单一根文件夹
-     * @return RootDirInfo 根目录分析结果
+     * 分析ZIP根目录结构：判断是否单一根目录
      */
     private static RootDirInfo analyzeRootDirectory(ZipFile zipFile) {
         Enumeration<? extends ZipEntry> entries = zipFile.entries();
@@ -408,9 +393,7 @@ public class ZipUnzipUtil {
             ZipEntry entry = entries.nextElement();
             String entryName = entry.getName().replace("\\", "/");
             if (!entryName.contains("/") || entryName.startsWith("/")) {
-                if (!entry.isDirectory()) {
-                    hasRootFiles = true;
-                }
+                if (!entry.isDirectory()) hasRootFiles = true;
                 continue;
             }
             int firstSlashIndex = entryName.indexOf('/');
@@ -419,44 +402,35 @@ public class ZipUnzipUtil {
         }
         if (!hasRootFiles && rootFolders.size() == 1) {
             String rootFolderName = rootFolders.iterator().next();
-            String folderName = rootFolderName.substring(0, rootFolderName.length() - 1);
-            return new RootDirInfo(true, folderName);
+            return new RootDirInfo(true, rootFolderName.substring(0, rootFolderName.length() - 1));
         } else {
             String zipFileName = new File(zipFile.getName()).getName();
             int dotIndex = zipFileName.lastIndexOf('.');
-            if (dotIndex > 0) {
-                zipFileName = zipFileName.substring(0, dotIndex);
-            }
+            if (dotIndex > 0) zipFileName = zipFileName.substring(0, dotIndex);
             return new RootDirInfo(false, zipFileName);
         }
     }
+
     /**
-     * 获取无冲突的文件夹名称，添加中文括号后缀规避冲突（仅根文件夹使用）
-     * @return String 无冲突的文件夹名称
+     * 生成无冲突文件夹名，自动加中文序号
      */
     public static String getNonConflictFolderName(String targetDir, String originalName) {
-        String baseName = originalName;
-        File targetFolder = new File(targetDir, baseName);
-        if (!targetFolder.exists()) {
-            return baseName;
-        }
+        File targetFolder = new File(targetDir, originalName);
+        if (!targetFolder.exists()) return originalName;
         int suffix = 1;
         while (true) {
-            String newName = baseName + "（" + suffix + "）";
-            File newFolder = new File(targetDir, newName);
-            if (!newFolder.exists()) {
-                return newName;
-            }
+            String newName = originalName + "（" + suffix + "）";
+            if (!new File(targetDir, newName).exists()) return newName;
             suffix++;
         }
     }
+
     /**
-     * 内部数据类：存储压缩包根目录分析结果，用于传递根目录结构信息
+     * 压缩包结构信息内部类
      */
     private static class RootDirInfo {
         boolean hasSingleRootFolder;
         String rootFolderName;
-
         RootDirInfo(boolean hasSingleRootFolder, String rootFolderName) {
             this.hasSingleRootFolder = hasSingleRootFolder;
             this.rootFolderName = rootFolderName;
