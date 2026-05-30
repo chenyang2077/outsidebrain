@@ -538,6 +538,11 @@ public class MainActivity extends AppCompatActivity {
             if (isJumping) {
                 return;
             }
+            if (isInSearchMode) {
+                isInSearchMode = false;
+                etSearch.setText("");
+                if (btnZip != null) btnZip.setVisibility(View.GONE);
+            }
             isJumping = true;
             ProgressDialog jumpDialog = new ProgressDialog(MainActivity.this);
             jumpDialog.setMessage("正在跳转...");
@@ -3747,7 +3752,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean moveFolderWithTxtUpdate(File sourceDir, File targetParentDir, boolean isInnerMove) {
         if (sourceDir == null || !sourceDir.exists() || targetParentDir == null) return false;
-
         try {
             String folderName = getSafeCoreName(sourceDir.getName());
             File targetRoot = new File(targetParentDir, folderName);
@@ -3756,12 +3760,8 @@ public class MainActivity extends AppCompatActivity {
                 targetRoot = new File(targetParentDir, uniqueName);
             }
             if (!targetRoot.exists()) targetRoot.mkdirs();
-
-            // 全局收集文件（和复制一样）
             List<File> allFiles = new ArrayList<>();
             collectAllFiles(sourceDir, allFiles);
-
-            // 全局排序（和复制一样）
             Collections.sort(allFiles, (f1, f2) -> {
                 String n1 = f1.getName();
                 String n2 = f2.getName();
@@ -3773,19 +3773,15 @@ public class MainActivity extends AppCompatActivity {
                 String t2 = (u2 >= 0 && d2 > u2) ? n2.substring(u2+1, d2) : "0";
                 return t1.compareTo(t2);
             });
-
             int sequenceNumber = 0;
             for (File file : allFiles) {
                 String relPath = getRelativePath(sourceDir, file);
                 File targetFile = new File(targetRoot, relPath);
                 File parentDir = targetFile.getParentFile();
                 if (!parentDir.exists()) parentDir.mkdirs();
-
                 boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
                 boolean isImg = isImageFile(file);
-
                 if (isTxt || isImg) {
-                    // --------------- 完全照搬你复制的写法 ---------------
                     String originalName = file.getName();
                     String cleanName = removeTimestamp(originalName);
                     String originalExt = getOriginalExtension(originalName);
@@ -3796,40 +3792,28 @@ public class MainActivity extends AppCompatActivity {
                     cleanName = getSafeCoreName(cleanName);
                     String randomStr = generateRandomString();
                     String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                    // 统一带有序列号的时间戳（和复制一模一样）
                     String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
                     String finalTs = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
-
                     String finalName;
                     String[] parts = originalName.split("_");
-
-                    // ===================== 你的3条规则 =====================
                     if (parts.length <= 2) {
-                        // 1. 无时间戳 → 新增：随机串 + 带序号时间戳
                         finalName = cleanName + "_" + randomStr + "_" + finalTs + originalExt;
                     }
                     else if (parts.length == 3) {
-                        // 2. 1个时间戳 → 追加第二个带序号时间戳
                         finalName = originalName.substring(0, originalName.lastIndexOf('.')) + "_" + finalTs + originalExt;
                     }
                     else {
-                        // 3. 2个时间戳 → 替换最后一个为带序号时间戳
                         String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.'));
                         int lastUnder = nameWithoutExt.lastIndexOf('_');
                         String prefix = nameWithoutExt.substring(0, lastUnder);
                         finalName = prefix + "_" + finalTs + originalExt;
                     }
-
-                    // 只做复制（和复制完全一样，绝不乱操作导致失败）
                     File newTargetFile = new File(parentDir, finalName);
                     copyFileContent(file, newTargetFile);
                 } else {
                     copyFileContent(file, targetFile);
                 }
             }
-
-            // 最后统一删除原文件夹
             deleteFolderTree(sourceDir);
             return true;
         } catch (Exception e) {
