@@ -76,12 +76,29 @@ public class ZipUnzipUtil {
                     fileEntries.add(entry);
                 }
             }
-
-            // ====================== 关键修复：按时间排序 ======================
-            // 按文件最后修改时间 升序（最早先处理，保证时间戳顺序不乱）
+            // ===================== 最终排序：不带时间戳优先 | 带时间戳靠后 | 时间戳大最后 =====================
             Collections.sort(fileEntries, new Comparator<ZipEntry>() {
                 @Override
                 public int compare(ZipEntry o1, ZipEntry o2) {
+                    String name1 = o1.getName();
+                    String name2 = o2.getName();
+
+                    // 使用【粘贴模块同款逻辑】判断是否带时间戳
+                    boolean has1 = hasTimestampInName(name1);
+                    boolean has2 = hasTimestampInName(name2);
+
+                    // 1. 不带时间戳 → 排前面
+                    if (!has1 && has2) return -1;
+                    if (has1 && !has2) return 1;
+
+                    // 2. 都带时间戳 → 按时间戳数字排序（小 → 大）
+                    if (has1 && has2) {
+                        long t1 = getTimestampFromName(name1);
+                        long t2 = getTimestampFromName(name2);
+                        return Long.compare(t1, t2);
+                    }
+
+                    // 3. 都不带 → 按文件原始时间排序
                     return Long.compare(o1.getTime(), o2.getTime());
                 }
             });
@@ -105,6 +122,40 @@ public class ZipUnzipUtil {
         } catch (IOException e) {
             Log.e(TAG, "解压失败", e);
             return false;
+        }
+    }
+    // ===================== 复刻粘贴模块：判断是否含时间戳（纯字符串判断，无敌稳定） =====================
+    private static boolean hasTimestampInName(String fileName) {
+        int lastDot = fileName.lastIndexOf(".");
+        if (lastDot > 0) {
+            fileName = fileName.substring(0, lastDot);
+        }
+        int lastUnder = fileName.lastIndexOf("_");
+        if (lastUnder < 0 || lastUnder >= fileName.length() - 6) {
+            return false;
+        }
+        String part = fileName.substring(lastUnder + 1);
+        if (part.length() < 10) return false;
+        for (int i = 0; i < part.length(); i++) {
+            if (!Character.isDigit(part.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ===================== 提取末尾时间戳 =====================
+    private static long getTimestampFromName(String fileName) {
+        try {
+            int lastDot = fileName.lastIndexOf(".");
+            if (lastDot > 0) {
+                fileName = fileName.substring(0, lastDot);
+            }
+            int lastUnder = fileName.lastIndexOf("_");
+            String numStr = fileName.substring(lastUnder + 1);
+            return Long.parseLong(numStr);
+        } catch (Exception e) {
+            return 0;
         }
     }
     /**

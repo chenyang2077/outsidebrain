@@ -3662,7 +3662,9 @@ public class MainActivity extends AppCompatActivity {
         pasteDialog.setCanceledOnTouchOutside(false);
         pasteDialog.setCancelable(false);
         runOnUiThread(pasteDialog::show);
+
         new Thread(() -> {
+            int sequence = 1;
             boolean success = false;
             try {
                 if (copiedFile.isDirectory()) {
@@ -3680,32 +3682,27 @@ public class MainActivity extends AppCompatActivity {
                         String originalExt = getOriginalExtension(originalName);
                         String cleanName = removeAllExtensions(originalName);
                         String randomStr = generateRandomString();
-                        String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-                        String timestampSuffix;
+                        String timePart = new java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.getDefault()).format(new java.util.Date());
+                        String seqPart = String.format("%05d", sequence);
+                        String newTs = timePart + seqPart;
+                        String timestampSuffix = "_" + randomStr + "_" + newTs;
+                        sequence++;
+
                         if (isCutOperation) {
                             String[] parsed = parseFileName(originalName);
                             String pureCoreName = parsed[0];
                             pureCoreName = getSafeCoreName(pureCoreName);
-                            timestampSuffix = generateNewTimestampSuffix(parsed);
                             cleanName = pureCoreName;
                         } else {
                             cleanName = removeTimestamp(cleanName);
                             cleanName = getSafeCoreName(cleanName);
-
-                            if (baseTimestamp.length() >= 12) {
-                                String datePart = baseTimestamp.substring(0, 8);
-                                String timeRemaining = baseTimestamp.substring(12);
-                                String sequenceStr = "0000";
-                                String newTimestamp = datePart + sequenceStr + timeRemaining;
-                                timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-                            } else {
-                                timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
-                            }
                         }
+
                         String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanName);
                         String uniqueFileName = finalCoreName + timestampSuffix;
                         String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
                         File targetFile = new File(currentDirectory, finalFileName);
+
                         if (isCutOperation) {
                             success = sourceFile.renameTo(targetFile);
                             if (!success) {
