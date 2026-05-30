@@ -23,6 +23,7 @@ import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
+import android.media.MediaScannerConnection;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
@@ -174,6 +175,9 @@ public class MainActivity extends AppCompatActivity {
         btnZip = getLayoutInflater().inflate(R.layout.btn_zip, zipContainer, false);
         zipContainer.addView(btnZip);
         btnZip.setVisibility(View.GONE);
+        if(btnZip.hasOnClickListeners()){
+            btnZip.setOnClickListener(null);
+        }
         btnZip.setOnClickListener(v -> {
             if (searchResultList == null || searchResultList.isEmpty()) {
                 Toast.makeText(this, "没有可压缩的文件", Toast.LENGTH_SHORT).show();
@@ -184,11 +188,10 @@ public class MainActivity extends AppCompatActivity {
                     .setMessage("确定要将搜索到的文件压缩成 zip 吗？")
                     .setPositiveButton("确定", (dialog, which) -> {
                         dialog.dismiss();
+                        btnZip.setEnabled(false); //压缩中禁用按钮
                         zipSearchResultsToCurrentDir(etSearch.getText().toString().trim(), searchResultList);
                     })
-                    .setNegativeButton("取消", (dialog, which) -> {
-                        dialog.dismiss();
-                    })
+                    .setNegativeButton("取消", (dialog, which) -> dialog.dismiss())
                     .show();
         });
         transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
@@ -1660,22 +1663,41 @@ public class MainActivity extends AppCompatActivity {
         searchDialog.setCanceledOnTouchOutside(false);
         searchDialog.setCancelable(false);
         searchDialog.show();
+        searchResultList.clear();
+
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
+            java.util.Set<File> uniqueSet = new java.util.HashSet<>();
+
+            // ==============================================
+            // 【核心修复】@格式 → 只跑时间搜索，不跑普通搜索
+            // ==============================================
             if (keyword.startsWith("@")) {
                 String timeStr = keyword.substring(1).trim();
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                String today = sdf.format(new Date());
+
                 if (timeStr.matches("\\d{8}[#]\\d{8}")) {
                     String[] split = timeStr.split("[#]");
                     String startDay = split[0];
                     String endDay = split[1];
                     scanTimeRangeNoSkip(currentDirectory, startDay, endDay);
                 }
-                else if (timeStr.length() == 8) {
-                    scanTimeSingleNoSkip(currentDirectory, timeStr);
+                else if (timeStr.matches("\\d{8}")) {
+                    scanTimeRangeNoSkip(currentDirectory, timeStr, today);
                 }
+
+                // 只去重，不跑普通搜索
+                uniqueSet.addAll(searchResultList);
+                searchResultList.clear();
+                searchResultList.addAll(uniqueSet);
+
+            } else {
+                // 普通搜索 → 正常跑
+                recursiveSearch(currentDirectory, keyword);
             }
-            recursiveSearch(currentDirectory, keyword);
+
             sortSearchResult();
 
             runOnUiThread(() -> {
@@ -1685,6 +1707,34 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
             });
         }).start();
+    }
+
+
+    // ==========================
+// 日期范围版本
+// ==========================
+    private void scanFileLast8DateRange(File dir, String start, String end) {
+        if (dir == null || !dir.isDirectory()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scanFileLast8DateRange(file, start, end);
+            } else {
+                String fileName = file.getName();
+                int lastUnderline = fileName.lastIndexOf("_");
+                if (lastUnderline != -1 && lastUnderline + 1 < fileName.length()) {
+                    String after = fileName.substring(lastUnderline + 1);
+                    if (after.length() >= 8) {
+                        String fileDate = after.substring(0, 8);
+                        if (fileDate.compareTo(start) >= 0 && fileDate.compareTo(end) <= 0) {
+                            searchResultList.add(file);
+                        }
+                    }
+                }
+            }
+        }
     }
     /**
      * 内部工具：单日期到今日搜索
@@ -4165,18 +4215,22 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 try {
                     String zipName;
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                    String today = sdf.format(new Date());
+
                     if (keyword.startsWith("@")) {
-                        if (keyword.matches("@\\d{8}")) {
-                            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
-                            String today = sdf.format(new Date());
+                        String timePart = keyword.substring(1).trim();
+                        if (timePart.matches("\\d{8}")) {
                             zipName = keyword + "#" + today + ".zip";
-                        }
-                        else {
+                        } else if (timePart.matches("\\d{8}[#]\\d{8}")) {
+                            zipName = keyword + ".zip";
+                        } else {
                             zipName = keyword + ".zip";
                         }
                     } else {
                         zipName = keyword + ".zip";
                     }
+
                     File zipFile = new File(currentDirectory, zipName);
                     int index = 1;
                     while (zipFile.exists()) {
@@ -4185,6 +4239,7 @@ public class MainActivity extends AppCompatActivity {
                         index++;
                     }
                     final String zipFileName = zipFile.getName();
+
                     FileOutputStream fos = new FileOutputStream(zipFile);
                     ZipOutputStream zos = new ZipOutputStream(fos);
                     zos.setLevel(5);
@@ -4195,15 +4250,23 @@ public class MainActivity extends AppCompatActivity {
                     zos.finish();
                     zos.close();
                     fos.close();
+
+                    // ===================== 最终修复 =====================
                     runOnUiThread(() -> {
                         zipDialog.dismiss();
+                        btnZip.setEnabled(true);
                         Toast.makeText(MainActivity.this, "压缩完成：" + zipFileName, Toast.LENGTH_LONG).show();
-                        performSearch();
+
+                        // 压缩完 → 自动调用返回键 → 退出搜索
+                        onBackPressed();
                     });
+                    // ====================================================
+
                 } catch (Exception e) {
                     e.printStackTrace();
                     runOnUiThread(() -> {
                         zipDialog.dismiss();
+                        btnZip.setEnabled(true);
                         Toast.makeText(MainActivity.this, "压缩失败", Toast.LENGTH_SHORT).show();
                     });
                 }
