@@ -3444,12 +3444,8 @@ public class MainActivity extends AppCompatActivity {
         if (!targetRoot.exists() && !targetRoot.mkdirs()) {
             return false;
         }
-
-        // 1. 收集全部文件（含子文件夹）
         List<File> allFiles = new ArrayList<>();
         collectAllFiles(sourceFolder, allFiles);
-
-        // 2. 全局按最后时间戳排序
         Collections.sort(allFiles, (f1, f2) -> {
             String n1 = f1.getName();
             String n2 = f2.getName();
@@ -3461,17 +3457,14 @@ public class MainActivity extends AppCompatActivity {
             String t2 = (u2 >= 0 && d2 > u2) ? n2.substring(u2+1, d2) : "0";
             return t1.compareTo(t2);
         });
-
         int sequenceNumber = 0;
         for (File file : allFiles) {
             String relPath = getRelativePath(sourceFolder, file);
             File targetFile = new File(targetRoot, relPath);
             File parentDir = targetFile.getParentFile();
             if (!parentDir.exists()) parentDir.mkdirs();
-
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
             boolean isImg = isImageFile(file);
-
             if (isTxt || isImg) {
                 String originalName = file.getName();
                 String cleanName = removeTimestamp(originalName);
@@ -3483,11 +3476,6 @@ public class MainActivity extends AppCompatActivity {
                 cleanName = getSafeCoreName(cleanName);
                 String randomStr = generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                // ==============================
-                // 核心修复：时间戳长度不变 → 替换最后5位为序号
-                // 不是追加！不是变长！
-                // ==============================
                 String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
                 String finalTimestamp = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
                 String newName = cleanName + "_" + randomStr + "_" + finalTimestamp + originalExt;
@@ -3500,8 +3488,9 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
-
-    // 工具：递归收集所有文件
+    /**
+     * 工具：递归收集所有文件
+     */
     private void collectAllFiles(File dir, List<File> list) {
         File[] files = dir.listFiles();
         if (files == null) return;
@@ -3565,15 +3554,12 @@ public class MainActivity extends AppCompatActivity {
     /**
      *  判断：主体名 是否在 目标文件夹 已存在
      */
-
     private boolean isCoreNameExistsInFolder(File folder, String coreName) {
         if (folder == null || !folder.exists() || coreName == null) {
             return false;
         }
-
         File[] files = folder.listFiles();
         if (files == null) return false;
-
         for (File f : files) {
             if (f.isFile()) {
                 String existCore = extractPureCoreNameForDisplay(f.getName());
@@ -3693,7 +3679,6 @@ public class MainActivity extends AppCompatActivity {
                             cleanName = removeTimestamp(cleanName);
                             cleanName = getSafeCoreName(cleanName);
                         }
-
                         String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanName);
                         String uniqueFileName = finalCoreName + timestampSuffix;
                         String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
@@ -3750,7 +3735,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean moveFolderWithTxtUpdate(File sourceDir, File targetParentDir, boolean isInnerMove) {
         if (sourceDir == null || !sourceDir.exists() || targetParentDir == null) return false;
-
         try {
             String folderName = getSafeCoreName(sourceDir.getName());
             File targetRoot = new File(targetParentDir, folderName);
@@ -3759,12 +3743,8 @@ public class MainActivity extends AppCompatActivity {
                 targetRoot = new File(targetParentDir, uniqueName);
             }
             if (!targetRoot.exists()) targetRoot.mkdirs();
-
-            // 全局收集文件（和复制一样）
             List<File> allFiles = new ArrayList<>();
             collectAllFiles(sourceDir, allFiles);
-
-            // 全局排序（和复制一样）
             Collections.sort(allFiles, (f1, f2) -> {
                 String n1 = f1.getName();
                 String n2 = f2.getName();
@@ -3776,19 +3756,15 @@ public class MainActivity extends AppCompatActivity {
                 String t2 = (u2 >= 0 && d2 > u2) ? n2.substring(u2+1, d2) : "0";
                 return t1.compareTo(t2);
             });
-
             int sequenceNumber = 0;
             for (File file : allFiles) {
                 String relPath = getRelativePath(sourceDir, file);
                 File targetFile = new File(targetRoot, relPath);
                 File parentDir = targetFile.getParentFile();
                 if (!parentDir.exists()) parentDir.mkdirs();
-
                 boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
                 boolean isImg = isImageFile(file);
-
                 if (isTxt || isImg) {
-                    // --------------- 完全照搬你复制的写法 ---------------
                     String originalName = file.getName();
                     String cleanName = removeTimestamp(originalName);
                     String originalExt = getOriginalExtension(originalName);
@@ -3799,59 +3775,33 @@ public class MainActivity extends AppCompatActivity {
                     cleanName = getSafeCoreName(cleanName);
                     String randomStr = generateRandomString();
                     String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                    // 统一带有序列号的时间戳（和复制一模一样）
                     String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
                     String finalTs = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
-
                     String finalName;
                     String[] parts = originalName.split("_");
-
-                    // ===================== 你的3条规则 =====================
                     if (parts.length <= 2) {
-                        // 1. 无时间戳 → 新增：随机串 + 带序号时间戳
                         finalName = cleanName + "_" + randomStr + "_" + finalTs + originalExt;
                     }
                     else if (parts.length == 3) {
-                        // 2. 1个时间戳 → 追加第二个带序号时间戳
                         finalName = originalName.substring(0, originalName.lastIndexOf('.')) + "_" + finalTs + originalExt;
                     }
                     else {
-                        // 3. 2个时间戳 → 替换最后一个为带序号时间戳
                         String nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.'));
                         int lastUnder = nameWithoutExt.lastIndexOf('_');
                         String prefix = nameWithoutExt.substring(0, lastUnder);
                         finalName = prefix + "_" + finalTs + originalExt;
                     }
-
-                    // 只做复制（和复制完全一样，绝不乱操作导致失败）
                     File newTargetFile = new File(parentDir, finalName);
                     copyFileContent(file, newTargetFile);
                 } else {
                     copyFileContent(file, targetFile);
                 }
             }
-
-            // 最后统一删除原文件夹
             deleteFolderTree(sourceDir);
             return true;
         } catch (Exception e) {
             e.printStackTrace();
             return false;
-        }
-    }
-    // ====================== 工具方法：提取最后一段时间戳（和你解压逻辑完全一样） ======================
-    private long getLastTimestamp(String fileName) {
-        try {
-            int lastDot = fileName.lastIndexOf(".");
-            if (lastDot > 0) {
-                fileName = fileName.substring(0, lastDot);
-            }
-            int lastUnder = fileName.lastIndexOf("_");
-            String numStr = fileName.substring(lastUnder + 1);
-            return Long.parseLong(numStr);
-        } catch (Exception e) {
-            return 0;
         }
     }
     /**
@@ -3879,63 +3829,6 @@ public class MainActivity extends AppCompatActivity {
         return coreName;
     }
     /**
-     * 递归复制子文件夹，处理其中TXT文件并维护序号
-     */
-    private int copySubFolderWithTxtCheck(File sourceFolder, File targetParent, int startSequence) throws IOException {
-        int currentSequence = startSequence;
-        String uniqueFolderName = getUniqueFolderName(targetParent, sourceFolder.getName());
-        File targetFolder = new File(targetParent, uniqueFolderName);
-        if (!targetFolder.exists() && !targetFolder.mkdirs()) {
-            Log.e("CopySubFolder", "创建子文件夹失败: " + targetFolder.getAbsolutePath());
-            return currentSequence;
-        }
-        File[] files = sourceFolder.listFiles();
-        if (files == null) {
-            return currentSequence;
-        }
-        for (File sourceFile : files) {
-            if (sourceFile.isDirectory()) {
-                currentSequence = copySubFolderWithTxtCheck(sourceFile, targetFolder, currentSequence);
-            } else if (sourceFile.getName().toLowerCase().endsWith(".txt")) {
-                String originalName = sourceFile.getName();
-                String cleanName = removeTimestamp(originalName);
-                if (cleanName.toLowerCase().endsWith(".txt")) {
-                    cleanName = cleanName.substring(0, cleanName.lastIndexOf("."));
-                }
-                cleanName = getSafeCoreName(cleanName);
-
-                String randomStr = generateRandomString();
-                String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                if (baseTimestamp.length() >= 12) {
-                    String datePart = baseTimestamp.substring(0, 8);
-                    String timeRemaining = baseTimestamp.substring(12);
-                    String sequenceStr = String.format(Locale.getDefault(), "%04d", currentSequence % 10000);
-                    String newTimestamp = datePart + sequenceStr + timeRemaining;
-                    String timestampSuffix = "_" + randomStr + "_" + newTimestamp;
-                    String finalCoreName = getNonConflictCoreNameInFolder(targetFolder, cleanName);
-                    String uniqueFileName = finalCoreName + timestampSuffix + ".txt";
-                    File targetFile = new File(targetFolder, uniqueFileName);
-                    if (copyFileContent(sourceFile, targetFile)) {
-                        currentSequence++;
-                    }
-                } else {
-                    Log.w("CopySubFolder", "时间戳格式异常，使用默认命名");
-                    String timestampSuffix = "_" + randomStr + "_" + baseTimestamp;
-                    String finalCoreName = getNonConflictCoreNameInFolder(targetFolder, cleanName);
-                    String uniqueFileName = finalCoreName + timestampSuffix + ".txt";
-                    File targetFile = new File(targetFolder, uniqueFileName);
-                    copyFileContent(sourceFile, targetFile);
-                }
-            } else {
-                File targetFile = new File(targetFolder, sourceFile.getName());
-                File uniqueTargetFile = getNonConflictFile(targetFile);
-                copyFileContent(sourceFile, uniqueTargetFile);
-            }
-        }
-        return currentSequence;
-    }
-    /**
      * 清理文件名中的各类时间戳，返回纯文本标题
      * @return String 清理后的文件名
      */
@@ -3950,7 +3843,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return cleaned.trim();
     }
-
     /**
      * 移除文件名中的所有时间戳（含旧版格式）
      * @return String 去时间戳后的文件名
@@ -3962,37 +3854,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return cleaned;
     }
-    /**
-     * 修复：确保方法是 private（Activity 内可访问），参数为 File，返回 String
-     * 剪切专用：当前目录生成唯一文件名（不加时间戳）
-     */
-    private String getUniqueFileNameInDir(File targetFile) {
-        String fileName = targetFile.getName();
-        String coreName = removeAllExtensions(fileName);
-        String ext = getOriginalExtension(fileName);
-        int count = 1;
-        String newFileName = coreName + "(" + count + ")" + ext;
-        File newFile = new File(targetFile.getParentFile(), newFileName);
-        while (newFile.exists()) {
-            count++;
-            newFileName = coreName + "(" + count + ")" + ext;
-            newFile = new File(targetFile.getParentFile(), newFileName);
-        }
-        return newFileName;
-    }
-    /**
-     * 删除空目录（仅当目录为空时执行删除）
-     */
-    private boolean deleteEmptyDirectory(File dir) {
-        if (dir.isDirectory()) {
-            File[] files = dir.listFiles();
-            if (files != null && files.length == 0) {
-                return dir.delete();
-            }
-        }
-        return false;
-    }
-
     /**
      * 生成6位随机字符串（字母+数字组合）
      */
