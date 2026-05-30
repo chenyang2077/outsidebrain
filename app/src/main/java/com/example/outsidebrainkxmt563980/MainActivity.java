@@ -2668,8 +2668,7 @@ public class MainActivity extends AppCompatActivity {
             if (file.isDirectory()) {
                 File targetFolder = new File(recycleBinDirectory, file.getName());
                 File safeFolder = getNonConflictFile(targetFolder);
-                final boolean result = moveFolderToRecycleBinLikeCut(file, safeFolder);
-                return result;
+                return moveFolderToRecycleBinLikeCut(file, safeFolder);
             }
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
             boolean isImg = isImageFile(file);
@@ -2706,8 +2705,7 @@ public class MainActivity extends AppCompatActivity {
                     finalSuccess = true;
                 }
             }
-            boolean finalResult = finalSuccess;
-            return finalResult;
+            return finalSuccess;
         } catch (Exception e) {
             e.printStackTrace();
             return false;
@@ -2721,42 +2719,23 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
         try {
+            boolean success = sourceFolder.renameTo(targetFolder);
+            if (success) {
+                return true;
+            }
             if (!targetFolder.exists()) {
                 targetFolder.mkdirs();
             }
             File[] files = sourceFolder.listFiles();
             if (files != null) {
                 for (File file : files) {
+                    File newTarget = new File(targetFolder, file.getName());
                     if (file.isDirectory()) {
-                        String safeFolderName = getSafeFileNameForRecycleBin(file.getName());
-                        File subTarget = new File(targetFolder, safeFolderName);
-                        moveFolderToRecycleBinLikeCut(file, subTarget);
+                        moveFolderToRecycleBinLikeCut(file, newTarget);
                     } else {
-                        boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
-                        boolean isImg = isImageFile(file);
-                        if (isTxt || isImg) {
-                            String originalName = file.getName();
-                            String originalExt = getOriginalExtension(originalName);
-                            String[] parsed = parseFileName(originalName);
-                            String pureCoreName = parsed[0];
-                            pureCoreName = getSafeCoreName(pureCoreName);
-                            String timestampSuffix = generateNewTimestampSuffix(parsed);
-                            String finalCoreName = getNonConflictCoreNameInFolder(targetFolder, pureCoreName);
-                            String uniqueFileName = finalCoreName + timestampSuffix;
-                            String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
-                            File targetFile = new File(targetFolder, finalFileName);
-                            if (!file.renameTo(targetFile)) {
-                                if (copyFileContent(file, targetFile)) {
-                                    file.delete();
-                                }
-                            }
-                        } else {
-                            File target = new File(targetFolder, file.getName());
-                            File safeTarget = getNonConflictFile(target);
-                            if (!file.renameTo(safeTarget)) {
-                                copyFileContent(file, safeTarget);
-                                file.delete();
-                            }
+                        if (!file.renameTo(newTarget)) {
+                            copyFileContent(file, newTarget);
+                            file.delete();
                         }
                     }
                 }
