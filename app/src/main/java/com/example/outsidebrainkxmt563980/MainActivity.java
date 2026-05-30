@@ -1025,6 +1025,7 @@ public class MainActivity extends AppCompatActivity {
         protected void onPostExecute(Boolean result) {
             super.onPostExecute(result);
             dismissProgressDialog();
+
             if (result) {
                 Toast.makeText(MainActivity.this, "压缩成功：" + destZipFile.getName(), Toast.LENGTH_LONG).show();
                 loadFileList();
@@ -1050,10 +1051,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 ZipEntry dirEntry = new ZipEntry(relativePath);
                 dirEntry.setSize(0);
-                dirEntry.setTime(file.lastModified());
                 zos.putNextEntry(dirEntry);
                 zos.closeEntry();
                 Log.d("CompressDebug", "创建文件夹条目：" + relativePath);
+
                 File[] children = file.listFiles();
                 if (children != null) {
                     for (File child : children) {
@@ -1062,9 +1063,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else {
                 ZipEntry fileEntry = new ZipEntry(relativePath);
-                fileEntry.setTime(file.lastModified());
                 zos.putNextEntry(fileEntry);
-
                 FileInputStream fis = new FileInputStream(file);
                 byte[] buffer = new byte[4096];
                 int len;
@@ -1077,6 +1076,7 @@ public class MainActivity extends AppCompatActivity {
                 publishProgress(0);
             }
         }
+
         private String getRelativePath(File rootDir, File file) throws IOException {
             String rootPath = rootDir.getCanonicalPath();
             String filePath = file.getCanonicalPath();
@@ -2957,6 +2957,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+
     /**
      * 递归压缩文件夹
      */
@@ -2974,6 +2975,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 try (FileInputStream fis = new FileInputStream(file)) {
                     ZipEntry zipEntry = new ZipEntry(parentPath + "/" + file.getName());
+                    zipEntry.setTime(file.lastModified());
                     zos.putNextEntry(zipEntry);
                     byte[] buffer = new byte[8192];
                     int len;

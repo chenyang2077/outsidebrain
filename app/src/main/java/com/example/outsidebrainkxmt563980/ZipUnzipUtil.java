@@ -12,7 +12,6 @@ import android.util.Log;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -31,7 +30,6 @@ public class ZipUnzipUtil {
             Pattern.compile("_[A-Za-z0-9]{6}_\\d{13,17}");
     private static final Pattern OLD_TIMESTAMP_PATTERN =
             Pattern.compile("_\\d{13,17}");
-
     private static final Set<String> IMAGE_SUFFIXES = new HashSet<String>() {{
         add(".png");
         add(".jpg");
@@ -68,7 +66,7 @@ public class ZipUnzipUtil {
             }
             String finalTargetPath = rootTargetDir.getAbsolutePath();
             Set<ZipEntry> dirEntries = new HashSet<>();
-            List<ZipEntry> fileEntries = new ArrayList<>();
+            List<ZipEntry> fileEntries = new ArrayList<>(); // 改成 List 方便排序
             Enumeration<? extends ZipEntry> entries = zf.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
@@ -79,30 +77,15 @@ public class ZipUnzipUtil {
                 }
             }
 
-            // ===================== 最终正确排序 =====================
+            // ====================== 关键修复：按时间排序 ======================
+            // 按文件最后修改时间 升序（最早先处理，保证时间戳顺序不乱）
             Collections.sort(fileEntries, new Comparator<ZipEntry>() {
                 @Override
                 public int compare(ZipEntry o1, ZipEntry o2) {
-                    long t1 = extractTimestampFromFileName(o1.getName());
-                    long t2 = extractTimestampFromFileName(o2.getName());
-
-                    boolean has1 = t1 > 0;
-                    boolean has2 = t2 > 0;
-
-                    // 无时间戳 → 全部排在前面，优先处理
-                    if (!has1 && has2) return -1;
-                    if (has1 && !has2) return 1;
-
-                    // 都无时间戳 → 按压缩包内原始时间排序
-                    if (!has1 && !has2) {
-                        return Long.compare(o1.getTime(), o2.getTime());
-                    }
-
-                    // 都有时间戳 → 按文件名最后一段时间戳排序
-                    return Long.compare(t1, t2);
+                    return Long.compare(o1.getTime(), o2.getTime());
                 }
             });
-            // =========================================================
+            // =================================================================
 
             for (ZipEntry entry : dirEntries) {
                 processDirectoryEntry(zf, entry, rootDirInfo, rootTargetDir);
@@ -111,6 +94,8 @@ public class ZipUnzipUtil {
             Set<String> existingCleanNames = new HashSet<>();
             collectAllCleanFileNames(rootDir, existingCleanNames);
             int sequenceNumber = 0;
+
+            // 遍历已排序的文件
             for (ZipEntry entry : fileEntries) {
                 sequenceNumber = processFileEntry(zf, entry, rootDirInfo, rootTargetDir,
                         existingCleanNames, sequenceNumber);
@@ -122,22 +107,6 @@ public class ZipUnzipUtil {
             return false;
         }
     }
-
-    // ===================== 你自己项目的正则，最终正确提取 =====================
-    private static long extractTimestampFromFileName(String fileName) {
-        try {
-            Matcher matcher = OLD_TIMESTAMP_PATTERN.matcher(fileName);
-            long lastTimestamp = 0;
-            while (matcher.find()) {
-                String numStr = matcher.group().substring(1); // 去掉 "_"
-                lastTimestamp = Long.parseLong(numStr);
-            }
-            return lastTimestamp;
-        } catch (Exception e) {
-            return 0;
-        }
-    }
-
     /**
      * 处理压缩包目录项：仅创建原压缩包内的空文件夹，不生成带序号的冲突文件夹
      */
@@ -206,7 +175,7 @@ public class ZipUnzipUtil {
         String fileName = targetFile.getName().toLowerCase();
         if (fileName.endsWith(".txt") || isImageFile(fileName)) {
             File rootDir = new File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME);
-            return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber, entry);
+            return processNamedFile(targetFile, rootDir, existingCleanNames, sequenceNumber);
         }
         return sequenceNumber;
     }
@@ -234,11 +203,11 @@ public class ZipUnzipUtil {
         return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
     /**
-     * 统一处理TXT/图片文件重命名：使用压缩包自带原始修改时间（永久不乱序）
+     * 统一处理TXT/图片文件重命名：不清理旧时间戳，只追加/更新最后一个时间戳
      * @return int 更新后的序列号
      */
     private static int processNamedFile(File targetFile, File rootDir,
-                                        Set<String> existingCleanNames, int sequenceNumber, ZipEntry entry) {
+                                        Set<String> existingCleanNames, int sequenceNumber) {
         if (targetFile == null || !targetFile.exists()) {
             return sequenceNumber;
         }
@@ -248,21 +217,19 @@ public class ZipUnzipUtil {
             String suffix = lastDot > 0 ? originalName.substring(lastDot) : "";
             String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
             String newFileName;
-            long time = entry.getTime();
-            if (time <= 0) {
-                time = System.currentTimeMillis();
-            }
-            String newTs = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date(time));
-            Pattern hasRandomAndTs = Pattern.compile("^.+_[A-Za-z0-9]{6}(_\\d{13,17}){1,2}$");
-            Pattern hasOneTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}$");
-            Pattern hasTwoTs = Pattern.compile("^.+_[A-Za-z0-9]{6}_\\d{13,17}_\\d{13,17}$");
-            if (hasTwoTs.matcher(nameWithoutExt).matches()) {
-                String base = nameWithoutExt.replaceAll("_\\d{13,17}$", "");
-                newFileName = base + "_" + newTs + suffix;
-            } else if (hasOneTs.matcher(nameWithoutExt).matches()) {
-                newFileName = nameWithoutExt + "_" + newTs + suffix;
-            } else if (hasRandomAndTs.matcher(nameWithoutExt).matches()) {
-                newFileName = nameWithoutExt + "_" + newTs + suffix;
+            String seq5 = String.format("%05d", sequenceNumber % 100000);
+            int lastUnderline = nameWithoutExt.lastIndexOf("_");
+            if (lastUnderline != -1 && lastUnderline < nameWithoutExt.length() - 6) {
+                String prefix = nameWithoutExt.substring(0, lastUnderline + 1);
+                String oldNum = nameWithoutExt.substring(lastUnderline + 1);
+
+                if (oldNum.length() >= 10) {
+                    String keep = oldNum.substring(0, oldNum.length() - 5);
+                    String newNum = keep + seq5;
+                    newFileName = prefix + newNum + suffix;
+                } else {
+                    newFileName = nameWithoutExt + suffix;
+                }
             } else {
                 String cleanName = INCREMENT_TIMESTAMP_PATTERN.matcher(nameWithoutExt).replaceAll("");
                 cleanName = TARGET_TIMESTAMP_PATTERN.matcher(cleanName).replaceAll("");
@@ -273,7 +240,8 @@ public class ZipUnzipUtil {
                 String uniqueBase = findUniqueBaseName(cleanName, existingCleanNames);
                 existingCleanNames.add(uniqueBase);
                 String randomStr = generateRandomString();
-                newFileName = uniqueBase + "_" + randomStr + "_" + newTs + suffix;
+                String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(new Date());
+                newFileName = uniqueBase + "_" + randomStr + "_" + timeStamp + suffix;
             }
             File newFile = new File(targetFile.getParentFile(), newFileName);
             if (targetFile.renameTo(newFile)) {
@@ -282,7 +250,7 @@ public class ZipUnzipUtil {
                 targetFile.delete();
                 Log.d(TAG, "复制重命名成功: " + originalName + " → " + newFileName);
             }
-            return (sequenceNumber + 1) % 10000;
+            return sequenceNumber + 1;
         } catch (Exception e) {
             Log.e(TAG, "处理文件失败", e);
             return sequenceNumber;
