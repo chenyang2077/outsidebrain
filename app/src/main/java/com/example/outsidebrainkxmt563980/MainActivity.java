@@ -3713,10 +3713,10 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(pasteDialog::show);
 
         new Thread(() -> {
-            int sequence = 1;
             boolean success = false;
             try {
                 if (copiedFile.isDirectory()) {
+                    // ====================== 文件夹 完全不动！ ======================
                     if (isCutOperation) {
                         success = moveFolderWithTxtUpdate(copiedFile, currentDirectory, false);
                     } else {
@@ -3726,30 +3726,48 @@ public class MainActivity extends AppCompatActivity {
                     File sourceFile = copiedFile;
                     boolean isTxt = sourceFile.getName().toLowerCase().endsWith(".txt");
                     boolean isImg = isImageFile(sourceFile);
+
                     if (isTxt || isImg) {
+                        // ====================== 单个文件 TXT/图片 最终完美版 ======================
                         String originalName = sourceFile.getName();
-                        String originalExt = getOriginalExtension(originalName);
-                        String cleanName = removeAllExtensions(originalName);
+
+                        // 1. 分离文件名和后缀
+                        int lastDot = originalName.lastIndexOf(".");
+                        String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
+                        String originalExt = lastDot > 0 ? originalName.substring(lastDot) : "";
+
+                        // 2. 获取干净核心名
+                        String cleanCoreName = removeTimestamp(nameWithoutExt);
+                        cleanCoreName = getSafeCoreName(cleanCoreName);
+
+                        // 3. ✅ 关键：目标文件夹 核心名称查重 → 自动加 (1)(2)(3)
+                        String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanCoreName);
+
+                        // 4. 生成新的随机串 + 时间戳（无序列号）
                         String randomStr = generateRandomString();
-                        String timePart = new java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.getDefault()).format(new java.util.Date());
-                        String seqPart = String.format("%05d", sequence);
-                        String newTs = timePart + seqPart;
-                        String timestampSuffix = "_" + randomStr + "_" + newTs;
-                        sequence++;
+                        String timeStamp = new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS", java.util.Locale.getDefault()).format(new java.util.Date());
+                        String finalName;
 
                         if (isCutOperation) {
-                            String[] parsed = parseFileName(originalName);
-                            String pureCoreName = parsed[0];
-                            pureCoreName = getSafeCoreName(pureCoreName);
-                            cleanName = pureCoreName;
+                            // 剪切规则：无→加 / 1→追加 / 2→替换最后一个
+                            String[] parts = nameWithoutExt.split("_");
+                            if (parts.length <= 2) {
+                                finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
+                            } else if (parts.length == 3) {
+                                String base = nameWithoutExt;
+                                finalName = finalCoreName + "_" + base.split("_")[1] + "_" + base.split("_")[2] + "_" + timeStamp + originalExt;
+                            } else {
+                                int lastUnder = nameWithoutExt.lastIndexOf('_');
+                                String prefix = nameWithoutExt.substring(0, lastUnder);
+                                finalName = finalCoreName + "_" + prefix.split("_", 2)[1] + "_" + timeStamp + originalExt;
+                            }
                         } else {
-                            cleanName = removeTimestamp(cleanName);
-                            cleanName = getSafeCoreName(cleanName);
+                            // 复制规则：清理干净，重新生成
+                            finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
                         }
-                        String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanName);
-                        String uniqueFileName = finalCoreName + timestampSuffix;
-                        String finalFileName = removeAllExtensions(uniqueFileName) + originalExt;
-                        File targetFile = new File(currentDirectory, finalFileName);
+
+                        // 最终文件
+                        File targetFile = new File(currentDirectory, finalName);
 
                         if (isCutOperation) {
                             success = sourceFile.renameTo(targetFile);
@@ -3762,7 +3780,9 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             success = copyFileContent(sourceFile, targetFile);
                         }
+
                     } else {
+                        // 其他文件不变
                         File targetFile = new File(currentDirectory, copiedFile.getName());
                         File uniqueTargetFile = getNonConflictFile(targetFile);
                         if (isCutOperation) {
