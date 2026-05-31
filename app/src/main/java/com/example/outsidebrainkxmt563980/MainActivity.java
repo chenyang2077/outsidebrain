@@ -1670,31 +1670,33 @@ public class MainActivity extends AppCompatActivity {
             searchResultList.clear();
             java.util.Set<File> uniqueSet = new java.util.HashSet<>();
 
-            // ==============================================
-            // 【核心修复】@格式 → 只跑时间搜索，不跑普通搜索
-            // ==============================================
             if (keyword.startsWith("@")) {
                 String timeStr = keyword.substring(1).trim();
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
                 String today = sdf.format(new Date());
 
+                String startDay = "";
+                String endDay = "";
+
                 if (timeStr.matches("\\d{8}[#]\\d{8}")) {
                     String[] split = timeStr.split("[#]");
-                    String startDay = split[0];
-                    String endDay = split[1];
-                    scanTimeRangeNoSkip(currentDirectory, startDay, endDay);
-                }
-                else if (timeStr.matches("\\d{8}")) {
-                    scanTimeRangeNoSkip(currentDirectory, timeStr, today);
+                    startDay = split[0];
+                    endDay = split[1];
+                } else if (timeStr.matches("\\d{8}")) {
+                    startDay = timeStr;
+                    endDay = today;
                 }
 
-                // 只去重，不跑普通搜索
+                // 🔥 直接在这里扫描：取文件名最后一个时间戳前8位
+                if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
+                    scanDirect(currentDirectory, startDay, endDay);
+                }
+
                 uniqueSet.addAll(searchResultList);
                 searchResultList.clear();
                 searchResultList.addAll(uniqueSet);
 
             } else {
-                // 普通搜索 → 正常跑
                 recursiveSearch(currentDirectory, keyword);
             }
 
@@ -1709,133 +1711,39 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-
-    // ==========================
-// 日期范围版本
-// ==========================
-    private void scanFileLast8DateRange(File dir, String start, String end) {
-        if (dir == null || !dir.isDirectory()) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-
-        for (File file : files) {
-            if (file.isDirectory()) {
-                scanFileLast8DateRange(file, start, end);
-            } else {
-                String fileName = file.getName();
-                int lastUnderline = fileName.lastIndexOf("_");
-                if (lastUnderline != -1 && lastUnderline + 1 < fileName.length()) {
-                    String after = fileName.substring(lastUnderline + 1);
-                    if (after.length() >= 8) {
-                        String fileDate = after.substring(0, 8);
-                        if (fileDate.compareTo(start) >= 0 && fileDate.compareTo(end) <= 0) {
-                            searchResultList.add(file);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    /**
-     * 内部工具：单日期到今日搜索
-     */
-    private void scanTimeSingleNoSkip(File dir, String timeStr) {
-        if (dir == null || !dir.exists()) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File file : files) {
-            if (file.isDirectory()) {
-                scanTimeSingleNoSkip(file, timeStr);
-            } else {
-                String name = file.getName();
-                String timeStamp = null;
-                int len = name.length();
-                for (int i = 0; i <= len - 8; i++) {
-                    String sub = name.substring(i, i + 8);
-                    if (sub.matches("\\d{8}")) {
-                        timeStamp = sub;
-                        break;
-                    }
-                }
-                if (timeStamp != null && timeStamp.equals(timeStr) && !searchResultList.contains(file)) {
-                    searchResultList.add(file);
-                }
-            }
-        }
-    }
-    /**
-     * 内部工具：日期区间搜索
-     */
-    private void scanTimeRangeNoSkip(File dir, String startDay, String endDay) {
+    // 轻量级内部扫描，不会冲突
+    private void scanDirect(File dir, String startDay, String endDay) {
         if (dir == null || !dir.exists()) return;
         File[] files = dir.listFiles();
         if (files == null) return;
 
         for (File file : files) {
             if (file.isDirectory()) {
-                scanTimeRangeNoSkip(file, startDay, endDay);
+                scanDirect(file, startDay, endDay);
             } else {
                 String name = file.getName();
-                String timeStamp = null;
-                int len = name.length();
-                for (int i = 0; i <= len - 8; i++) {
-                    String sub = name.substring(i, i + 8);
-                    if (sub.matches("\\d{8}")) {
-                        timeStamp = sub;
-                        break;
-                    }
-                }
-                if (timeStamp != null) {
-                    if (timeStamp.compareTo(startDay) >= 0 && timeStamp.compareTo(endDay) <= 0) {
-                        if (!searchResultList.contains(file)) {
-                            searchResultList.add(file);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    /**
-     * 递归：按文件名最后一个时间戳筛选（晚于指定时间）
-     */
-    private void recursiveSearchByLastTimestamp(File dir, String targetTime) {
-        if (dir == null || !dir.exists() || dir.listFiles() == null) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                recursiveSearchByLastTimestamp(f, targetTime);
-            } else {
-                String name = f.getName();
-                if (!name.toLowerCase().endsWith(".txt")) continue;
+                int lastUnder = name.lastIndexOf('_');
+                int lastDot = name.lastIndexOf('.');
 
-                ArrayList<String> timestamps = extractAllTimestamps(name);
-                if (timestamps.isEmpty()) continue;
-                String lastTs = timestamps.get(timestamps.size() - 1);
-                if (lastTs.length() < 8) continue;
+                if (lastUnder < 0 || lastDot <= lastUnder) continue;
 
-                String fileDate = lastTs.substring(0, 8);
-                if (fileDate.compareTo(targetTime) >= 0) {
-                    if (!searchResultList.contains(f)) {
-                        searchResultList.add(f);
+                // 取最后时间戳 + 前8位（年月日）
+                String timePart = name.substring(lastUnder + 1, lastDot);
+                if (timePart.length() < 8) continue;
+                String fileDay = timePart.substring(0, 8);
+
+                try {
+                    long fileDayLong = Long.parseLong(fileDay);
+                    long start = Long.parseLong(startDay);
+                    long end = Long.parseLong(endDay);
+                    if (fileDayLong >= start && fileDayLong <= end) {
+                        searchResultList.add(file);
                     }
-                }
+                } catch (Exception ignored) {}
             }
         }
     }
 
-    /**
-     * 提取文件名中所有 17位时间戳 yyyyMMddHHmmssSSS
-     */
-    private ArrayList<String> extractAllTimestamps(String fileName) {
-        ArrayList<String> list = new ArrayList<>();
-        Pattern pattern = Pattern.compile("\\d{17}");
-        Matcher matcher = pattern.matcher(fileName);
-        while (matcher.find()) {
-            list.add(matcher.group());
-        }
-        return list;
-    }
     /**
      * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
      *
@@ -1843,7 +1751,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private void saveSearchKeyword(String keyword) {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
-        sp.edit().putString("current_keyword", keyword).apply(); // 异步保存，不阻塞
+        sp.edit().putString("current_keyword", keyword).apply();
     }
     /**
      * 清空搜索关键词：从SharedPreferences移除当前关键词
