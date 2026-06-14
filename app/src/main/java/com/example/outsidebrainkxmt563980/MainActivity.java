@@ -3953,7 +3953,6 @@ public class MainActivity extends AppCompatActivity {
             fileAdapter.setData(fileList);
             clearSearchKeyword();
             Toast.makeText(this, "已退出搜索", Toast.LENGTH_SHORT).show();
-            hidePasteButton();
             PreferenceUtils.saveLastPageType(this, "main");
             if (currentDirectory != null && currentDirectory.exists()) {
                 PreferenceUtils.saveLastFolderPath(this, currentDirectory.getAbsolutePath());
