@@ -220,7 +220,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         btnSearch.setOnClickListener(v -> {
-            hidePasteButton();
             performSearch();
         });
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
@@ -238,9 +237,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         etSearch.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                hidePasteButton();
-            }
             return false;
         });
         preEditFileBtn.setOnClickListener(v -> {
@@ -337,7 +333,6 @@ public class MainActivity extends AppCompatActivity {
                         etSearch.clearFocus();
                         clearSearchKeyword();
                         hideCustomPathTip();
-                        hidePasteButton();
                         currentDirectory = file;
                         loadFileList();
                         updateLevelHint();
@@ -1674,10 +1669,8 @@ public class MainActivity extends AppCompatActivity {
                 String timeStr = keyword.substring(1).trim();
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
                 String today = sdf.format(new Date());
-
                 String startDay = "";
                 String endDay = "";
-
                 if (timeStr.matches("\\d{8}[#]\\d{8}")) {
                     String[] split = timeStr.split("[#]");
                     startDay = split[0];
@@ -1686,12 +1679,9 @@ public class MainActivity extends AppCompatActivity {
                     startDay = timeStr;
                     endDay = today;
                 }
-
-                // 🔥 直接在这里扫描：取文件名最后一个时间戳前8位
                 if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
                     scanDirect(currentDirectory, startDay, endDay);
                 }
-
                 uniqueSet.addAll(searchResultList);
                 searchResultList.clear();
                 searchResultList.addAll(uniqueSet);
@@ -1699,9 +1689,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 recursiveSearch(currentDirectory, keyword);
             }
-
             sortSearchResult();
-
             runOnUiThread(() -> {
                 if (searchDialog.isShowing()) searchDialog.dismiss();
                 fileAdapter.setData(searchResultList);
@@ -1710,8 +1698,10 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+    /**
+     * 轻量级内部扫描，不会冲突
+     */
 
-    // 轻量级内部扫描，不会冲突
     private void scanDirect(File dir, String startDay, String endDay) {
         if (dir == null || !dir.exists()) return;
         File[] files = dir.listFiles();
@@ -1743,7 +1733,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     /**
      * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
      *
@@ -3346,22 +3335,20 @@ public class MainActivity extends AppCompatActivity {
      * 显示粘贴按钮，动态添加到界面并设置点击事件
      */
     private void showPasteButton() {
-        if (pasteButton != null && pasteButton.getParent() != null) {
-            ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
+        if (pasteButton == null) {
+            FrameLayout pasteContainer = findViewById(R.id.paste_container);
+            pasteButton = pasteContainer.getChildAt(0);
+            Button btnPaste = (Button) pasteButton;
+            btnPaste.setOnClickListener(v -> performPaste());
         }
-        pasteButton = LayoutInflater.from(this).inflate(R.layout.paste_button, null);
-        Button btnPaste = pasteButton.findViewById(R.id.btn_paste);
-        btnPaste.setOnClickListener(v -> performPaste());
-        FrameLayout pasteContainer = findViewById(R.id.paste_container);
-        pasteContainer.removeAllViews();
-        pasteContainer.addView(pasteButton);
+        pasteButton.setVisibility(View.VISIBLE);
     }
     /**
      * 隐藏粘贴按钮并重置复制/剪切状态
      */
     private void hidePasteButton() {
-        if (pasteButton != null && pasteButton.getParent() != null) {
-            ((ViewGroup) pasteButton.getParent()).removeView(pasteButton);
+        if (pasteButton != null) {
+            pasteButton.setVisibility(View.GONE);
         }
         copiedFile = null;
         isCutOperation = false;
