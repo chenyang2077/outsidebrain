@@ -236,9 +236,6 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(android.text.Editable s) {
             }
         });
-        etSearch.setOnTouchListener((v, event) -> {
-            return false;
-        });
         preEditFileBtn.setOnClickListener(v -> {
             hidePasteButton();
             startFilePreEdit();
