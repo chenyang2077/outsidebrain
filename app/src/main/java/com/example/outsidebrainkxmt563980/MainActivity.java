@@ -310,6 +310,7 @@ public class MainActivity extends AppCompatActivity {
                 loadImageThumbnail(file, holder.ivIcon);
                 displayFileName = formatImageFileName(file.getName());
             } else {
+
                 holder.ivIcon.setImageResource(R.drawable.ic_other_file);
                 holder.itemView.setBackgroundResource(R.drawable.item_txt_rounded_bg);
                 holder.tvName.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.white));
@@ -422,6 +423,31 @@ public class MainActivity extends AppCompatActivity {
                     PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
                     PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
                     PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
+                } else if (isPdfFile(file)) {
+                    hidePasteButton();
+                    if (isInSearchMode) {
+                        String showPath;
+                        String fullPath = file.getAbsolutePath();
+                        if (isInTransferStation) {
+                            String basePath = transferStationDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else if (isInRecycleBin) {
+                            String basePath = getFilesDir().getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        } else {
+                            String basePath = rootDirectory.getAbsolutePath();
+                            showPath = fullPath.replace(basePath, "");
+                        }
+                        if (showPath.startsWith(File.separator)) {
+                            showPath = showPath.substring(1);
+                        }
+                        MainActivity.this.showCustomPathTip(showPath);
+                    }
+                    openPdfFile(file);
+                    PreferenceUtils.saveLastPageType(MainActivity.this, "pdf");
+                    PreferenceUtils.saveLastViewedImage(MainActivity.this, file.getAbsolutePath());
+                    PreferenceUtils.saveLastFolderPath(MainActivity.this, file.getParentFile().getAbsolutePath());
+                    PreferenceUtils.saveLastEditedFile(MainActivity.this, null);
                 } else {
                     hidePasteButton();
                     showUnsupportedFileMessage();
@@ -490,6 +516,61 @@ public class MainActivity extends AppCompatActivity {
             float y = canvas.getHeight() / 2f - (paint.descent() + paint.ascent()) / 2 + textHeight / 6;
             canvas.drawText(numberText, x, y, paint);
             imageView.setImageBitmap(bitmap);
+        }
+    }
+    /**
+     * 打开PDF
+     */
+    private void openPdfFile(File pdfFile) {
+        if (pdfFile == null || !pdfFile.exists()) {
+            Toast.makeText(this, "文件已不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!pdfFile.canRead()) {
+            Toast.makeText(this, "文件无读取权限", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long maxSize = 150L * 1024 * 1024;
+        if (pdfFile.length() > maxSize) {
+            new AlertDialog.Builder(this)
+                    .setTitle("文件过大")
+                    .setMessage("该PDF体积较大，打开可能卡顿，是否继续？")
+                    .setPositiveButton("继续", (d, w) -> doOpenPdfIntent(pdfFile))
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+        doOpenPdfIntent(pdfFile);
+    }
+    /**
+     * 实际跳转逻辑抽离，统一管控Intent安全
+     */
+    private void doOpenPdfIntent(File pdfFile) {
+        Uri uri;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", pdfFile);
+            } else {
+                uri = Uri.fromFile(pdfFile);
+            }
+        } catch (IllegalArgumentException e) {
+            Toast.makeText(this, "文件路径超出共享范围，无法打开", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, "application/pdf");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.setPackage(null);
+        PackageManager pm = getPackageManager();
+        if (pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) == null) {
+            Toast.makeText(this, "未找到PDF查看器，请安装WPS、Adobe阅读器", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "打开PDF失败", Toast.LENGTH_SHORT).show();
         }
     }
     /**
@@ -1850,6 +1931,25 @@ public class MainActivity extends AppCompatActivity {
             return true;
         } catch (Exception e) {
             return true;
+        }
+    }
+    /**
+     * 安全判断PDF：
+     * 1. 必须是普通文件 2. 后缀pdf 3. 文件头部匹配%PDF-魔数
+     */
+    private boolean isPdfFile(File file) {
+        if (file == null) return false;
+        if (!file.isFile()) return false;
+        String name = file.getName().toLowerCase();
+        if (!name.endsWith(".pdf")) return false;
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] head = new byte[5];
+            int len = fis.read(head);
+            if (len < 5) return false;
+            String header = new String(head, StandardCharsets.US_ASCII);
+            return header.startsWith("%PDF-");
+        } catch (Exception e) {
+            return false;
         }
     }
     private boolean isZipFile(File file) {
