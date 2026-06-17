@@ -521,58 +521,74 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 打开PDF
      */
-    private void openPdfFile(File pdfFile) {
-        if (pdfFile == null || !pdfFile.exists()) {
+    private void openPdfFile(File file) {
+        if (file == null || !file.exists()) {
             Toast.makeText(this, "文件已不存在", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (!pdfFile.canRead()) {
+        if (!file.canRead()) {
             Toast.makeText(this, "文件无读取权限", Toast.LENGTH_SHORT).show();
             return;
         }
         long maxSize = 150L * 1024 * 1024;
-        if (pdfFile.length() > maxSize) {
+        if (file.length() > maxSize) {
             new AlertDialog.Builder(this)
                     .setTitle("文件过大")
-                    .setMessage("该PDF体积较大，打开可能卡顿，是否继续？")
-                    .setPositiveButton("继续", (d, w) -> doOpenPdfIntent(pdfFile))
+                    .setMessage("该文档体积较大，打开可能卡顿，是否继续？")
+                    .setPositiveButton("继续", (d, w) -> doOpenDocIntent(file))
                     .setNegativeButton("取消", null)
                     .show();
             return;
         }
-        doOpenPdfIntent(pdfFile);
+        doOpenDocIntent(file);
     }
-    /**
-     * 实际跳转逻辑抽离，统一管控Intent安全
-     */
-    private void doOpenPdfIntent(File pdfFile) {
+
+    private void doOpenDocIntent(File file) {
         Uri uri;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", pdfFile);
+                uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
             } else {
-                uri = Uri.fromFile(pdfFile);
+                uri = Uri.fromFile(file);
             }
         } catch (IllegalArgumentException e) {
             Toast.makeText(this, "文件路径超出共享范围，无法打开", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // 自动判断MIME
+        String name = file.getName().toLowerCase();
+        String mime = "*/*";
+        if (name.endsWith(".pdf")) {
+            mime = "application/pdf";
+        } else if (name.endsWith(".doc")) {
+            mime = "application/msword";
+        } else if (name.endsWith(".docx")) {
+            mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        } else if (name.endsWith(".xls")) {
+            mime = "application/vnd.ms-excel";
+        } else if (name.endsWith(".xlsx")) {
+            mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        }
+
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(uri, "application/pdf");
+        intent.setDataAndType(uri, mime);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        intent.setPackage(null);
+
         PackageManager pm = getPackageManager();
         if (pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) == null) {
-            Toast.makeText(this, "未找到PDF查看器，请安装WPS、Adobe阅读器", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "未找到可打开该文档的应用，请安装WPS或Office", Toast.LENGTH_LONG).show();
             return;
         }
+        Intent chooserIntent = Intent.createChooser(intent, "选择打开方式");
         try {
-            startActivity(intent);
+            startActivity(chooserIntent);
         } catch (Exception e) {
-            Toast.makeText(this, "打开PDF失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "打开文档失败", Toast.LENGTH_SHORT).show();
         }
     }
+
     /**
      * 显示可点击的路径提示，点击跳转到对应文件夹
      */
@@ -1938,19 +1954,28 @@ public class MainActivity extends AppCompatActivity {
      * 1. 必须是普通文件 2. 后缀pdf 3. 文件头部匹配%PDF-魔数
      */
     private boolean isPdfFile(File file) {
-        if (file == null) return false;
-        if (!file.isFile()) return false;
+        if (file == null || !file.isFile()) return false;
         String name = file.getName().toLowerCase();
-        if (!name.endsWith(".pdf")) return false;
-        try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] head = new byte[5];
-            int len = fis.read(head);
-            if (len < 5) return false;
-            String header = new String(head, StandardCharsets.US_ASCII);
-            return header.startsWith("%PDF-");
-        } catch (Exception e) {
-            return false;
+        // 匹配 pdf / doc / docx / xls / xlsx
+        boolean matchExt = name.endsWith(".pdf")
+                || name.endsWith(".doc") || name.endsWith(".docx")
+                || name.endsWith(".xls") || name.endsWith(".xlsx");
+        if (!matchExt) return false;
+
+        // 原有PDF魔数校验只对pdf执行，office跳过魔数校验
+        if (name.endsWith(".pdf")) {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                byte[] head = new byte[5];
+                int len = fis.read(head);
+                if (len < 5) return false;
+                String header = new String(head, StandardCharsets.US_ASCII);
+                return header.startsWith("%PDF-");
+            } catch (Exception e) {
+                return false;
+            }
         }
+        // doc/docx/xls/xlsx 后缀匹配即放行
+        return true;
     }
     private boolean isZipFile(File file) {
         if (file == null || file.isDirectory() || !file.exists()) {
