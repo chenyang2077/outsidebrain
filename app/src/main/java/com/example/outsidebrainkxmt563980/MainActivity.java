@@ -1920,7 +1920,42 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         Collections.sort(folders, (file1, file2) -> file1.getName().compareTo(file2.getName()));
-        Collections.sort(txtAndImageFiles, new TxtTimestampComparator()); // 复用你的比较器
+        Collections.sort(txtAndImageFiles, new Comparator<File>() {
+            @Override
+            public int compare(File f1, File f2) {
+                String name1 = f1.getName();
+                String name2 = f2.getName();
+                List<Long> seqList1 = extractMultiLevelNumberFromName(name1);
+                List<Long> seqList2 = extractMultiLevelNumberFromName(name2);
+                boolean hasSeq1 = !seqList1.isEmpty();
+                boolean hasSeq2 = !seqList2.isEmpty();
+                if (hasSeq1 && hasSeq2) {
+                    int minSize = Math.min(seqList1.size(), seqList2.size());
+                    for (int i = 0; i < minSize; i++) {
+                        long n1 = seqList1.get(i);
+                        long n2 = seqList2.get(i);
+                        if (n1 != n2) {
+                            return Long.compare(n1, n2);
+                        }
+                    }
+                    return Integer.compare(seqList1.size(), seqList2.size());
+                }
+                else if (hasSeq1) {
+                    return -1;
+                }
+                else if (hasSeq2) {
+                    return 1;
+                }
+                else {
+                    long ts1 = getMillisTimestampFromFileName(name1);
+                    long ts2 = getMillisTimestampFromFileName(name2);
+                    if (ts1 != 0 && ts2 != 0) {
+                        return Long.compare(ts2, ts1);
+                    }
+                    return Long.compare(f2.lastModified(), f1.lastModified());
+                }
+            }
+        });
         Collections.sort(zipFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         Collections.sort(otherFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
         searchResultList.clear();
