@@ -30,6 +30,7 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -2589,23 +2590,42 @@ public class MainActivity extends AppCompatActivity {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("解压文件")
-                .setMessage("是否将「" + zipFile.getName() + "」解压到当前文件夹？")
-                .setPositiveButton("确定", (dialog, which) -> {
-
-                    // 🔥 解压开始：显示加载提示
+                .setMessage("请选择解压方式：「带路径解压」保留原有层级；「普通解压」自动剔除文件名末尾}前缀")
+                .setPositiveButton("普通解压", (dialog, which) -> {
+                    ProgressDialog extractDialog = new ProgressDialog(this);
+                    extractDialog.setMessage("正在解压处理中，请稍候...");
+                    extractDialog.setCanceledOnTouchOutside(false);
+                    extractDialog.setCancelable(false);
+                    extractDialog.show();
+                    new Thread(() -> {
+                        boolean unzipOk = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
+                        if (!unzipOk) {
+                            runOnUiThread(() -> {
+                                if (extractDialog.isShowing()) extractDialog.dismiss();
+                                Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
+                            });
+                            return;
+                        }
+                        batchRenameTrimLastBrace(currentDirectory);
+                        runOnUiThread(() -> {
+                            if (extractDialog.isShowing()) extractDialog.dismiss();
+                            Toast.makeText(this, "解压并处理名称完成", Toast.LENGTH_SHORT).show();
+                            loadFileList();
+                        });
+                    }).start();
+                })
+                .setNeutralButton("带路径解压", (dialog, which) -> {
                     ProgressDialog extractDialog = new ProgressDialog(this);
                     extractDialog.setMessage("正在解压中，请稍候...");
                     extractDialog.setCanceledOnTouchOutside(false);
                     extractDialog.setCancelable(false);
                     extractDialog.show();
-
                     new Thread(() -> {
                         boolean result = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
                         runOnUiThread(() -> {
                             if (extractDialog.isShowing()) {
                                 extractDialog.dismiss();
                             }
-
                             if (result) {
                                 Toast.makeText(this, "解压成功", Toast.LENGTH_SHORT).show();
                                 loadFileList();
@@ -2617,6 +2637,29 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+    /**
+     * 递归遍历目录，对所有文件/文件夹名称：删除【最后一个 } 以及它前面所有字符】
+     * @param rootDir 解压根目录
+     */
+    private void batchRenameTrimLastBrace(File rootDir) {
+        if (rootDir == null || !rootDir.exists()) return;
+        File[] list = rootDir.listFiles();
+        if (list == null) return;
+        for (File item : list) {
+            if (item.isDirectory()) {
+                batchRenameTrimLastBrace(item);
+            }
+            String oldName = item.getName();
+            int lastBraceIndex = oldName.lastIndexOf('}');
+            if (lastBraceIndex == -1) continue;
+            String newName = oldName.substring(lastBraceIndex + 1);
+            if (newName.isBlank()) continue;
+            File newFile = new File(item.getParentFile(), newName);
+            if (!newFile.exists()) {
+                item.renameTo(newFile);
+            }
+        }
     }
     /**
      * 显示文件夹操作选项弹窗（重命名、删除、压缩、复制、剪切）
@@ -4351,22 +4394,41 @@ public class MainActivity extends AppCompatActivity {
         if (file.isDirectory()) {
             return;
         }
-        String basePath = rootDirectory.getAbsolutePath();
-        String fullPath = file.getAbsolutePath();
-        String relativePath = fullPath.replace(basePath, "");
-        if (relativePath.startsWith(File.separator)) {
-            relativePath = relativePath.substring(1);
+
+        String zipEntryName = file.getName();
+        final int MAX_ENTRY_NAME_LENGTH = 1000;
+        if (zipEntryName.length() > MAX_ENTRY_NAME_LENGTH) {
+            zipEntryName = zipEntryName.substring(0, MAX_ENTRY_NAME_LENGTH);
         }
-        String zipEntryName = relativePath.replace(File.separator, "}");
+
         ZipEntry entry = new ZipEntry(zipEntryName);
         zos.putNextEntry(entry);
-        FileInputStream fis = new FileInputStream(file);
-        byte[] buffer = new byte[8192];
-        int len;
-        while ((len = fis.read(buffer)) != -1) {
-            zos.write(buffer, 0, len);
+        String fileName = file.getName().toLowerCase();
+        if (fileName.endsWith(".txt")) {
+            StringBuilder contentSb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    contentSb.append(line).append("\n");
+                }
+            }
+
+            String absolutePath = file.getAbsolutePath();
+            String formatPath = absolutePath.replace("/", "}");
+            contentSb.append("【").append(formatPath).append("】\n");
+
+            byte[] data = contentSb.toString().getBytes(StandardCharsets.UTF_8);
+            zos.write(data, 0, data.length);
+        } else {
+            FileInputStream fis = new FileInputStream(file);
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                zos.write(buffer, 0, len);
+            }
+            fis.close();
         }
-        fis.close();
+
         zos.closeEntry();
     }
 }
