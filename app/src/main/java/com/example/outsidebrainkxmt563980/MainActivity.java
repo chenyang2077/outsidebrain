@@ -1754,14 +1754,25 @@ public class MainActivity extends AppCompatActivity {
         searchDialog.setCancelable(false);
         searchDialog.show();
         searchResultList.clear();
-
         new Thread(() -> {
             isInSearchMode = true;
             searchResultList.clear();
             java.util.Set<File> uniqueSet = new java.util.HashSet<>();
-
-            if (keyword.startsWith("@")) {
-                String timeStr = keyword.substring(1).trim();
+            boolean onlySearchFileName = false;
+            String realKeyword = keyword;
+            if (keyword.endsWith("@")) {
+                onlySearchFileName = true;
+                realKeyword = keyword.substring(0, keyword.length() - 1).trim();
+                if (TextUtils.isEmpty(realKeyword)) {
+                    runOnUiThread(() -> {
+                        if (searchDialog.isShowing()) searchDialog.dismiss();
+                        Toast.makeText(MainActivity.this, "去除@后关键词不能为空", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+            }
+            if (realKeyword.startsWith("@")) {
+                String timeStr = realKeyword.substring(1).trim();
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
                 String today = sdf.format(new Date());
                 String startDay = "";
@@ -1782,7 +1793,7 @@ public class MainActivity extends AppCompatActivity {
                 searchResultList.addAll(uniqueSet);
 
             } else {
-                recursiveSearch(currentDirectory, keyword);
+                recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
             }
             sortSearchResult();
             runOnUiThread(() -> {
@@ -1844,6 +1855,13 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("SearchSP", Context.MODE_PRIVATE);
         sp.edit().remove("current_keyword").apply();
     }
+
+    /**
+     * 原有两参数兼容重载，默认：搜文件名 + 搜文本内容
+     */
+    private void recursiveSearch(File dir, String key) {
+        recursiveSearch(dir, key, false);
+    }
     /**
      * 递归搜索文件：
      * 1. 遍历当前目录下所有文件/文件夹；
@@ -1852,22 +1870,30 @@ public class MainActivity extends AppCompatActivity {
      * @param dir     搜索目录
      * @param keyword 搜索关键词
      */
-    private void recursiveSearch(File dir, String keyword) {
+
+    private void recursiveSearch(File dir, String keyword, boolean onlySearchFileName) {
         if (dir == null || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
         if (files == null) return;
+
+        String keyLow = keyword.toLowerCase();
+
         for (File file : files) {
             if (file.isDirectory()) {
                 if (file.getName().endsWith("#")) {
                     continue;
                 }
-                if (file.getName().toLowerCase().contains(keyword.toLowerCase())) {
+                if (file.getName().toLowerCase().contains(keyLow)) {
                     searchResultList.add(file);
                 }
-                recursiveSearch(file, keyword);
+                recursiveSearch(file, keyword, onlySearchFileName);
             } else if (isSupportedFile(file)) {
-                boolean nameMatch = getDisplayName(file).toLowerCase().contains(keyword.toLowerCase());
-                boolean contentMatch = isContentContainKeyword(file, keyword);
+                boolean nameMatch = getDisplayName(file).toLowerCase().contains(keyLow);
+                boolean contentMatch = false;
+                if (!onlySearchFileName) {
+                    contentMatch = isContentContainKeyword(file, keyword);
+                }
+
                 if (nameMatch || contentMatch) {
                     searchResultList.add(file);
                 }
@@ -2590,7 +2616,7 @@ public class MainActivity extends AppCompatActivity {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("解压文件")
-                .setMessage("请选择解压方式：「带路径解压」保留原有层级；「普通解压」自动剔除文件名末尾}前缀")
+                .setMessage("请选择解压方式：「带路径解压」保留原有层级；「普通解压」清理TXT末尾路径标记")
                 .setPositiveButton("普通解压", (dialog, which) -> {
                     ProgressDialog extractDialog = new ProgressDialog(this);
                     extractDialog.setMessage("正在解压处理中，请稍候...");
@@ -2606,10 +2632,11 @@ public class MainActivity extends AppCompatActivity {
                             });
                             return;
                         }
-                        batchRenameTrimLastBrace(currentDirectory);
+                        // 只处理txt，非txt跳过
+                        processTxtRemoveLastBraceTag(currentDirectory);
                         runOnUiThread(() -> {
                             if (extractDialog.isShowing()) extractDialog.dismiss();
-                            Toast.makeText(this, "解压并处理名称完成", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "解压并处理完成", Toast.LENGTH_SHORT).show();
                             loadFileList();
                         });
                     }).start();
@@ -2638,27 +2665,59 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
+
     /**
-     * 递归遍历目录，对所有文件/文件夹名称：删除【最后一个 } 以及它前面所有字符】
-     * @param rootDir 解压根目录
+     * 递归遍历目录，仅对txt删除末尾最后一行包含【】的路径标记，其他文件不处理
      */
-    private void batchRenameTrimLastBrace(File rootDir) {
+    private void processTxtRemoveLastBraceTag(File rootDir) {
         if (rootDir == null || !rootDir.exists()) return;
         File[] list = rootDir.listFiles();
         if (list == null) return;
+
         for (File item : list) {
             if (item.isDirectory()) {
-                batchRenameTrimLastBrace(item);
+                processTxtRemoveLastBraceTag(item);
+                continue;
             }
-            String oldName = item.getName();
-            int lastBraceIndex = oldName.lastIndexOf('}');
-            if (lastBraceIndex == -1) continue;
-            String newName = oldName.substring(lastBraceIndex + 1);
-            if (newName.isBlank()) continue;
-            File newFile = new File(item.getParentFile(), newName);
-            if (!newFile.exists()) {
-                item.renameTo(newFile);
+            String fileName = item.getName().toLowerCase();
+            if (fileName.endsWith(".txt")) {
+                removeLastBraceTagInTxt(item);
             }
+            // 非txt文件：直接跳过，不做任何改名操作
+        }
+    }
+
+    /**
+     * TXT文件：移除文本末尾最后一处包含【】的整行
+     */
+    private void removeLastBraceTagInTxt(File txtFile) {
+        try {
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(txtFile))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    lines.add(line);
+                }
+            }
+            if (lines.isEmpty()) return;
+            int targetLineIndex = -1;
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                String line = lines.get(i);
+                if (line.contains("【") && line.contains("】")) {
+                    targetLineIndex = i;
+                    break;
+                }
+            }
+            if (targetLineIndex != -1) {
+                lines = lines.subList(0, targetLineIndex);
+            }
+            try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(txtFile))) {
+                for (String l : lines) {
+                    pw.println(l);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
     /**
@@ -4364,18 +4423,12 @@ public class MainActivity extends AppCompatActivity {
                     zos.finish();
                     zos.close();
                     fos.close();
-
-                    // ===================== 最终修复 =====================
                     runOnUiThread(() -> {
                         zipDialog.dismiss();
                         btnZip.setEnabled(true);
                         Toast.makeText(MainActivity.this, "压缩完成：" + zipFileName, Toast.LENGTH_LONG).show();
-
-                        // 压缩完 → 自动调用返回键 → 退出搜索
                         onBackPressed();
                     });
-                    // ====================================================
-
                 } catch (Exception e) {
                     e.printStackTrace();
                     runOnUiThread(() -> {
