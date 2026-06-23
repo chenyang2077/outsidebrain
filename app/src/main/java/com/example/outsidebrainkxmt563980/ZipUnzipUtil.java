@@ -74,8 +74,6 @@ public class ZipUnzipUtil {
                     fileEntries.add(entry);
                 }
             }
-
-            // 排序规则：无时间戳优先 → 有时间戳按时间升序
             Collections.sort(fileEntries, new Comparator<ZipEntry>() {
                 @Override
                 public int compare(ZipEntry o1, ZipEntry o2) {
@@ -132,8 +130,6 @@ public class ZipUnzipUtil {
             relativePath = entryName;
         }
         File targetFile = new File(rootTargetDir, relativePath);
-
-        // ===================== 安全路径保护（完整保留） =====================
         try {
             String canonicalTarget = targetFile.getCanonicalPath();
             String canonicalRoot = rootTargetDir.getCanonicalPath();
@@ -150,8 +146,6 @@ public class ZipUnzipUtil {
         if (parentDir != null && !parentDir.exists()) {
             parentDir.mkdirs();
         }
-
-        // 写入文件
         try (InputStream is = zipFile.getInputStream(entry);
              OutputStream os = new FileOutputStream(targetFile)) {
             byte[] buffer = new byte[1024 * 4];
@@ -160,15 +154,12 @@ public class ZipUnzipUtil {
                 os.write(buffer, 0, len);
             }
         }
-
-        // 只处理TXT/图片
         String fileName = targetFile.getName().toLowerCase();
         if (fileName.endsWith(".txt") || isImageFile(fileName)) {
             return processNamedFile(targetFile, existingCleanNames, sequenceNumber);
         }
         return sequenceNumber;
     }
-
     /**
      * 文件重命名核心：完全对齐剪切模块逻辑，序列号放末尾
      */
@@ -188,15 +179,10 @@ public class ZipUnzipUtil {
             cleanName = getSafeCoreName(cleanName);
             String randomStr = generateRandomString();
             String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-            // 稳定格式：时间戳末尾5位为序列号
             String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
             String finalTs = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
-
             String finalName;
             String[] parts = originalName.split("_");
-
-            // 三条核心规则（与剪切完全一致）
             if (parts.length <= 2) {
                 finalName = cleanName + "_" + randomStr + "_" + finalTs + originalExt;
             } else if (parts.length == 3) {
@@ -220,7 +206,6 @@ public class ZipUnzipUtil {
             return sequenceNumber;
         }
     }
-
     /**
      * 判断文件名是否包含时间戳：纯字符串判断，稳定兼容
      */
@@ -242,7 +227,6 @@ public class ZipUnzipUtil {
         }
         return true;
     }
-
     /**
      * 从文件名提取时间戳数字
      */
@@ -259,7 +243,6 @@ public class ZipUnzipUtil {
             return 0;
         }
     }
-
     /**
      * 创建压缩包内原有目录，不生成多余文件夹
      */
@@ -277,7 +260,6 @@ public class ZipUnzipUtil {
             targetDir.mkdirs();
         }
     }
-
     /**
      * 清理ZIP内文件名非法字符，不破坏路径结构
      */
@@ -295,7 +277,6 @@ public class ZipUnzipUtil {
         }
         return cleanedPath.length() > 0 ? cleanedPath.toString() : "未知文件";
     }
-
     /**
      * 判断是否为图片文件
      */
@@ -306,7 +287,6 @@ public class ZipUnzipUtil {
         }
         return false;
     }
-
     /**
      * 生成6位随机字符串，用于唯一命名
      */
@@ -319,7 +299,6 @@ public class ZipUnzipUtil {
         }
         return sb.toString();
     }
-
     /**
      * 移除文件名中的时间戳，获取干净名称
      */
@@ -331,7 +310,6 @@ public class ZipUnzipUtil {
         name = OLD_TIMESTAMP_PATTERN.matcher(name).replaceAll("");
         return name.trim().isEmpty() ? "未命名" : name.trim();
     }
-
     /**
      * 获取文件后缀名
      */
@@ -339,7 +317,6 @@ public class ZipUnzipUtil {
         int lastDot = fileName.lastIndexOf(".");
         return lastDot > 0 ? fileName.substring(lastDot) : "";
     }
-
     /**
      * 获取安全的核心文件名，过滤非法字符
      */
@@ -347,7 +324,6 @@ public class ZipUnzipUtil {
         if (name == null || name.trim().isEmpty()) return "未命名文件";
         return name.trim().replaceAll("[\\\\/:*?\"<>|]", "");
     }
-
     /**
      * 递归收集已存在的干净文件名，防止冲突
      */
@@ -367,7 +343,6 @@ public class ZipUnzipUtil {
             }
         }
     }
-
     /**
      * 文件复制兜底方法，重命名失败时使用
      */
@@ -381,7 +356,6 @@ public class ZipUnzipUtil {
         }
         return true;
     }
-
     /**
      * 分析ZIP根目录结构：判断是否单一根目录
      */
@@ -410,7 +384,6 @@ public class ZipUnzipUtil {
             return new RootDirInfo(false, zipFileName);
         }
     }
-
     /**
      * 生成无冲突文件夹名，自动加中文序号
      */
@@ -424,7 +397,6 @@ public class ZipUnzipUtil {
             suffix++;
         }
     }
-
     /**
      * 压缩包结构信息内部类
      */

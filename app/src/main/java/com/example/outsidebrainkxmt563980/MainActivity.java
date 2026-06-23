@@ -6,7 +6,7 @@
         3. 辅助功能：文件分享至第三方APP、按文件名/TXT内容检索文件。
 所属模块：主界面模块
 开发语言：Java
-源码状态：完整未删减
+源码状态：节选提交
 */
 package com.example.outsidebrainkxmt563980;
 import android.Manifest;
@@ -3633,7 +3633,7 @@ public class MainActivity extends AppCompatActivity {
         return baseName + "(" + (maxSerial + 1) + ")";
     }
     /**
-     * 复制文件夹并处理其中TXT/图片文件的全局唯一命名规则，维护序号避免重复
+     * 复制文件夹并处理其中TXT/图片文件的唯一命名规则，维护序号避免重复
      */
     boolean copyFolderWithTxtGlobalCheck(File sourceFolder, File targetParent) throws IOException {
         String baseName = sourceFolder.getName();
@@ -3642,12 +3642,8 @@ public class MainActivity extends AppCompatActivity {
         if (!targetRoot.exists() && !targetRoot.mkdirs()) {
             return false;
         }
-
-        // 1. 收集全部文件（含子文件夹）
         List<File> allFiles = new ArrayList<>();
         collectAllFiles(sourceFolder, allFiles);
-
-        // 2. 全局按最后时间戳排序
         Collections.sort(allFiles, (f1, f2) -> {
             String n1 = f1.getName();
             String n2 = f2.getName();
@@ -3659,7 +3655,6 @@ public class MainActivity extends AppCompatActivity {
             String t2 = (u2 >= 0 && d2 > u2) ? n2.substring(u2+1, d2) : "0";
             return t1.compareTo(t2);
         });
-
         int sequenceNumber = 0;
         for (File file : allFiles) {
             String relPath = getRelativePath(sourceFolder, file);
@@ -3681,11 +3676,6 @@ public class MainActivity extends AppCompatActivity {
                 cleanName = getSafeCoreName(cleanName);
                 String randomStr = generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
-
-                // ==============================
-                // 核心修复：时间戳长度不变 → 替换最后5位为序号
-                // 不是追加！不是变长！
-                // ==============================
                 String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
                 String finalTimestamp = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
                 String newName = cleanName + "_" + randomStr + "_" + finalTimestamp + originalExt;
@@ -3712,7 +3702,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     private String getRelativePath(File root, File file) {
         return file.getAbsolutePath().substring(root.getAbsolutePath().length() + 1);
     }
@@ -3744,7 +3733,6 @@ public class MainActivity extends AppCompatActivity {
     /**
      *   【核心统一工具】获取不重复的主体名（只在目标文件夹查重）
      */
-
     private String getNonConflictCoreNameInFolder(File targetFolder, String baseCore) {
         if (targetFolder == null || !targetFolder.exists() || baseCore == null) {
             return baseCore;
@@ -3859,7 +3847,6 @@ public class MainActivity extends AppCompatActivity {
             boolean success = false;
             try {
                 if (copiedFile.isDirectory()) {
-                    // ====================== 文件夹 完全不动！ ======================
                     if (isCutOperation) {
                         success = moveFolderWithTxtUpdate(copiedFile, currentDirectory, false);
                     } else {
@@ -3871,28 +3858,17 @@ public class MainActivity extends AppCompatActivity {
                     boolean isImg = isImageFile(sourceFile);
 
                     if (isTxt || isImg) {
-                        // ====================== 单个文件 TXT/图片 最终完美版 ======================
                         String originalName = sourceFile.getName();
-
-                        // 1. 分离文件名和后缀
                         int lastDot = originalName.lastIndexOf(".");
                         String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
                         String originalExt = lastDot > 0 ? originalName.substring(lastDot) : "";
-
-                        // 2. 获取干净核心名
                         String cleanCoreName = removeTimestamp(nameWithoutExt);
                         cleanCoreName = getSafeCoreName(cleanCoreName);
-
-                        // 3. ✅ 关键：目标文件夹 核心名称查重 → 自动加 (1)(2)(3)
                         String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanCoreName);
-
-                        // 4. 生成新的随机串 + 时间戳（无序列号）
                         String randomStr = generateRandomString();
                         String timeStamp = new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS", java.util.Locale.getDefault()).format(new java.util.Date());
                         String finalName;
-
                         if (isCutOperation) {
-                            // 剪切规则：无→加 / 1→追加 / 2→替换最后一个
                             String[] parts = nameWithoutExt.split("_");
                             if (parts.length <= 2) {
                                 finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
@@ -3905,13 +3881,9 @@ public class MainActivity extends AppCompatActivity {
                                 finalName = finalCoreName + "_" + prefix.split("_", 2)[1] + "_" + timeStamp + originalExt;
                             }
                         } else {
-                            // 复制规则：清理干净，重新生成
                             finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
                         }
-
-                        // 最终文件
                         File targetFile = new File(currentDirectory, finalName);
-
                         if (isCutOperation) {
                             success = sourceFile.renameTo(targetFile);
                             if (!success) {
@@ -3923,9 +3895,7 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             success = copyFileContent(sourceFile, targetFile);
                         }
-
                     } else {
-                        // 其他文件不变
                         File targetFile = new File(currentDirectory, copiedFile.getName());
                         File uniqueTargetFile = getNonConflictFile(targetFile);
                         if (isCutOperation) {
@@ -4110,7 +4080,6 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
     }
-
     /**
      * 获取无冲突的文件路径，重名时添加序号后缀
      */
@@ -4474,3 +4443,4 @@ public class MainActivity extends AppCompatActivity {
         zos.closeEntry();
     }
 }
+/* MainActivity.java 文件尾部源码片段 */
