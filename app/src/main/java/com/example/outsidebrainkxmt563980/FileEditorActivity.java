@@ -56,7 +56,6 @@ public class FileEditorActivity extends AppCompatActivity {
     private File currentDir;
     private File targetFile;
     private boolean isSaved = true;
-    // 历史版本保存（自动备份旧文件）
     private File historyVersionDir;
     private static final int MAX_TITLE_LEN = 31;
     private static final String ROOT_FOLDER_NAME = "主页根目录";

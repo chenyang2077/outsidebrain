@@ -556,7 +556,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "文件路径超出共享范围，无法打开", Toast.LENGTH_SHORT).show();
             return;
         }
-
         // 自动判断MIME
         String name = file.getName().toLowerCase();
         String mime = "*/*";
@@ -1977,19 +1976,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     /**
-     * 安全判断PDF：
-     * 1. 必须是普通文件 2. 后缀pdf 3. 文件头部匹配%PDF-魔数
+     * 安全判断PDF/ doc / docx / xls / xlsx
      */
     private boolean isPdfFile(File file) {
         if (file == null || !file.isFile()) return false;
         String name = file.getName().toLowerCase();
-        // 匹配 pdf / doc / docx / xls / xlsx
         boolean matchExt = name.endsWith(".pdf")
                 || name.endsWith(".doc") || name.endsWith(".docx")
                 || name.endsWith(".xls") || name.endsWith(".xlsx");
         if (!matchExt) return false;
-
-        // 原有PDF魔数校验只对pdf执行，office跳过魔数校验
         if (name.endsWith(".pdf")) {
             try (FileInputStream fis = new FileInputStream(file)) {
                 byte[] head = new byte[5];
@@ -2001,7 +1996,6 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         }
-        // doc/docx/xls/xlsx 后缀匹配即放行
         return true;
     }
     private boolean isZipFile(File file) {
@@ -2027,9 +2021,6 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 判断是否为其他非文本/非压缩/非图片文件：
      * 1. 排除TXT/ZIP/图片文件，返回其他文件类型；
-     *
-     * @param file 待判断文件
-     * @return 是否为其他文件
      */
     private boolean isOtherFile(File file) {
         if (file.isDirectory()) return false;
@@ -2039,8 +2030,6 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 判断是否为支持的文件类型：
      * 1. 支持文件夹/TXT/ZIP/图片/其他文件；
-     * @param file 待判断文件
-     * @return 是否支持
      */
     private boolean isSupportedFile(File file) {
         return file.isDirectory() ||

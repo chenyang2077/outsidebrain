@@ -5,24 +5,24 @@
     android:viewportWidth="24.0"
     android:viewportHeight="24.0">
 
-    <!-- 新增：合规灰色圆角背景（不影响你原有任何代码） -->
+    <!-- 圆角黑色背景保持不变 -->
     <path
-        android:fillColor="@color/gray"
+        android:fillColor="@color/black"
         android:pathData="M2,4 C2,2.89543 2.89543,2 4,2 L20,2 C21.1046,2 22,2.89543 22,4 L22,20 C22,21.1046 21.1046,22 20,22 L4,22 C2.89543,22 2,21.1046 2,20 L2,4 Z" />
 
-    <!-- 原有文件夹路径（颜色：#FFB85C） -->
+    <!-- 文件夹整体上移0.5单位，所有Y坐标统一减0.5 -->
     <path
         android:fillColor="#FFB85C"
-        android:pathData="M10,4H4C3.45,4 3,4.45 3,5v15c0,0.55 0.45,1 1,1h16c0.55,0 1,-0.45 1,-1V8L14,4h-4zM19,19H5V5h4v3h6V5h4v14z" />
+        android:pathData="M10,3.5H4C3.45,3.5 3,3.95 3,4.5v15c0,0.55 0.45,1 1,1h16c0.55,0 1,-0.45 1,-1V7.5L14,3.5h-4zM19,18.5H5V4.5h4v3h6V4.5h4v14z" />
 
-    <!-- 横向线（保持原长度：x=8 到 x=16，长度8dp） -->
+    <!-- 横向线上移0.5 -->
     <path
         android:fillColor="#FFB85C"
-        android:pathData="M8,12h8v2h-8z" />
+        android:pathData="M8,11.5h8v2h-8z" />
 
-    <!-- 纵线：向左偏移（x=11）、向下偏移（y=10），长度调整为8dp -->
+    <!-- 竖线上移0.5 -->
     <path
         android:fillColor="#FFB85C"
-        android:pathData="M11,9.3v8h2v-8z" />
+        android:pathData="M11,8.8v8h2v-8z" />
 
 </vector>
