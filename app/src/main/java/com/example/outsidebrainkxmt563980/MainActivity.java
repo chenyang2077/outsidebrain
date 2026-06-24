@@ -1,5 +1,5 @@
 /*
-软件名称：流动文档软件V1.0
+软件名称：流动文档阅览整理软件V1.0
 版本号：V1.0
 功能描述：1. 基础文件管理：支持TXT文件/文件夹整理、ZIP压缩解压、文件/文件夹复制与移动；
         2. 文件浏览编辑：支持TXT文件/图片浏览、TXT文件编辑；
@@ -1254,8 +1254,6 @@ public class MainActivity extends AppCompatActivity {
      * 1. 创建主题化PopupMenu，加载菜单布局；
      * 2. 根据当前目录（回收站/中转站/普通目录）调整菜单项显示；
      * 3. 设置菜单项点击事件，处理主页/回收站/新建文件夹等操作。
-     *
-     * @param view 菜单按钮视图
      */
     private void showPopupMenu(View view) {
         try {
@@ -1337,9 +1335,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 popupWindow.dismiss();
             });
-
             popupWindow.showAsDropDown(view, 0, 0);
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -1819,10 +1815,7 @@ public class MainActivity extends AppCompatActivity {
                 String name = file.getName();
                 int lastUnder = name.lastIndexOf('_');
                 int lastDot = name.lastIndexOf('.');
-
                 if (lastUnder < 0 || lastDot <= lastUnder) continue;
-
-                // 取最后时间戳 + 前8位（年月日）
                 String timePart = name.substring(lastUnder + 1, lastDot);
                 if (timePart.length() < 8) continue;
                 String fileDay = timePart.substring(0, 8);
@@ -1840,7 +1833,6 @@ public class MainActivity extends AppCompatActivity {
     }
     /**
      * 保存搜索关键词：存储到SharedPreferences，用于后续恢复
-     *
      * @param keyword 搜索关键词
      */
     private void saveSearchKeyword(String keyword) {
@@ -1866,10 +1858,7 @@ public class MainActivity extends AppCompatActivity {
      * 1. 遍历当前目录下所有文件/文件夹；
      * 2. 文件夹：名称匹配则加入结果，递归搜索子目录，跳过末尾带#的文件夹；
      * 3. 文件：名称/内容匹配则加入结果。
-     * @param dir     搜索目录
-     * @param keyword 搜索关键词
      */
-
     private void recursiveSearch(File dir, String keyword, boolean onlySearchFileName) {
         if (dir == null || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
@@ -2708,6 +2697,50 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+    /**
+     * 递归添加文件到 ZIP
+     */
+    private void addFileToZip(ZipOutputStream zos, File file) throws IOException {
+        if (file.isDirectory()) {
+            return;
+        }
+
+        String zipEntryName = file.getName();
+        final int MAX_ENTRY_NAME_LENGTH = 1000;
+        if (zipEntryName.length() > MAX_ENTRY_NAME_LENGTH) {
+            zipEntryName = zipEntryName.substring(0, MAX_ENTRY_NAME_LENGTH);
+        }
+
+        ZipEntry entry = new ZipEntry(zipEntryName);
+        zos.putNextEntry(entry);
+        String fileName = file.getName().toLowerCase();
+        if (fileName.endsWith(".txt")) {
+            StringBuilder contentSb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    contentSb.append(line).append("\n");
+                }
+            }
+
+            String absolutePath = file.getAbsolutePath();
+            String formatPath = absolutePath.replace("/", "}");
+            contentSb.append("【").append(formatPath).append("】\n");
+
+            byte[] data = contentSb.toString().getBytes(StandardCharsets.UTF_8);
+            zos.write(data, 0, data.length);
+        } else {
+            FileInputStream fis = new FileInputStream(file);
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                zos.write(buffer, 0, len);
+            }
+            fis.close();
+        }
+
+        zos.closeEntry();
     }
     /**
      * 显示文件夹操作选项弹窗（重命名、删除、压缩、复制、剪切）
@@ -4398,49 +4431,4 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-    /**
-     * 递归添加文件到 ZIP
-     */
-    private void addFileToZip(ZipOutputStream zos, File file) throws IOException {
-        if (file.isDirectory()) {
-            return;
-        }
-
-        String zipEntryName = file.getName();
-        final int MAX_ENTRY_NAME_LENGTH = 1000;
-        if (zipEntryName.length() > MAX_ENTRY_NAME_LENGTH) {
-            zipEntryName = zipEntryName.substring(0, MAX_ENTRY_NAME_LENGTH);
-        }
-
-        ZipEntry entry = new ZipEntry(zipEntryName);
-        zos.putNextEntry(entry);
-        String fileName = file.getName().toLowerCase();
-        if (fileName.endsWith(".txt")) {
-            StringBuilder contentSb = new StringBuilder();
-            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    contentSb.append(line).append("\n");
-                }
-            }
-
-            String absolutePath = file.getAbsolutePath();
-            String formatPath = absolutePath.replace("/", "}");
-            contentSb.append("【").append(formatPath).append("】\n");
-
-            byte[] data = contentSb.toString().getBytes(StandardCharsets.UTF_8);
-            zos.write(data, 0, data.length);
-        } else {
-            FileInputStream fis = new FileInputStream(file);
-            byte[] buffer = new byte[8192];
-            int len;
-            while ((len = fis.read(buffer)) != -1) {
-                zos.write(buffer, 0, len);
-            }
-            fis.close();
-        }
-
-        zos.closeEntry();
-    }
 }
-/* MainActivity.java 文件尾部源码片段 */
