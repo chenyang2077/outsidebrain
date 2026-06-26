@@ -3650,31 +3650,52 @@ public class MainActivity extends AppCompatActivity {
             return t1.compareTo(t2);
         });
         int sequenceNumber = 0;
+
+        // 正则复用你已有的规则：17位时间戳 / 6位随机串
+        java.util.regex.Pattern PATTERN_TS = java.util.regex.Pattern.compile("_\\d{17}$");
+        java.util.regex.Pattern PATTERN_RND = java.util.regex.Pattern.compile("_[A-Za-z0-9]{6}$");
+
         for (File file : allFiles) {
             String relPath = getRelativePath(sourceFolder, file);
             File targetFile = new File(targetRoot, relPath);
             File parentDir = targetFile.getParentFile();
             if (!parentDir.exists()) parentDir.mkdirs();
-
             boolean isTxt = file.getName().toLowerCase().endsWith(".txt");
             boolean isImg = isImageFile(file);
 
             if (isTxt || isImg) {
                 String originalName = file.getName();
-                String cleanName = removeTimestamp(originalName);
-                String originalExt = getOriginalExtension(originalName);
-                int lastDotIndex = cleanName.lastIndexOf(".");
-                if (lastDotIndex > 0) {
-                    cleanName = cleanName.substring(0, lastDotIndex);
+                int lastDot = originalName.lastIndexOf(".");
+                String nameNoExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
+                String originalExt = lastDot > 0 ? originalName.substring(lastDot) : "";
+
+                String cleanBase = nameNoExt;
+                java.util.regex.Matcher matcher;
+
+                // 第一步：循环删掉末尾所有 _17位时间戳
+                while (true) {
+                    matcher = PATTERN_TS.matcher(cleanBase);
+                    if (matcher.find()) {
+                        cleanBase = matcher.replaceFirst("");
+                    } else {
+                        break;
+                    }
                 }
-                cleanName = getSafeCoreName(cleanName);
+
+                // 第二步：如果末尾是 _6位随机字符，也删掉
+                matcher = PATTERN_RND.matcher(cleanBase);
+                if (matcher.find()) {
+                    cleanBase = matcher.replaceFirst("");
+                }
+
+                cleanBase = getSafeCoreName(cleanBase);
                 String randomStr = generateRandomString();
                 String baseTimestamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                 String seqStr = String.format(Locale.getDefault(), "%05d", sequenceNumber++);
-                String finalTimestamp = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
-                String newName = cleanName + "_" + randomStr + "_" + finalTimestamp + originalExt;
+                String finalTs = baseTimestamp.substring(0, baseTimestamp.length() - 5) + seqStr;
 
-                File newTargetFile = new File(parentDir, newName);
+                String finalName = cleanBase + "_" + randomStr + "_" + finalTs + originalExt;
+                File newTargetFile = new File(parentDir, finalName);
                 copyFileContent(file, newTargetFile);
             } else {
                 copyFileContent(file, targetFile);
