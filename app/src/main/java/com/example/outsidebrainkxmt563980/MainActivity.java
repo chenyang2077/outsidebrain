@@ -125,14 +125,20 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInTransferStation = false;
     private File recycleBinDirectory;
     private boolean isInRecycleBin = false;
+
     public static final SimpleDateFormat MILLIS_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
-    public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
+
+    public static final Pattern FILE_MILLIS_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}$");
+    public static final Pattern TARGET_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}$");
     public static final Pattern INCREMENT_TIMESTAMP_PATTERN = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})(_\\d{17})+$");
     public static final Pattern OLD_TIMESTAMP_PATTERN = Pattern.compile("_(\\d{14}|\\d{17})$");
     private static final Pattern SUFFIX_PATTERN = Pattern.compile("^(.*?)\\((\\d+)\\)$");
-    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}");
-    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+");
+    private static final Pattern SINGLE_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}$");
+    private static final Pattern MULTI_TIMESTAMP_PATTERN = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}(_\\d{17})+$");
+    // 匹配结尾：_RND_TS_TS
+    private static final Pattern PATTERN_DOUBLE_SUFFIX = Pattern.compile("(_[A-Za-z0-9]{6}_\\d{17})_\\d{17}$");
+    // 匹配结尾：_RND_TS
+    private static final Pattern PATTERN_SINGLE_SUFFIX = Pattern.compile("_[A-Za-z0-9]{6}_\\d{17}$");
     private View pasteButton;
     private Toast mPathToast;
     private View mTouchOverlay;
@@ -2594,32 +2600,8 @@ public class MainActivity extends AppCompatActivity {
         hidePasteButton();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("解压文件")
-                .setMessage("请选择解压方式：「带路径解压」保留原有层级；「普通解压」清理TXT末尾路径标记")
-                .setPositiveButton("普通解压", (dialog, which) -> {
-                    ProgressDialog extractDialog = new ProgressDialog(this);
-                    extractDialog.setMessage("正在解压处理中，请稍候...");
-                    extractDialog.setCanceledOnTouchOutside(false);
-                    extractDialog.setCancelable(false);
-                    extractDialog.show();
-                    new Thread(() -> {
-                        boolean unzipOk = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
-                        if (!unzipOk) {
-                            runOnUiThread(() -> {
-                                if (extractDialog.isShowing()) extractDialog.dismiss();
-                                Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
-                            });
-                            return;
-                        }
-                        // 只处理txt，非txt跳过
-                        processTxtRemoveLastBraceTag(currentDirectory);
-                        runOnUiThread(() -> {
-                            if (extractDialog.isShowing()) extractDialog.dismiss();
-                            Toast.makeText(this, "解压并处理完成", Toast.LENGTH_SHORT).show();
-                            loadFileList();
-                        });
-                    }).start();
-                })
-                .setNeutralButton("带路径解压", (dialog, which) -> {
+                .setMessage("确定在此目录解压该压缩包？解压将保留原有目录层级结构")
+                .setPositiveButton("确认", (dialog, which) -> {
                     ProgressDialog extractDialog = new ProgressDialog(this);
                     extractDialog.setMessage("正在解压中，请稍候...");
                     extractDialog.setCanceledOnTouchOutside(false);
@@ -2642,27 +2624,6 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    /**
-     * 递归遍历目录，仅对txt删除末尾最后一行包含【】的路径标记，其他文件不处理
-     */
-    private void processTxtRemoveLastBraceTag(File rootDir) {
-        if (rootDir == null || !rootDir.exists()) return;
-        File[] list = rootDir.listFiles();
-        if (list == null) return;
-
-        for (File item : list) {
-            if (item.isDirectory()) {
-                processTxtRemoveLastBraceTag(item);
-                continue;
-            }
-            String fileName = item.getName().toLowerCase();
-            if (fileName.endsWith(".txt")) {
-                removeLastBraceTagInTxt(item);
-            }
-            // 非txt文件：直接跳过，不做任何改名操作
-        }
     }
 
     /**
@@ -3895,27 +3856,23 @@ public class MainActivity extends AppCompatActivity {
                         int lastDot = originalName.lastIndexOf(".");
                         String nameWithoutExt = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
                         String originalExt = lastDot > 0 ? originalName.substring(lastDot) : "";
-                        String cleanCoreName = removeTimestamp(nameWithoutExt);
-                        cleanCoreName = getSafeCoreName(cleanCoreName);
-                        String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanCoreName);
+
                         String randomStr = generateRandomString();
-                        String timeStamp = new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS", java.util.Locale.getDefault()).format(new java.util.Date());
+                        String timeStamp = MILLIS_TIMESTAMP_FORMAT.format(new Date());
                         String finalName;
+
                         if (isCutOperation) {
-                            String[] parts = nameWithoutExt.split("_");
-                            if (parts.length <= 2) {
-                                finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
-                            } else if (parts.length == 3) {
-                                String base = nameWithoutExt;
-                                finalName = finalCoreName + "_" + base.split("_")[1] + "_" + base.split("_")[2] + "_" + timeStamp + originalExt;
-                            } else {
-                                int lastUnder = nameWithoutExt.lastIndexOf('_');
-                                String prefix = nameWithoutExt.substring(0, lastUnder);
-                                finalName = finalCoreName + "_" + prefix.split("_", 2)[1] + "_" + timeStamp + originalExt;
-                            }
+                            // 剪切：按你三段自定义后缀规则处理
+                            String newNameNoExt = getCutNewNameNoExt(nameWithoutExt, randomStr, timeStamp);
+                            finalName = newNameNoExt + originalExt;
                         } else {
+                            // 复制：原有逻辑不变，清空所有后缀重生成
+                            String cleanCoreName = removeTimestamp(nameWithoutExt);
+                            cleanCoreName = getSafeCoreName(cleanCoreName);
+                            String finalCoreName = getNonConflictCoreNameInFolder(currentDirectory, cleanCoreName);
                             finalName = finalCoreName + "_" + randomStr + "_" + timeStamp + originalExt;
                         }
+
                         File targetFile = new File(currentDirectory, finalName);
                         if (isCutOperation) {
                             success = sourceFile.renameTo(targetFile);
@@ -3928,7 +3885,7 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             success = copyFileContent(sourceFile, targetFile);
                         }
-                    } else {
+                    }else {
                         File targetFile = new File(currentDirectory, copiedFile.getName());
                         File uniqueTargetFile = getNonConflictFile(targetFile);
                         if (isCutOperation) {
@@ -3940,7 +3897,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             }
                         } else {
-                            success = copyFileContent(copiedFile, uniqueTargetFile);
+                            success = copyFileContent(sourceFile, targetFile);
                         }
                     }
                 }
@@ -3962,6 +3919,31 @@ public class MainActivity extends AppCompatActivity {
                 hidePasteButton();
             });
         }).start();
+    }
+    /**
+     * 剪切模式专属命名规则
+     * @param rawNoExt 不带扩展名的原始文件名
+     * @param newRandom 本次新生成6位随机串
+     * @param newTs 本次新17位时间戳
+     * @return 处理完成不带后缀的名字
+     */
+    private String getCutNewNameNoExt(String rawNoExt, String newRandom, String newTs) {
+        // 场景3：末尾 _RND_TS_旧TS → 替换最后一段时间戳
+        Matcher mDouble = PATTERN_DOUBLE_SUFFIX.matcher(rawNoExt);
+        if (mDouble.find()) {
+            String prefixKeep = mDouble.group(1);
+            return rawNoExt.substring(0, mDouble.start()) + prefixKeep + "_" + newTs;
+        }
+
+        // 场景2：末尾正好 _RND_TS → 追加 _新TS
+        Matcher mSingle = PATTERN_SINGLE_SUFFIX.matcher(rawNoExt);
+        if (mSingle.find()) {
+            return rawNoExt + "_" + newTs;
+        }
+
+        // 场景1：无标准后缀 → 清除历史所有时间戳后缀，拼接全新 _随机_时间戳
+        String baseClean = removeTimestamp(rawNoExt);
+        return baseClean + "_" + newRandom + "_" + newTs;
     }
     /**
      * 移动文件夹并同步处理TXT/图片文件，自动重命名、处理冲突、递归移动
@@ -4065,14 +4047,16 @@ public class MainActivity extends AppCompatActivity {
      * 清理文件名中的各类时间戳，返回纯文本标题
      * @return String 清理后的文件名
      */
-    public  String cleanTitle(String input) {
+    public String cleanTitle(String input) {
         if (TextUtils.isEmpty(input)) {
             return "";
         }
-        String cleaned = MULTI_TIMESTAMP_PATTERN.matcher(input).replaceAll("");
+        String cleaned = input;
+        cleaned = INCREMENT_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("$1");
+        cleaned = MULTI_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
         cleaned = SINGLE_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
-        if (MainActivity.OLD_TIMESTAMP_PATTERN != null) {
-            cleaned = MainActivity.OLD_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
+        if (OLD_TIMESTAMP_PATTERN != null) {
+            cleaned = OLD_TIMESTAMP_PATTERN.matcher(cleaned).replaceAll("");
         }
         return cleaned.trim();
     }
