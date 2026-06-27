@@ -101,6 +101,9 @@ import android.content.Context;
 import androidx.appcompat.app.AppCompatDelegate;
 import android.icu.text.Transliterator;
 import java.util.HashMap;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Spanned;
 /**
  * 主界面：实现文件管理器核心功能，支持文件/文件夹管理、TXT文件智能命名、ZIP压缩解压、文件分享、回收站、图片预览、搜索及状态恢复
  */
@@ -177,7 +180,20 @@ public class MainActivity extends AppCompatActivity {
         clearSearchKeyword();
         recoverFromCrash();
         isInSearchMode = false;
+
+        // 1、先初始化回收站
         initRecycleBin();
+        // 2、立刻初始化中转站目录（必须在 restoreLastState 前面）
+        transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
+        if (!transferStationDirectory.exists()) {
+            transferStationDirectory.mkdirs();
+        }
+        // 3、初始化主页根目录 rootDirectory
+        initExternalBrain();
+
+        // 4、所有目录全部初始化完毕，再执行状态恢复
+        restoreLastState();
+
         zipContainer = findViewById(R.id.zip_container);
         btnZip = getLayoutInflater().inflate(R.layout.btn_zip, zipContainer, false);
         zipContainer.addView(btnZip);
@@ -201,10 +217,7 @@ public class MainActivity extends AppCompatActivity {
                     .setNegativeButton("取消", (dialog, which) -> dialog.dismiss())
                     .show();
         });
-        transferStationDirectory = new File(Environment.getExternalStorageDirectory(), "中转站");
-        if (!transferStationDirectory.exists()) {
-            transferStationDirectory.mkdirs();
-        }
+
         String openFolder = getIntent().getStringExtra("open_folder");
         if (openFolder != null) {
             File dir = new File(openFolder);
@@ -814,10 +827,38 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (isInTransferStation) {
-            etSearch.setHint("中转站");
+            if (currentDirectory == null) return;
+            String fullAbs = currentDirectory.getAbsolutePath();
+            String stationAbs = transferStationDirectory.getAbsolutePath();
+            String relPath = fullAbs.substring(stationAbs.length());
+            String displayPath;
+            if (relPath.isEmpty() || relPath.equals(File.separator)) {
+                displayPath = "中转站";
+            } else {
+                displayPath = "中转站" + relPath;
+            }
+            etSearch.setHint(displayPath);
             return;
         }
-        if (currentDirectory == null) return;
+        if (currentDirectory == null || rootDirectory == null) return;
+        String currAbs = currentDirectory.getAbsolutePath();
+        String rootAbs = rootDirectory.getAbsolutePath();
+        if (currAbs.equals(rootAbs)) {
+            List<Integer> levelPath = getLevelPath(currentDirectory);
+            StringBuilder levelStr = new StringBuilder();
+            if (!levelPath.isEmpty()) {
+                levelStr.append("Lv-");
+                for (int i = 0; i < levelPath.size(); i++) {
+                    levelStr.append(levelPath.get(i));
+                    if (i < levelPath.size() - 1) {
+                        levelStr.append("-");
+                    }
+                }
+            }
+            etSearch.setHint(levelStr.toString());
+            return;
+        }
+        String relativePart = currAbs.substring(rootAbs.length());
         List<Integer> levelPath = getLevelPath(currentDirectory);
         StringBuilder levelStr = new StringBuilder();
         if (!levelPath.isEmpty()) {
@@ -829,7 +870,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-        etSearch.setHint(levelStr.toString());
+        String hintText = levelStr + "。" + relativePart;
+        etSearch.setHint(hintText);
     }
     /**
      * 提取文件名开头的多级数字序号（支持任意层级小数点）
@@ -2139,7 +2181,6 @@ public class MainActivity extends AppCompatActivity {
         }
         loadFileList();
         updateLevelHint();
-        restoreLastState();
     }
     /**
      * 创建测试文件：
@@ -2175,54 +2216,94 @@ public class MainActivity extends AppCompatActivity {
      * 2. 恢复回收站/图片/编辑页面状态，否则返回根目录。
      */
     private void restoreLastState() {
-        String lastPageType = PreferenceUtils.getLastPageType(this);
-        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
-        if (lastFolderPath != null) {
-            File lastFolder = new File(lastFolderPath);
-            if (!lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
-                navigateToRootDirectory();
-                return;
-            }
-        }
-        if ("recycle_bin".equals(lastPageType)) {
+        // 先防护关键目录未初始化空指针
+        if (rootDirectory == null || transferStationDirectory == null) {
             navigateToRootDirectory();
             return;
         }
+
+        String lastPageType = PreferenceUtils.getLastPageType(this);
+        String lastFolderPath = PreferenceUtils.getLastFolderPath(this);
+        boolean isLastPathTransferStation = false;
+        File lastFolder = null;
+
+        if (lastFolderPath != null && !lastFolderPath.isEmpty()) {
+            lastFolder = new File(lastFolderPath);
+            String lastAbs = lastFolder.getAbsolutePath();
+            String transferAbs = transferStationDirectory.getAbsolutePath();
+
+            if (lastAbs.startsWith(transferAbs)) {
+                isLastPathTransferStation = true;
+            }
+
+            if (!isLastPathTransferStation) {
+                String rootAbs = rootDirectory.getAbsolutePath();
+                if (!lastAbs.startsWith(rootAbs)) {
+                    navigateToRootDirectory();
+                    return;
+                }
+            }
+        }
+
+        isInTransferStation = isLastPathTransferStation;
+        boolean isLastRecycle = "recycle_bin".equals(lastPageType);
+        isInRecycleBin = isLastRecycle;
+
+        if (isLastRecycle) {
+            navigateToRootDirectory();
+            return;
+        }
+
+        // 恢复图片页面
         if ("image".equals(lastPageType)) {
             String lastImagePath = PreferenceUtils.getLastViewedImage(this);
-            if (lastImagePath != null) {
+            if (lastImagePath != null && !lastImagePath.isEmpty()) {
                 File imageFile = new File(lastImagePath);
-                if (imageFile.exists() && isImageFile(imageFile) &&
-                        imageFile.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
-                    currentDirectory = imageFile.getParentFile();
-                    loadFileList();
-                    openImageFile(imageFile);
-                    return;
+                if (imageFile.exists() && isImageFile(imageFile)) {
+                    String imgAbs = imageFile.getAbsolutePath();
+                    String transferAbs = transferStationDirectory.getAbsolutePath();
+                    String rootAbs = rootDirectory.getAbsolutePath();
+                    boolean validScope = imgAbs.startsWith(rootAbs) || imgAbs.startsWith(transferAbs);
+                    if (validScope) {
+                        currentDirectory = imageFile.getParentFile();
+                        loadFileList();
+                        // 延后打开图片，避免列表未加载完成异常
+                        new Handler(getMainLooper()).post(() -> openImageFile(imageFile));
+                        return;
+                    }
                 }
             }
         }
+
+        // 恢复文本编辑页
         if ("editor".equals(lastPageType)) {
             String lastEditedFile = PreferenceUtils.getLastEditedFile(this);
-            if (lastEditedFile != null) {
+            if (lastEditedFile != null && !lastEditedFile.isEmpty()) {
                 File file = new File(lastEditedFile);
-                if (file.exists() && file.getName().toLowerCase().endsWith(".txt") &&
-                        file.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
-                    currentDirectory = file.getParentFile();
-                    loadFileList();
-                    openFileEditor(file);
-                    return;
+                if (file.exists() && file.getName().toLowerCase().endsWith(".txt")) {
+                    String fileAbs = file.getAbsolutePath();
+                    String transferAbs = transferStationDirectory.getAbsolutePath();
+                    String rootAbs = rootDirectory.getAbsolutePath();
+                    boolean validScope = fileAbs.startsWith(rootAbs) || fileAbs.startsWith(transferAbs);
+                    if (validScope) {
+                        currentDirectory = file.getParentFile();
+                        loadFileList();
+                        new Handler(getMainLooper()).post(() -> openFileEditor(file));
+                        return;
+                    }
                 }
             }
         }
-        if (lastFolderPath != null) {
-            File lastFolder = new File(lastFolderPath);
-            if (lastFolder.exists() && lastFolder.isDirectory() &&
-                    lastFolder.getAbsolutePath().startsWith(rootDirectory.getAbsolutePath())) {
+
+        if (lastFolder != null) {
+            if (lastFolder.exists() && lastFolder.isDirectory()) {
                 currentDirectory = lastFolder;
                 loadFileList();
+                updateLevelHint();
                 return;
             }
         }
+
         navigateToRootDirectory();
     }
     /**

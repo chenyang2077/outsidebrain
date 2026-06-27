@@ -53,11 +53,13 @@
                 android:layout_height="match_parent"
                 android:paddingHorizontal="12dp"
                 android:background="@null"
-                android:singleLine="true"
+                android:singleLine="false"
+                android:maxLines="2"
+                android:ellipsize="end"
                 android:textSize="16sp"
                 android:hint="Lv-1"
                 android:textColor="#FFFFFF"
-                android:inputType="text"
+                android:inputType="textMultiLine"
                 android:imeOptions="actionSearch"/>
 
             <!-- 你原来的粘贴按钮占位（完全没动！） -->
