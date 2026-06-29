@@ -3717,8 +3717,21 @@ public class MainActivity extends AppCompatActivity {
         if (!targetRoot.exists() && !targetRoot.mkdirs()) {
             return false;
         }
+
+        List<File> allDirs = new ArrayList<>();
         List<File> allFiles = new ArrayList<>();
-        collectAllFiles(sourceFolder, allFiles);
+        collectAllFiles(sourceFolder, allDirs, allFiles);
+
+        // 第一步：批量创建所有子文件夹，空文件夹自动保留
+        for (File srcDir : allDirs) {
+            String relPath = getRelativePath(sourceFolder, srcDir);
+            File destDir = new File(targetRoot, relPath);
+            if (!destDir.exists()) {
+                destDir.mkdirs();
+            }
+        }
+
+        // 文件排序不变
         Collections.sort(allFiles, (f1, f2) -> {
             String n1 = f1.getName();
             String n2 = f2.getName();
@@ -3732,7 +3745,6 @@ public class MainActivity extends AppCompatActivity {
         });
         int sequenceNumber = 0;
 
-        // 正则复用你已有的规则：17位时间戳 / 6位随机串
         java.util.regex.Pattern PATTERN_TS = java.util.regex.Pattern.compile("_\\d{17}$");
         java.util.regex.Pattern PATTERN_RND = java.util.regex.Pattern.compile("_[A-Za-z0-9]{6}$");
 
@@ -3753,7 +3765,6 @@ public class MainActivity extends AppCompatActivity {
                 String cleanBase = nameNoExt;
                 java.util.regex.Matcher matcher;
 
-                // 第一步：循环删掉末尾所有 _17位时间戳
                 while (true) {
                     matcher = PATTERN_TS.matcher(cleanBase);
                     if (matcher.find()) {
@@ -3763,7 +3774,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
 
-                // 第二步：如果末尾是 _6位随机字符，也删掉
                 matcher = PATTERN_RND.matcher(cleanBase);
                 if (matcher.find()) {
                     cleanBase = matcher.replaceFirst("");
@@ -3787,14 +3797,15 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 工具：递归收集所有文件
      */
-    private void collectAllFiles(File dir, List<File> list) {
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                collectAllFiles(f, list);
+    private void collectAllFiles(File dir, List<File> dirList, List<File> fileList) {
+        File[] items = dir.listFiles();
+        if (items == null) return;
+        for (File item : items) {
+            if (item.isDirectory()) {
+                dirList.add(item);
+                collectAllFiles(item, dirList, fileList);
             } else {
-                list.add(f);
+                fileList.add(item);
             }
         }
     }
@@ -4060,8 +4071,20 @@ public class MainActivity extends AppCompatActivity {
                 targetRoot = new File(targetParentDir, uniqueName);
             }
             if (!targetRoot.exists()) targetRoot.mkdirs();
+
+            List<File> allDirs = new ArrayList<>();
             List<File> allFiles = new ArrayList<>();
-            collectAllFiles(sourceDir, allFiles);
+            collectAllFiles(sourceDir, allDirs, allFiles);
+
+            // 先创建全部子目录，空文件夹保留
+            for (File srcDir : allDirs) {
+                String relPath = getRelativePath(sourceDir, srcDir);
+                File destDir = new File(targetRoot, relPath);
+                if (!destDir.exists()) {
+                    destDir.mkdirs();
+                }
+            }
+
             Collections.sort(allFiles, (f1, f2) -> {
                 String n1 = f1.getName();
                 String n2 = f2.getName();
