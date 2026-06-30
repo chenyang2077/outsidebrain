@@ -176,6 +176,32 @@ public class MainActivity extends AppCompatActivity {
         fileAdapter = new FileAdapter();
         fileRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileRecyclerView.setAdapter(fileAdapter);
+        fileRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            private final long MIN_REFRESH_DELAY = 1000;
+            private long lastRefreshTs = 0;
+
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                LinearLayoutManager lm = (LinearLayoutManager) recyclerView.getLayoutManager();
+                if (lm == null) return;
+                // 判断：列表已经滑到最顶部（不能继续向上滚动） + 手指抬起
+                boolean isAtTop = !recyclerView.canScrollVertically(-1);
+                long now = System.currentTimeMillis();
+                if (isAtTop && newState == RecyclerView.SCROLL_STATE_IDLE
+                        && now - lastRefreshTs > MIN_REFRESH_DELAY) {
+                    lastRefreshTs = now;
+                    if (isInSearchMode) {
+                        // 搜索模式：重新搜索
+                        performSearch();
+                    } else {
+                        // 普通模式：刷新当前目录
+                        loadFileList();
+                        updateLevelHint();
+                    }
+                }
+            }
+        });
         checkPermission();
         clearSearchKeyword();
         recoverFromCrash();
