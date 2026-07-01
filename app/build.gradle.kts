@@ -32,18 +32,17 @@ android {
 }
 
 dependencies {
-    // 基础依赖（保留原有）
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
 
-    // 测试依赖（保留原有）
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 
-    // Glide依赖（统一版本+Kotlin DSL正确写法）
+    implementation("org.apache.commons:commons-compress:1.26.1")
+
     implementation("com.github.bumptech.glide:glide:4.16.0")
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
     implementation("com.belerweb:pinyin4j:2.5.1")
