@@ -303,6 +303,31 @@ public class MainActivity extends AppCompatActivity {
             mTouchOverlay.setVisibility(View.GONE);
             return false;
         });
+        ZipUnzipUtil.setEncodeWarningCallback((zipPath, garbledTxtPaths) -> {
+            runOnUiThread(() -> {
+                StringBuilder msgSb = new StringBuilder();
+                msgSb.append("检测到当前解压文件中疑似包含 GBK 编码，建议在电脑端将所有TXT文件转码为UTF-8重新压缩，当下解压有乱码，此时删除压缩包数据将丢失。\n\n");
+                msgSb.append("异常TXT文件：\n");
+
+                int showMax = 3;
+                int total = garbledTxtPaths.size();
+                for (int i = 0; i < Math.min(total, showMax); i++) {
+                    String path = garbledTxtPaths.get(i);
+                    // 可选：只显示文件名，不显示完整超长路径
+                    String fileName = new File(path).getName();
+                    msgSb.append("• ").append(fileName).append("\n");
+                }
+                if (total > showMax) {
+                    msgSb.append("……（共").append(total).append("个异常文件）");
+                }
+
+                new AlertDialog.Builder(MainActivity.this)
+                        .setMessage(msgSb.toString())
+                        .setPositiveButton("确定", (dialog, which) -> dialog.dismiss())
+                        .setCancelable(false)
+                        .show();
+            });
+        });
     }
 
     /**
@@ -2714,15 +2739,40 @@ public class MainActivity extends AppCompatActivity {
                     extractDialog.setCanceledOnTouchOutside(false);
                     extractDialog.setCancelable(false);
                     extractDialog.show();
+
+                    // 调用工具类公开方法，一键获取带重名后缀的解压文件夹名，外部不用操作RootDirInfo
+                    String folderName = ZipUnzipUtil.getUnzipRootFolderName(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
+                    File unzipScanFolder = new File(currentDirectory, folderName);
+
                     new Thread(() -> {
-                        boolean result = ZipUnzipUtil.unzipToCurrentDir(zipFile.getAbsolutePath(), currentDirectory.getAbsolutePath());
+                        // 执行原有解压逻辑
+                        boolean unzipResult = ZipUnzipUtil.unzipToCurrentDir(
+                                zipFile.getAbsolutePath(),
+                                currentDirectory.getAbsolutePath()
+                        );
+                        boolean hasGarbledTxt = false;
+                        // 存放所有乱码文件路径
+                        java.util.List<String> garbledList = new java.util.ArrayList<>();
+                        if (unzipResult) {
+                            // 收集乱码文件
+                            ZipUnzipUtil.collectAllGarbledTxtPath(unzipScanFolder, garbledList);
+                            hasGarbledTxt = !garbledList.isEmpty();
+                        }
+
+                        boolean finalHasGarbled = hasGarbledTxt;
+                        String zipPathArg = zipFile.getAbsolutePath();
+                        java.util.List<String> finalGarbledList = garbledList;
                         runOnUiThread(() -> {
                             if (extractDialog.isShowing()) {
                                 extractDialog.dismiss();
                             }
-                            if (result) {
+                            if (unzipResult) {
                                 Toast.makeText(this, "解压成功", Toast.LENGTH_SHORT).show();
                                 loadFileList();
+                                // 检测乱码触发弹窗，传入两个参数
+                                if (finalHasGarbled && ZipUnzipUtil.mWarningCallback != null) {
+                                    ZipUnzipUtil.mWarningCallback.showGbkWarning(zipPathArg, finalGarbledList);
+                                }
                             } else {
                                 Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
                             }

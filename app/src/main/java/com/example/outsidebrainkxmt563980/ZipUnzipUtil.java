@@ -16,7 +16,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -28,6 +27,148 @@ import java.util.regex.Pattern;
 public class ZipUnzipUtil {
     private static final String TAG = "ZipUnzipUtil";
     private static final String ROOT_FOLDER_NAME = "主页根目录";
+    private static final int SAMPLE_SIZE = 16 * 1024; // 采样前16KB
+
+    // ===================== 新增乱码弹窗回调 =====================
+    public interface EncodeWarningCallback {
+        // 携带乱码txt文件路径列表
+        void showGbkWarning(String zipPath, List<String> garbledTxtPaths);
+    }
+    static EncodeWarningCallback mWarningCallback;
+
+    public static void setEncodeWarningCallback(EncodeWarningCallback callback) {
+        mWarningCallback = callback;
+    }
+
+    /**
+     * 递归扫描，收集所有疑似GBK乱码TXT绝对路径
+     * @param rootDir 扫描根目录
+     * @param outList 输出乱码文件列表
+     */
+    public static void collectAllGarbledTxtPath(File rootDir, List<String> outList) {
+        if (rootDir == null || !rootDir.exists() || !rootDir.isDirectory()) {
+            return;
+        }
+        File[] files = rootDir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                collectAllGarbledTxtPath(file, outList);
+            } else {
+                String name = file.getName().toLowerCase();
+                if (name.endsWith(".txt")) {
+                    if (isTextFileGbkEncoding(file)) {
+                        outList.add(file.getAbsolutePath());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 递归扫描指定文件夹，存在GBK编码TXT返回true
+     */
+    public static boolean scanAllTxtHasGarbledSymbol(File rootDir) {
+        List<String> tempList = new ArrayList<>();
+        collectAllGarbledTxtPath(rootDir, tempList);
+        return !tempList.isEmpty();
+    }
+
+    /**
+     * 核心新版编码检测：判断文本文件是否本质为GBK编码（UTF8查看乱码）
+     * 原理：校验UTF-8合法多字节结构 + GBK编码字节区间统计，概率判定
+     */
+    private static boolean isTextFileGbkEncoding(File txtFile) {
+        byte[] sample;
+        try (FileInputStream fis = new FileInputStream(txtFile)) {
+            byte[] buf = new byte[SAMPLE_SIZE];
+            int read = fis.read(buf);
+            if (read <= 0) return false;
+            sample = new byte[read];
+            System.arraycopy(buf, 0, sample, 0, read);
+        } catch (Exception e) {
+            Log.e(TAG, "读取文件采样失败", e);
+            return false;
+        }
+
+        // 1. 先判断是否符合UTF-8合法字节规则
+        boolean isLikelyUtf8 = isValidUtf8Bytes(sample);
+        if (isLikelyUtf8) {
+            return false;
+        }
+
+        // 2. UTF8结构不合法，再统计是否匹配GBK字节区间特征
+        int gbkMatchCount = countGbkCodePoint(sample);
+        float ratio = (float) gbkMatchCount / sample.length;
+        // 匹配GBK字节占比超过阈值判定为GBK文件
+        return ratio > 0.15f;
+    }
+
+    /**
+     * 判断字节数组是否是合法 UTF-8 编码序列
+     */
+    private static boolean isValidUtf8Bytes(byte[] data) {
+        int i = 0;
+        int len = data.length;
+        while (i < len) {
+            int b = data[i] & 0xFF;
+            if ((b & 0x80) == 0) {
+                // 单字节ASCII
+                i++;
+            } else if ((b & 0xE0) == 0xC0) {
+                // 2字节
+                if (i + 1 >= len) return false;
+                int b2 = data[i+1] & 0xFF;
+                if ((b2 & 0xC0) != 0x80) return false;
+                i += 2;
+            } else if ((b & 0xF0) == 0xE0) {
+                // 3字节（中文常用）
+                if (i + 2 >= len) return false;
+                int b2 = data[i+1] & 0xFF;
+                int b3 = data[i+2] & 0xFF;
+                if ((b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) return false;
+                i += 3;
+            } else if ((b & 0xF8) == 0xF0) {
+                // 4字节
+                if (i + 3 >= len) return false;
+                int b2 = data[i+1] & 0xFF;
+                int b3 = data[i+2] & 0xFF;
+                int b4 = data[i+3] & 0xFF;
+                if ((b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80) return false;
+                i += 4;
+            } else {
+                // 非法UTF8起始字节
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 统计符合GBK编码区间的字节对数量
+     * GBK首字节：0x81~0xFE，第二个字节：0x40~0x7E、0x80~0xFE
+     */
+    private static int countGbkCodePoint(byte[] data) {
+        int count = 0;
+        int len = data.length;
+        for (int i = 0; i < len - 1; i++) {
+            int b1 = data[i] & 0xFF;
+            int b2 = data[i+1] & 0xFF;
+            if (b1 >= 0x81 && b1 <= 0xFE) {
+                if ((b2 >= 0x40 && b2 <= 0x7E) || (b2 >= 0x80 && b2 <= 0xFE)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    // ============ 原有废弃乱码检测方法 ============
+    /*
+    private static boolean isFileRawGbkCode(File txtFile) { ... }
+    private static boolean isTxtContainReplacementChar(File txtFile) { ... }
+    */
 
     private static SimpleDateFormat getTsFormatter() {
         return new SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault());
@@ -131,6 +272,16 @@ public class ZipUnzipUtil {
         }
 
         Log.d(TAG, "解压成功，目标路径: " + finalTargetPath);
+
+        // 解压完成扫描乱码文件，回调传入文件列表
+        if (mWarningCallback != null) {
+            List<String> garbledList = new ArrayList<>();
+            collectAllGarbledTxtPath(rootTargetDir, garbledList);
+            if (!garbledList.isEmpty()) {
+                mWarningCallback.showGbkWarning(zipFilePath, garbledList);
+            }
+        }
+
         return true;
     }
 
@@ -399,5 +550,22 @@ public class ZipUnzipUtil {
             this.hasSingleRootFolder = hasSingleRootFolder;
             this.rootFolderName = rootFolderName;
         }
+    }
+
+    public static String getUnzipRootFolderName(String zipFilePath, String targetDir) {
+        File zipFile = new File(zipFilePath);
+        List<ZipArchiveEntry> tempEntries = new ArrayList<>();
+        try (FileInputStream fis = new FileInputStream(zipFile);
+             ZipArchiveInputStream zin = new ZipArchiveInputStream(fis, StandardCharsets.UTF_8.name())) {
+            ZipArchiveEntry entry;
+            while ((entry = zin.getNextZipEntry()) != null) {
+                tempEntries.add(entry);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return zipFile.getName().replace(".zip","");
+        }
+        RootDirInfo info = analyzeRootDirectory(tempEntries, zipFile.getName());
+        return getNonConflictFolderName(targetDir, info.rootFolderName);
     }
 }
