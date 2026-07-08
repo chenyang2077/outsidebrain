@@ -1512,7 +1512,7 @@ public class MainActivity extends AppCompatActivity {
                 res.append("7. 按顺序拼接所有文件哈希值，计算最终总SHA‑256哈希值；\n");
                 res.append("8. 高精度时间戳用于防篡改校验。\n");
                 res.append("=============================\n");
-                res.append("本软件由开发者陈阳2077开发维护，软件名“流动文档”\n");
+                res.append("本软件名“流动文档”由开发者“陈阳2077”开发维护。\n");
                 res.append("=============================\n");
                 return res.toString();
             }
