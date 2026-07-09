@@ -15,15 +15,24 @@
         android:theme="@style/Theme.OutsideBrain"
         android:requestLegacyExternalStorage="true"
         tools:targetApi="30">
+
+        <!-- 新增启动页Splash，桌面入口 -->
         <activity
-            android:name="com.example.outsidebrainkxmt563980.MainActivity"
-            android:launchMode="singleTop"
+            android:name="com.example.outsidebrainkxmt563980.SplashActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 主界面，移除启动过滤器，exported改为false -->
+        <activity
+            android:name="com.example.outsidebrainkxmt563980.MainActivity"
+            android:launchMode="singleTop"
+            android:exported="false">
+        </activity>
+
         <activity
             android:name="com.example.outsidebrainkxmt563980.ImageViewerActivity"
             android:exported="false"
