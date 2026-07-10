@@ -22,8 +22,10 @@ public class SplashActivity extends AppCompatActivity {
 
         SharedPreferences sp = getSharedPreferences(SP_NAME, MODE_PRIVATE);
         boolean isAgree = sp.getBoolean(KEY_AGREE, false);
+        // 判断是否从设置菜单强制打开隐私
+        boolean forceShow = getIntent().getBooleanExtra("FORCE_SHOW_PRIVACY", false);
 
-        if (!isAgree) {
+        if (!isAgree || forceShow) {
             showPrivacyDialog(sp);
         } else {
             jumpMain();

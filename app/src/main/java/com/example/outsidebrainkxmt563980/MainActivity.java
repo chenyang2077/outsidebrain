@@ -1359,20 +1359,25 @@ public class MainActivity extends AppCompatActivity {
             List<String> menuList = new ArrayList<>();
             if (isInRecycleBin) {
                 menuList.add("返回主页");
+                menuList.add("设置");
                 menuList.add("清空回收站");
                 menuList.add("中转站");
             } else if (isInTransferStation) {
                 menuList.add("返回主页");
+                menuList.add("设置");
                 menuList.add("新建文件夹");
                 menuList.add("压缩主页文件");
                 menuList.add("定稿");
                 menuList.add("回收站");
+
             } else {
                 menuList.add("返回主页");
+                menuList.add("设置");
                 menuList.add("新建文件夹");
                 menuList.add("定稿");
                 menuList.add("回收站");
                 menuList.add("中转站");
+
             }
             ListView listView = new ListView(this);
             listView.setBackgroundResource(R.drawable.popup_menu_bg);
@@ -1412,27 +1417,37 @@ public class MainActivity extends AppCompatActivity {
                     case "返回主页":
                         if (isInRecycleBin) exitRecycleBin();
                         else navigateToRootDirectory();
+                        popupWindow.dismiss();
                         break;
                     case "新建文件夹":
                         showFolderCreateDialog();
+                        popupWindow.dismiss();
                         break;
                     case "压缩主页文件":
                         compressRootFolder();
+                        popupWindow.dismiss();
                         break;
                     case "回收站":
                         openRecycleBin();
+                        popupWindow.dismiss();
                         break;
                     case "清空回收站":
                         confirmClearRecycleBin();
+                        popupWindow.dismiss();
                         break;
                     case "中转站":
                         if (checkTransferPermission()) openTransferStation();
+                        popupWindow.dismiss();
                         break;
                     case "定稿":
                         generateAllTxtHashTask();
+                        popupWindow.dismiss();
+                        break;
+                    // 点击设置：不关闭主菜单，横向弹出二级菜单
+                    case "设置":
+                        showSettingSubMenu(v, popupWindow);
                         break;
                 }
-                popupWindow.dismiss();
             });
             popupWindow.showAsDropDown(view, 0, 0);
         } catch (Exception e) {
@@ -1644,6 +1659,66 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }.execute();
+    }
+    // 设置二级横向弹窗菜单，仅包含隐私政策
+    // 设置二级横向弹窗菜单，仅包含隐私政策
+    private void showSettingSubMenu(View anchorView, PopupWindow mainPopup) {
+        try {
+            List<String> subMenu = new ArrayList<>();
+            subMenu.add("隐私政策");
+
+            ListView subListView = new ListView(this);
+            subListView.setBackgroundResource(R.drawable.popup_menu_bg);
+            subListView.setDivider(null);
+            subListView.setDividerHeight(1);
+
+            ArrayAdapter<String> subAdapter = new ArrayAdapter<>(this, 0, subMenu) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    if (convertView == null) {
+                        convertView = getLayoutInflater().inflate(android.R.layout.simple_list_item_1, parent, false);
+                    }
+                    TextView tv = convertView.findViewById(android.R.id.text1);
+                    tv.setText(subMenu.get(position));
+                    tv.setTextColor(0xFFFFFFFF);
+                    tv.setTextSize(18);
+                    tv.setPadding(20, 16, 20, 16);
+                    convertView.setBackgroundResource(R.drawable.menu_item_border);
+                    convertView.setClickable(false);
+                    convertView.setFocusable(false);
+                    return convertView;
+                }
+            };
+            subListView.setAdapter(subAdapter);
+
+            PopupWindow subPopup = new PopupWindow(
+                    subListView,
+                    dp2px(140),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    true
+            );
+            subPopup.setBackgroundDrawable(new ColorDrawable(0xFF000000));
+            subPopup.setOutsideTouchable(true);
+            subPopup.setFocusable(true);
+
+            // 横向向右弹出
+            subPopup.showAsDropDown(anchorView, dp2px(140), 0);
+
+            subListView.setOnItemClickListener((p, itemView, pos, itemId) -> {
+                String opt = subMenu.get(pos);
+                if ("隐私政策".equals(opt)) {
+                    // 跳转Splash强制打开隐私弹窗
+                    Intent intent = new Intent(MainActivity.this, SplashActivity.class);
+                    intent.putExtra("FORCE_SHOW_PRIVACY", true);
+                    startActivity(intent);
+                    // 同时关闭主菜单和二级设置菜单
+                    mainPopup.dismiss();
+                    subPopup.dismiss();
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
     /**
      * 检查中转站权限：
