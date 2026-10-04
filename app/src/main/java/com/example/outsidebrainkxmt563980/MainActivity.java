@@ -11,8 +11,10 @@
 package com.example.outsidebrainkxmt563980;
 import android.Manifest;
 import android.app.ProgressDialog;
+import android.content.ContentResolver;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -25,6 +27,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.media.MediaScannerConnection;
 import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.util.Log;
 import android.widget.Toast;
 import java.io.File;
@@ -164,6 +167,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
+        // 在onCreate最顶部 super.onCreate 之后
+        if (getIntent().hasExtra("handled_share")) {
+            getIntent().removeExtra(Intent.EXTRA_STREAM);
+        } else {
+            getIntent().putExtra("handled_share", true);
+        }
+
         setContentView(R.layout.activity_main);
         etSearch = findViewById(R.id.et_search);
         btnSearch = findViewById(R.id.btn_search);
@@ -306,14 +316,14 @@ public class MainActivity extends AppCompatActivity {
         ZipUnzipUtil.setEncodeWarningCallback((zipPath, garbledTxtPaths) -> {
             runOnUiThread(() -> {
                 StringBuilder msgSb = new StringBuilder();
-                msgSb.append("检测到当前解压文件中疑似包含 GBK 编码，建议在电脑端将所有TXT文件转码为UTF-8重新压缩，当下解压有乱码，此时删除压缩包数据将丢失。\n\n");
+                msgSb.append("检测到当前解压文件中疑似包含 GBK 编码，建议在电脑端将所有TXT转UTF-8后重新压缩，当前解压存在乱码风险，删除压缩包会丢失源文件。\n\n");
                 msgSb.append("异常TXT文件：\n");
 
                 int showMax = 3;
                 int total = garbledTxtPaths.size();
                 for (int i = 0; i < Math.min(total, showMax); i++) {
                     String path = garbledTxtPaths.get(i);
-                    // 可选：只显示文件名，不显示完整超长路径
+                    // 可选：只显示文件名，不展示完整长路径
                     String fileName = new File(path).getName();
                     msgSb.append("• ").append(fileName).append("\n");
                 }
@@ -328,7 +338,125 @@ public class MainActivity extends AppCompatActivity {
                         .show();
             });
         });
+
+        // ========= 新增：处理冷启动分享 =========
+        handleShareIntent(getIntent());
     }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleShareIntent(intent);
+    }
+
+    /**
+     * 处理分享Intent入口
+     */
+    private void handleShareIntent(Intent shareIntent) {
+        String action = shareIntent.getAction();
+        if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            new Thread(() -> {
+                List<Uri> uriList = new ArrayList<>();
+                if (Intent.ACTION_SEND.equals(action)) {
+                    Uri uri = shareIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+                    if (uri != null) uriList.add(uri);
+                } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+                    ArrayList<Uri> uris = shareIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                    if (uris != null) uriList.addAll(uris);
+                }
+                if (!uriList.isEmpty()) {
+                    boolean copyOk = copyShareFilesToTransferStation(uriList);
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, copyOk ? "文件已保存到中转站" : "部分文件保存失败", Toast.LENGTH_SHORT).show();
+                        // 自动跳转进入中转站
+                        currentDirectory = transferStationDirectory;
+                        isInTransferStation = true;
+                        isInSearchMode = false;
+                        loadFileList();
+                        updateLevelHint();
+                    });
+                }
+            }).start();
+        }
+    }
+
+    /**
+     * 将分享过来的Uri文件复制到中转站目录
+     */
+    private boolean copyShareFilesToTransferStation(List<Uri> uriList) {
+        boolean allSuccess = true;
+        ContentResolver resolver = getContentResolver();
+        for (Uri uri : uriList) {
+            String displayName = getFileNameFromUri(resolver, uri);
+            if (TextUtils.isEmpty(displayName)) {
+                allSuccess = false;
+                continue;
+            }
+            File destFile = new File(transferStationDirectory, displayName);
+            // 文件名冲突：自动追加数字后缀
+            destFile = getAvailableFile(destFile);
+            try (InputStream is = resolver.openInputStream(uri);
+                 FileOutputStream fos = new FileOutputStream(destFile)) {
+                if (is == null) {
+                    allSuccess = false;
+                    continue;
+                }
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = is.read(buf)) != -1) {
+                    fos.write(buf, 0, len);
+                }
+                fos.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+
+    /**
+     * 从Uri读取文件名
+     */
+    private String getFileNameFromUri(ContentResolver resolver, Uri uri) {
+        String fileName = null;
+        Cursor cursor = resolver.query(uri, null, null, null, null);
+        if (cursor != null) {
+            int nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+            if (nameIdx >= 0 && cursor.moveToFirst()) {
+                fileName = cursor.getString(nameIdx);
+            }
+            cursor.close();
+        }
+        if (TextUtils.isEmpty(fileName)) {
+            fileName = uri.getLastPathSegment();
+        }
+        return fileName;
+    }
+
+    /**
+     * 文件名冲突处理：test.txt → test(1).txt
+     */
+    private File getAvailableFile(File target) {
+        if (!target.exists()) return target;
+        String name = target.getName();
+        String ext = "";
+        String baseName = name;
+        int dotPos = name.lastIndexOf('.');
+        if (dotPos > 0) {
+            baseName = name.substring(0, dotPos);
+            ext = name.substring(dotPos);
+        }
+        int num = 1;
+        File newFile;
+        do {
+            newFile = new File(target.getParent(), baseName + "(" + num + ")" + ext);
+            num++;
+        } while (newFile.exists());
+        return newFile;
+    }
+
 
     /**
      * 2·文件列表RecyclerView适配器，处理不同文件类型的显示逻辑
@@ -588,7 +716,10 @@ public class MainActivity extends AppCompatActivity {
             canvas.drawText(numberText, x, y, paint);
             imageView.setImageBitmap(bitmap);
         }
+
+
     }
+
     /**
      * 打开PDF
      */
@@ -1906,73 +2037,81 @@ public class MainActivity extends AppCompatActivity {
      * 3. 排序搜索结果，更新UI显示。
      */
     private void performSearch() {
-        String keyword = etSearch.getText().toString().trim();
-        etSearch.clearFocus();
-        if (TextUtils.isEmpty(keyword)) {
-            isInSearchMode = false;
-            fileAdapter.setData(fileList);
-            clearSearchKeyword();
-            Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
-            if (btnZip != null) btnZip.setVisibility(View.GONE);
-            return;
-        }
-        saveSearchKeyword(keyword);
-        ProgressDialog searchDialog = new ProgressDialog(this);
-        searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
-        searchDialog.setCanceledOnTouchOutside(false);
-        searchDialog.setCancelable(false);
-        searchDialog.show();
-        searchResultList.clear();
-        new Thread(() -> {
-            isInSearchMode = true;
-            searchResultList.clear();
-            java.util.Set<File> uniqueSet = new java.util.HashSet<>();
-            boolean onlySearchFileName = false;
-            String realKeyword = keyword;
-            if (keyword.endsWith("@")) {
-                onlySearchFileName = true;
-                realKeyword = keyword.substring(0, keyword.length() - 1).trim();
-                if (TextUtils.isEmpty(realKeyword)) {
-                    runOnUiThread(() -> {
-                        if (searchDialog.isShowing()) searchDialog.dismiss();
-                        Toast.makeText(MainActivity.this, "去除@后关键词不能为空", Toast.LENGTH_SHORT).show();
-                    });
-                    return;
-                }
-            }
-            if (realKeyword.startsWith("@")) {
-                String timeStr = realKeyword.substring(1).trim();
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
-                String today = sdf.format(new Date());
-                String startDay = "";
-                String endDay = "";
-                if (timeStr.matches("\\d{8}[#]\\d{8}")) {
-                    String[] split = timeStr.split("[#]");
-                    startDay = split[0];
-                    endDay = split[1];
-                } else if (timeStr.matches("\\d{8}")) {
-                    startDay = timeStr;
-                    endDay = today;
-                }
-                if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
-                    scanDirect(currentDirectory, startDay, endDay);
-                }
-                uniqueSet.addAll(searchResultList);
-                searchResultList.clear();
-                searchResultList.addAll(uniqueSet);
-
-            } else {
-                recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
-            }
-            sortSearchResult();
-            runOnUiThread(() -> {
-                if (searchDialog.isShowing()) searchDialog.dismiss();
-                fileAdapter.setData(searchResultList);
-                btnZip.setVisibility(searchResultList.isEmpty() ? View.GONE : View.VISIBLE);
-                Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
-            });
-        }).start();
+    String keyword = etSearch.getText().toString().trim();
+    etSearch.clearFocus();
+    if (TextUtils.isEmpty(keyword)) {
+        isInSearchMode = false;
+        fileAdapter.setData(fileList);
+        clearSearchKeyword();
+        Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
+        if (btnZip != null) btnZip.setVisibility(View.GONE);
+        return;
     }
+    saveSearchKeyword(keyword);
+    ProgressDialog searchDialog = new ProgressDialog(this);
+    searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
+    searchDialog.setCanceledOnTouchOutside(false);
+    searchDialog.setCancelable(false);
+    searchDialog.show();
+    searchResultList.clear();
+    new Thread(() -> {
+        isInSearchMode = true;
+        searchResultList.clear();
+        java.util.Set<File> uniqueSet = new java.util.HashSet<>();
+        boolean onlySearchFileName = false;
+        String realKeyword = keyword;
+
+        // ============ 调换逻辑开始 ============
+        // 不带@：仅搜文件名
+        if (!keyword.endsWith("@")) {
+            onlySearchFileName = true;
+            realKeyword = keyword.trim();
+        } else {
+            // 末尾带@，去掉@后，执行原来完整搜索（文件名+内容）
+            realKeyword = keyword.substring(0, keyword.length() - 1).trim();
+            if (TextUtils.isEmpty(realKeyword)) {
+                runOnUiThread(() -> {
+                    if (searchDialog.isShowing()) searchDialog.dismiss();
+                    Toast.makeText(MainActivity.this, "去除@后关键词不能为空", Toast.LENGTH_SHORT).show();
+                });
+                return;
+            }
+        }
+        // ============ 调换逻辑结束 ============
+
+        if (realKeyword.startsWith("@")) {
+            String timeStr = realKeyword.substring(1).trim();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+            String today = sdf.format(new Date());
+            String startDay = "";
+            String endDay = "";
+            if (timeStr.matches("\\d{8}[#]\\d{8}")) {
+                String[] split = timeStr.split("[#]");
+                startDay = split[0];
+                endDay = split[1];
+            } else if (timeStr.matches("\\d{8}")) {
+                startDay = timeStr;
+                endDay = today;
+            }
+            if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
+                scanDirect(currentDirectory, startDay, endDay);
+            }
+            uniqueSet.addAll(searchResultList);
+            searchResultList.clear();
+            searchResultList.addAll(uniqueSet);
+        } else {
+            recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
+        }
+        sortSearchResult();
+        runOnUiThread(() -> {
+            if (searchDialog.isShowing()) searchDialog.dismiss();
+            fileAdapter.setData(searchResultList);
+            btnZip.setVisibility(searchResultList.isEmpty() ? View.GONE : View.VISIBLE);
+            Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
+        });
+    }).start();
+}
+
     /**
      * 轻量级内部扫描，不会冲突
      */

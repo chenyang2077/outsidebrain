@@ -26,11 +26,23 @@
             </intent-filter>
         </activity>
 
-        <!-- 主界面，移除启动过滤器，exported改为false -->
+        <!-- 主界面，接收分享，exported改为true -->
         <activity
             android:name="com.example.outsidebrainkxmt563980.MainActivity"
             android:launchMode="singleTop"
-            android:exported="false">
+            android:exported="true">
+            <!-- 接收单文件分享 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- 接收多文件分享 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <activity
