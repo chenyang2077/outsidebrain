@@ -2030,13 +2030,13 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-    /**
-     * 执行文件搜索：
-     * 1. 获取搜索关键词，校验非空；
-     * 2. 后台递归搜索当前目录下匹配的文件（名称/内容）；
-     * 3. 排序搜索结果，更新UI显示。
-     */
-    private void performSearch() {
+    //**
+ * 执行文件搜索：
+ * 1. 获取搜索关键词，校验非空；
+ * 2. 后台递归搜索当前目录下匹配的文件（名称/内容）；
+ * 3. 排序搜索结果，更新UI显示。
+ */
+private void performSearch() {
     String keyword = etSearch.getText().toString().trim();
     etSearch.clearFocus();
     if (TextUtils.isEmpty(keyword)) {
@@ -2054,6 +2054,7 @@ public class MainActivity extends AppCompatActivity {
     searchDialog.setCancelable(false);
     searchDialog.show();
     searchResultList.clear();
+
     new Thread(() -> {
         isInSearchMode = true;
         searchResultList.clear();
@@ -2061,13 +2062,9 @@ public class MainActivity extends AppCompatActivity {
         boolean onlySearchFileName = false;
         String realKeyword = keyword;
 
-        // ============ 调换逻辑开始 ============
-        // 不带@：仅搜文件名
-        if (!keyword.endsWith("@")) {
+        // ============【恢复原版逻辑】末尾带@：仅搜索文件名；不带@：文件名+文件内容 ============
+        if (keyword.endsWith("@")) {
             onlySearchFileName = true;
-            realKeyword = keyword.trim();
-        } else {
-            // 末尾带@，去掉@后，执行原来完整搜索（文件名+内容）
             realKeyword = keyword.substring(0, keyword.length() - 1).trim();
             if (TextUtils.isEmpty(realKeyword)) {
                 runOnUiThread(() -> {
@@ -2076,9 +2073,14 @@ public class MainActivity extends AppCompatActivity {
                 });
                 return;
             }
+        } else {
+            // 不带末尾@：完整搜索 文件名 + 文件内容
+            onlySearchFileName = false;
+            realKeyword = keyword.trim();
         }
-        // ============ 调换逻辑结束 ============
+        // ============逻辑结束 ============
 
+        // 开头@：日期范围搜索
         if (realKeyword.startsWith("@")) {
             String timeStr = realKeyword.substring(1).trim();
             SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
@@ -2102,6 +2104,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
         }
+
         sortSearchResult();
         runOnUiThread(() -> {
             if (searchDialog.isShowing()) searchDialog.dismiss();
@@ -2111,6 +2114,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }).start();
 }
+
 
     /**
      * 轻量级内部扫描，不会冲突
