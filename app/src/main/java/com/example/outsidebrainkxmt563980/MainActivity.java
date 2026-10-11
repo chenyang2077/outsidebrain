@@ -2030,12 +2030,9 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-    //**
- * 执行文件搜索：
- * 1. 获取搜索关键词，校验非空；
- * 2. 后台递归搜索当前目录下匹配的文件（名称/内容）；
- * 3. 排序搜索结果，更新UI显示。
- */
+    /**
+     *执行搜索
+     */
 private void performSearch() {
     String keyword = etSearch.getText().toString().trim();
     etSearch.clearFocus();
