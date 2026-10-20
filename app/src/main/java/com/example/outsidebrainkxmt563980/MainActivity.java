@@ -2033,84 +2033,150 @@ public class MainActivity extends AppCompatActivity {
     /**
      *执行搜索
      */
-private void performSearch() {
-    String keyword = etSearch.getText().toString().trim();
-    etSearch.clearFocus();
-    if (TextUtils.isEmpty(keyword)) {
-        isInSearchMode = false;
-        fileAdapter.setData(fileList);
-        clearSearchKeyword();
-        Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
-        if (btnZip != null) btnZip.setVisibility(View.GONE);
-        return;
-    }
-    saveSearchKeyword(keyword);
-    ProgressDialog searchDialog = new ProgressDialog(this);
-    searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
-    searchDialog.setCanceledOnTouchOutside(false);
-    searchDialog.setCancelable(false);
-    searchDialog.show();
-    searchResultList.clear();
-
-    new Thread(() -> {
-        isInSearchMode = true;
+    private void performSearch() {
+        String keyword = etSearch.getText().toString().trim();
+        etSearch.clearFocus();
+        if (TextUtils.isEmpty(keyword)) {
+            isInSearchMode = false;
+            fileAdapter.setData(fileList);
+            clearSearchKeyword();
+            Toast.makeText(this, "请输入搜索关键词", Toast.LENGTH_SHORT).show();
+            if (btnZip != null) btnZip.setVisibility(View.GONE);
+            return;
+        }
+        saveSearchKeyword(keyword);
+        ProgressDialog searchDialog = new ProgressDialog(this);
+        searchDialog.setMessage("太慢可跳过末尾带#的文件夹...");
+        searchDialog.setCanceledOnTouchOutside(false);
+        searchDialog.setCancelable(false);
+        searchDialog.show();
         searchResultList.clear();
-        java.util.Set<File> uniqueSet = new java.util.HashSet<>();
-        boolean onlySearchFileName = false;
-        String realKeyword = keyword;
 
-        // ============【恢复原版逻辑】末尾带@：仅搜索文件名；不带@：文件名+文件内容 ============
-        if (keyword.endsWith("@")) {
-            onlySearchFileName = true;
-            realKeyword = keyword.substring(0, keyword.length() - 1).trim();
-            if (TextUtils.isEmpty(realKeyword)) {
-                runOnUiThread(() -> {
-                    if (searchDialog.isShowing()) searchDialog.dismiss();
-                    Toast.makeText(MainActivity.this, "去除@后关键词不能为空", Toast.LENGTH_SHORT).show();
-                });
-                return;
-            }
-        } else {
-            // 不带末尾@：完整搜索 文件名 + 文件内容
-            onlySearchFileName = false;
-            realKeyword = keyword.trim();
-        }
-        // ============逻辑结束 ============
-
-        // 开头@：日期范围搜索
-        if (realKeyword.startsWith("@")) {
-            String timeStr = realKeyword.substring(1).trim();
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
-            String today = sdf.format(new Date());
-            String startDay = "";
-            String endDay = "";
-            if (timeStr.matches("\\d{8}[#]\\d{8}")) {
-                String[] split = timeStr.split("[#]");
-                startDay = split[0];
-                endDay = split[1];
-            } else if (timeStr.matches("\\d{8}")) {
-                startDay = timeStr;
-                endDay = today;
-            }
-            if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
-                scanDirect(currentDirectory, startDay, endDay);
-            }
-            uniqueSet.addAll(searchResultList);
+        new Thread(() -> {
+            isInSearchMode = true;
             searchResultList.clear();
-            searchResultList.addAll(uniqueSet);
-        } else {
-            recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
-        }
+            java.util.Set<File> uniqueSet = new java.util.HashSet<>();
+            boolean onlySearchFileName = false;
+            boolean limitSharpFolder = false; // 新增：是否只在末尾带#的文件夹内搜索
+            String realKeyword = keyword;
 
-        sortSearchResult();
-        runOnUiThread(() -> {
-            if (searchDialog.isShowing()) searchDialog.dismiss();
-            fileAdapter.setData(searchResultList);
-            btnZip.setVisibility(searchResultList.isEmpty() ? View.GONE : View.VISIBLE);
-            Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
-        });
-    }).start();
-}
+            // ============ 新增：末尾#标记优先判断 ============
+            if (keyword.endsWith("#")) {
+                limitSharpFolder = true;
+                realKeyword = keyword.substring(0, keyword.length() - 1).trim();
+                if (TextUtils.isEmpty(realKeyword)) {
+                    runOnUiThread(() -> {
+                        if (searchDialog.isShowing()) searchDialog.dismiss();
+                        Toast.makeText(MainActivity.this, "去除#后关键词不能为空", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+            }
+
+            // ============【恢复原版逻辑】末尾@：仅搜索文件名；不带@：文件名+文件内容 ============
+            if (realKeyword.endsWith("@")) {
+                onlySearchFileName = true;
+                realKeyword = realKeyword.substring(0, realKeyword.length() - 1).trim();
+                if (TextUtils.isEmpty(realKeyword)) {
+                    runOnUiThread(() -> {
+                        if (searchDialog.isShowing()) searchDialog.dismiss();
+                        Toast.makeText(MainActivity.this, "去除@后关键词不能为空", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+            } else {
+                // 不带末尾@：完整搜索 文件名 + 文件内容
+                onlySearchFileName = false;
+                realKeyword = realKeyword.trim();
+            }
+            // ============逻辑结束 ============
+
+            // 开头@：日期范围搜索
+            if (realKeyword.startsWith("@")) {
+                String timeStr = realKeyword.substring(1).trim();
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                String today = sdf.format(new Date());
+                String startDay = "";
+                String endDay = "";
+                if (timeStr.matches("\\d{8}[#]\\d{8}")) {
+                    String[] split = timeStr.split("[#]");
+                    startDay = split[0];
+                    endDay = split[1];
+                } else if (timeStr.matches("\\d{8}")) {
+                    startDay = timeStr;
+                    endDay = today;
+                }
+                if (!TextUtils.isEmpty(startDay) && !TextUtils.isEmpty(endDay)) {
+                    if (limitSharpFolder) {
+                        scanSharpFolderOnly(currentDirectory, startDay, endDay);
+                    } else {
+                        scanDirect(currentDirectory, startDay, endDay);
+                    }
+                }
+                uniqueSet.addAll(searchResultList);
+                searchResultList.clear();
+                searchResultList.addAll(uniqueSet);
+            } else {
+                if (limitSharpFolder) {
+                    // 只在名字末尾带#的文件夹里面递归搜索
+                    recursiveSearchInSharpFolder(currentDirectory, realKeyword, onlySearchFileName);
+                } else {
+                    // 原有全局搜索
+                    recursiveSearch(currentDirectory, realKeyword, onlySearchFileName);
+                }
+            }
+
+            sortSearchResult();
+            runOnUiThread(() -> {
+                if (searchDialog.isShowing()) searchDialog.dismiss();
+                fileAdapter.setData(searchResultList);
+                btnZip.setVisibility(searchResultList.isEmpty() ? View.GONE : View.VISIBLE);
+                Toast.makeText(MainActivity.this, searchResultList.size() + " 个匹配结果", Toast.LENGTH_SHORT).show();
+            });
+        }).start();
+    }
+    /**
+     * 找到当前目录下【名称末尾带#的文件夹】，进入它内部递归搜索（含子目录）
+     */
+    private void recursiveSearchInSharpFolder(File dir, String keyword, boolean onlyName) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return;
+        File[] subs = dir.listFiles();
+        if (subs == null) return;
+
+        for (File f : subs) {
+            if (f.isDirectory()) {
+                // 判断文件夹名字末尾是 #
+                if (f.getName().endsWith("#")) {
+                    // 进入这个#文件夹，在里面正常搜索（包含它所有子文件夹）
+                    recursiveSearch(f, keyword, onlyName);
+                } else {
+                    // 不是#文件夹，继续往下遍历，看它子级有没有#文件夹
+                    recursiveSearchInSharpFolder(f, keyword, onlyName);
+                }
+            }
+            // 文件直接跳过，我们只找#文件夹入口
+        }
+    }
+
+    /**
+     * 日期搜索版本：仅扫描末尾带#的文件夹内部
+     */
+    private void scanSharpFolderOnly(File dir, String startDay, String endDay) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return;
+        File[] subs = dir.listFiles();
+        if (subs == null) return;
+
+        for (File f : subs) {
+            if (f.isDirectory()) {
+                if (f.getName().endsWith("#")) {
+                    scanDirect(f, startDay, endDay);
+                } else {
+                    scanSharpFolderOnly(f, startDay, endDay);
+                }
+            }
+        }
+    }
+
 
 
     /**

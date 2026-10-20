@@ -336,10 +336,10 @@ public class ZipUnzipUtil {
             String originalName = targetFile.getName();
             String cleanName = removeTimestamp(originalName);
             String originalExt = getOriginalExtension(originalName);
-            int lastDotIndex = cleanName.lastIndexOf(".");
-            if (lastDotIndex > 0) {
-                cleanName = cleanName.substring(0, lastDotIndex);
-            }
+            //int lastDotIndex = cleanName.lastIndexOf(".");
+            //if (lastDotIndex > 0) {
+            //    cleanName = cleanName.substring(0, lastDotIndex);
+            //清除后缀重复}
             cleanName = getSafeCoreName(cleanName);
             String randomStr = generateRandomString();
             String baseTimestamp = getTsFormatter().format(new Date());
